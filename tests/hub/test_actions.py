@@ -226,7 +226,7 @@ def test_only_small_url_encoded_forms(client: TestClient) -> None:
     token = forms(client, f"/hosts/{TEST_HOST.host_id}")["/actions/new"]
     json_body = client.post("/actions/new", json={"csrf": token, "kind": "noop"}, headers=ALICE)
     assert json_body.status_code == 415
-    big = post(client, "/actions/new", {"csrf": token, "kind": "noop", "host_id": "x" * 20000})
+    big = post(client, "/actions/new", {"csrf": token, "kind": "noop", "host_id": "x" * 300_000})
     assert big.status_code == 413
     extra = post(client, "/actions/new", {"csrf": token, "kind": "noop", "evil": "1"})
     assert extra.status_code == 422

@@ -137,6 +137,13 @@ class SandboxStore:
             ).fetchall()
         return [from_dict(OpenShellSandbox, json.loads(r[0])) for r in rows]
 
+    def get(self, sandbox_id: str) -> OpenShellSandbox | None:
+        with self.db.read() as conn:
+            row = conn.execute(
+                "SELECT snapshot FROM openshell_sandboxes WHERE sandbox_id = ?", (sandbox_id,)
+            ).fetchone()
+        return from_dict(OpenShellSandbox, json.loads(row[0])) if row else None
+
     def of_agent(self, agent_id: str, host_id: str) -> OpenShellSandbox | None:
         return next((s for s in self.all(host_id) if agent_id in s.agent_ids), None)
 

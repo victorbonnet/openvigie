@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+{% set admin = whoami(request).role == "admin" %}
+<p class="muted"><a href="/hosts/{{ box.host_id }}#sandbox-{{ box.sandbox_id }}">Sandbox {{ box.name }}</a> / network rules</p>
+<h1>Network rules of {{ box.name }}</h1>
+<p class="muted">OpenShell reloads network rules on a running sandbox. Filesystem, process and
+  landlock sections only apply to a new sandbox, so the editor ignores them. A change is applied
+  only after an admin reviews and confirms it, and only if the host allows
+  <code>sandbox.policy.set</code>; if OpenShell doesn't load it, the collector restores the
+  previous rules.</p>
+{% if error %}<p class="error-box">{{ error }}</p>{% endif %}
+{% if problem %}
+<p class="error-box">{{ problem }}</p>
+{% elif admin %}
+<form method="post" action="/actions/new" class="editor">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'propose') }}">
+  <input type="hidden" name="kind" value="sandbox.policy">
+  <input type="hidden" name="host_id" value="{{ box.host_id }}">
+  <input type="hidden" name="workspace" value="{{ box.workspace }}">
+  <input type="hidden" name="sandbox" value="{{ box.name }}">
+  <textarea name="text" rows="24" spellcheck="false" autocomplete="off">{{ text }}</textarea>
+  <p><button type="submit">Review the change…</button>
+  {% if agent %}<a href="/sandboxes/{{ box.sandbox_id }}/rules?from=starter">Start from {{ agent.agent.name }}'s starter policy</a> ·{% endif %}
+  <a href="/sandboxes/{{ box.sandbox_id }}/rules">Start from the current rules</a></p>
+</form>
+{% else %}
+<pre>{{ text }}</pre>
+<p class="muted">Admins can propose changes here.</p>
+{% endif %}
+{% endblock %}

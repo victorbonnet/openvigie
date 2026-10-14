@@ -16,6 +16,10 @@
 </dl>
 
 <h2>Change</h2>
+{% if review %}
+<pre class="diff">{% for line in review %}<span class="{{ 'add' if line.startswith('added') or line.strip().startswith('+') else ('del' if line.startswith('removed') or line.strip().startswith('-') else '') }}">{{ line }}</span>{% endfor %}</pre>
+<p class="muted">The full text:</p>
+{% endif %}
 {% if diff %}
 <pre class="diff">{% for cls, line in diff %}<span class="{{ cls }}">{{ line }}</span>{% endfor %}</pre>
 {% else %}

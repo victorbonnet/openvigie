@@ -8,8 +8,8 @@ are in ``hub/admin``; each step there requires the admin role and a CSRF token.
 A proposal stores the plan: the host, the name to type, the collector action and its arguments,
 and the state before and after as text (the diff). It keeps ``before`` so the change can be
 undone: ``rollback`` asks the kind for the inverse change and proposes it, to be confirmed like
-any other. Only ``noop`` exists so far, to check the command channel end to end; it has nothing
-to undo. Real actions (#17) add a ``Kind``.
+any other. Kinds: ``noop`` checks the command channel end to end (nothing to undo);
+``sandbox.policy`` changes a sandbox's network rules (FR-12, D15), reviewed rule by rule.
 """
 
 from __future__ import annotations
@@ -26,6 +26,8 @@ from openvigie.hub.store.audit import AuditLog
 from openvigie.hub.store.commands import CommandQueue
 from openvigie.hub.store.db import Database, parse_ts, required_ts, ts
 from openvigie.hub.store.inventory import Inventory
+from openvigie.hub.store.sandboxes import SandboxStore
+from openvigie.openshell import policy
 
 PROPOSAL_TTL = timedelta(minutes=15)
 COMMAND_TTL = timedelta(minutes=10)
@@ -52,6 +54,8 @@ class Kind:
     plan: Callable[[Database, Mapping[str, str]], Plan]
     # the parameters of the change that undoes a confirmed one; None: nothing to undo
     undo: Callable[[StoredAction], dict[str, str] | None] = field(default=lambda action: None)
+    # lines summarising the change for review, besides the text diff
+    review: Callable[[Plan], list[str]] = field(default=lambda plan: [])
 
 
 def _noop_plan(db: Database, params: Mapping[str, str]) -> Plan:
@@ -63,7 +67,51 @@ def _noop_plan(db: Database, params: Mapping[str, str]) -> Plan:
                 before="", after=f"{name} runs noop and reports back\n")  # fmt: skip
 
 
-KINDS: dict[str, Kind] = {"noop": Kind(_noop_plan)}
+def _policy_plan(db: Database, params: Mapping[str, str]) -> Plan:
+    box = next((b for b in SandboxStore(db).all(params.get("host_id", ""))
+                if (b.workspace, b.name) == (params.get("workspace"), params.get("sandbox"))),
+               None)  # fmt: skip
+    if box is None:
+        raise ActionError("unknown sandbox")
+    if box.network_policy is None or not box.policy_hash:
+        raise ActionError("the sandbox's current rules are unknown; wait for its next report")
+    try:
+        current = policy.from_json(box.network_policy)
+    except policy.PolicyError:
+        raise ActionError("the current rules use fields the editor doesn't support yet; "
+                          "change them with `openshell policy set`") from None  # fmt: skip
+    try:
+        rules = policy.parse_yaml(params.get("text", "")).rules
+    except policy.PolicyError as exc:
+        raise ActionError(str(exc)) from None
+    if rules == current:
+        raise ActionError("no change: these are the sandbox's current rules")
+    args = {"sandbox": box.name, "workspace": box.workspace, "base_hash": box.policy_hash,
+            "network_policies": policy.to_json(rules)}  # fmt: skip
+    return Plan(box.host_id, box.name, "sandbox.policy.set", args,
+                f"Change the network rules of sandbox {box.name}",
+                before=policy.to_yaml(current), after=policy.to_yaml(rules))  # fmt: skip
+
+
+def _policy_undo(action: StoredAction) -> dict[str, str]:
+    args = action.plan.args
+    return {"host_id": action.plan.host_id, "workspace": args["workspace"],
+            "sandbox": args["sandbox"], "text": action.plan.before}  # fmt: skip
+
+
+def _policy_review(plan: Plan) -> list[str]:
+    old, new = policy.parse_yaml(plan.before).rules, policy.parse_yaml(plan.after).rules
+    lines = []
+    for change in policy.diff(old, new):
+        lines.append(f"{change.change} rule {change.rule}")
+        lines += [f"    {detail}" for detail in change.details]
+    return lines
+
+
+KINDS: dict[str, Kind] = {
+    "noop": Kind(_noop_plan),
+    "sandbox.policy": Kind(_policy_plan, _policy_undo, _policy_review),
+}
 
 
 @dataclass(frozen=True)
