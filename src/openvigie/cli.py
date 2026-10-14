@@ -146,7 +146,21 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
     discovery = discover(settings.enable_plugins, settings.disable_adapters)
     store = StateStore(state_dir() / "collector.db", settings.spool_limit_mb * 1024 * 1024)
-    collector = Collector(settings, build_context(settings), discovery, client, store=store)
+    otlp = None
+    if settings.otlp.enabled:
+        from openvigie.collector.otlp import OtlpReceiver
+
+        try:
+            otlp_token = (
+                read_private_file(settings.otlp.token_file) if settings.otlp.token_file else None
+            )
+            otlp = OtlpReceiver(settings.otlp.port, otlp_token)
+            otlp.start()
+        except (ConfigError, OSError) as exc:
+            print(f"openvigie: OTLP receiver: {exc}", file=sys.stderr)
+            return 2
+    collector = Collector(settings, build_context(settings), discovery, client, store=store,
+                          otlp=otlp)  # fmt: skip
     if args.once:
         return 0 if collector.tick() else 1
     stop = threading.Event()
