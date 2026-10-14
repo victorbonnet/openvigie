@@ -1,0 +1,99 @@
+name: release
+
+# Tag vX.Y.Z → build → install-test on every target platform → publish to PyPI (after a
+# maintainer approves the `pypi` environment). Manual runs publish to TestPyPI instead. PRs
+# that touch packaging run the build and smoke jobs only.
+# Publishing uses PyPI Trusted Publishing (OIDC): no token is stored in this repository.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/check_release.py
+      - pyproject.toml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - name: Tag matches pyproject.toml and CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/check_release.py version "${GITHUB_REF_NAME#v}"
+      - run: uv build
+      - name: Wheel has its assets and nothing else
+        run: python scripts/check_release.py wheel dist/*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  smoke:
+    # `pipx install openvigie` must work on the Pi (linux arm64), Apple Silicon and x86_64.
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pipx
+      - run: python -m pipx install dist/*.whl
+      - name: openvigie --version && openvigie scan --json
+        run: |
+          bin="$(python -m pipx environment --value PIPX_BIN_DIR)"
+          "$bin/openvigie" --version
+          "$bin/openvigie" scan --json
+
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch'
+    needs: smoke
+    runs-on: ubuntu-24.04
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: smoke
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
