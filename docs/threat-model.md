@@ -55,6 +55,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T14 | Admin actions are denied or hidden after the fact | Hash-chained audit log, kept forever, redacted, verified by `openvigie hub audit verify`; keep the printed head hash elsewhere to detect truncation | #161 |
 | T15 | A compromised hub, or a forged reply, makes collectors run actions | Each collector runs only actions on its own `allow_actions` (empty by default); commands expire, ids are never accepted twice (kept across restarts), the hub delivers each at most once; replies come only over the authenticated push, and collectors never follow redirects | #163 |
 | T16 | A compromised hub stops or kills processes on a host | Each host allows `agent.stop` / `agent.kill` separately (off by default); the hub names an agent, never a PID; the collector signals only processes it attributed to that agent and their children, re-checked by start time, never PID 1 or itself, and without privilege escalation | #174 |
+| T17 | Alerts leak data, or the webhook leaks its secret | Off unless configured; https only (http to loopback); no redirects; the URL and token are never logged or shown; the payload holds budget ids, scopes and amounts, no prompts or secrets | #179 |
 
 ## Rules for every change
 

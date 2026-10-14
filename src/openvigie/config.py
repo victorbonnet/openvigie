@@ -129,6 +129,35 @@ class LangfuseSettings:
 
 
 @settings_type
+class WebhookSettings:
+    """``[alerts.webhook]`` in hub.toml: POST each alert as JSON (FR-14, D17). The URL can itself
+    be a secret (Slack, Discord): it is never logged or shown."""
+
+    url: StrictStr
+    token_file: UserPath | None = None  # 0600 file; sent as "Authorization: Bearer <token>"
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        parts = urlsplit(self.url)
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username:
+            raise ValueError("alerts.webhook.url must be an http(s) URL without credentials")
+        if parts.scheme == "http" and not is_loopback(parts.hostname):
+            raise ValueError("alerts.webhook.url must use https unless it is on this machine")
+        return self
+
+    def token(self) -> str | None:
+        """The bearer token; never log or display it."""
+        return read_private_file(self.token_file) if self.token_file else None
+
+
+@settings_type
+class AlertSettings:
+    """``[alerts]`` in hub.toml. Without a channel, alerts only show in the UI (no phone-home)."""
+
+    webhook: WebhookSettings | None = None
+
+
+@settings_type
 class HubSettings:
     bind: StrictStr = "127.0.0.1"
     port: Port = 7878
@@ -138,6 +167,7 @@ class HubSettings:
     display_timezone: StrictStr | None = None  # default: hub local time
     retention: Retention = field(default_factory=Retention)
     langfuse: LangfuseSettings | None = None
+    alerts: AlertSettings = field(default_factory=AlertSettings)
     # write actions (D14): these logins are admins, everyone else is a viewer. Identity comes
     # from Tailscale Serve's headers, trusted only when this is on: the hub host must then be
     # single-user, since any local user could send the same headers to 127.0.0.1.

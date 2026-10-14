@@ -43,7 +43,7 @@ warn_at = 0.8                # alert at 80 % too</pre>
   {% for a in alerts %}
     <tr><td title="{{ a.at }}">{{ a.at | ago }}</td>
       <td><span class="badge {{ 'error' if a.level == 'exceeded' else 'degraded' }}">{{ a.level }}</span> {{ a.title }}</td>
-      <td class="muted">{{ a.detail }}</td></tr>
+      <td class="muted">{{ a.detail }}{% if a.last_error and not a.delivered_at %} <span class="badge error" title="webhook">not delivered: {{ a.last_error }} ({{ a.attempts }} attempts)</span>{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>
