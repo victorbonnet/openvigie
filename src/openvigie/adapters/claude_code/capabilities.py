@@ -19,6 +19,7 @@ from openvigie.adapters.caps import (
     first_word,
     mcp_server,
     secret_names,
+    table,
     text,
     texts,
     unique,
@@ -56,10 +57,6 @@ def _load(path: Path, limit: int, read: list[Path]) -> dict[str, Any]:
         return {}
     read.append(path)
     return data if isinstance(data, dict) else {}
-
-
-def _dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
 
 
 def _merge(*settings: dict[str, Any]) -> dict[str, Any]:
@@ -119,9 +116,9 @@ def read_capabilities(
     perms = settings["permissions"]
     mode = mode_from_cmdline(procs) or text(perms.get("defaultMode")) or "default"
     allow, deny = texts(perms.get("allow")), texts(perms.get("deny"))
-    sandbox = _dict(settings.get("sandbox"))
+    sandbox = table(settings.get("sandbox"))
     sandboxed = sandbox.get("enabled") is True
-    network = _dict(sandbox.get("network"))
+    network = table(sandbox.get("network"))
     domains = texts(network.get("allowedDomains"))
 
     servers: list[McpServer] = []
@@ -132,7 +129,7 @@ def read_capabilities(
     user_servers = state.get("mcpServers")
     if isinstance(user_servers, dict):
         entries += [(n, s, "user") for n, s in user_servers.items()]
-    projects = _dict(state.get("projects"))
+    projects = table(state.get("projects"))
     del state  # account data: not kept
     for project, conf in list(projects.items())[:MAX_PROJECTS]:
         if isinstance(conf, dict) and isinstance(conf.get("mcpServers"), dict):

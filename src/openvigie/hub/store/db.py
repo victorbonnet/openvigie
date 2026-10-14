@@ -31,6 +31,20 @@ def parse_ts(value: str | None) -> datetime | None:
     return None if value is None else datetime.fromisoformat(value)
 
 
+def required_ts(value: str) -> datetime:
+    """A NOT NULL timestamp column; raising guards against schema drift."""
+    parsed = parse_ts(value)
+    if parsed is None:
+        raise ValueError("missing timestamp")
+    return parsed
+
+
+def agents_of_host(conn: sqlite3.Connection, host_id: str) -> set[str]:
+    """Ids of the agents a host owns: a host may only write data for these."""
+    rows = conn.execute("SELECT agent_id FROM agents WHERE host_id = ?", (host_id,)).fetchall()
+    return {row[0] for row in rows}
+
+
 def migrations() -> list[tuple[int, str, str]]:
     folder = resources.files("openvigie.hub.store") / "migrations"
     found = []

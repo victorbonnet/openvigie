@@ -1,13 +1,18 @@
-"""Adapter plugin interface (FR-7).
+"""Adapter plugin interface (FR-7): the contract every adapter implements.
 
 An adapter teaches openvigie about one agent type and answers three questions:
 
 * ``detect``: is this agent on the host?
 * ``collect``: what is it doing (activity, sessions, usage, spans)?
-* ``capabilities``: what can it access? Reserved for P1 (FR-8).
+* ``capabilities``: what can it access (FR-8)?
 
-Adapters touch the host only through ``HostContext``, so the same code runs against a real host
-or a fixture tree in tests.
+Rules (docs/adapters.md has the details):
+
+* Touch the host only through ``HostContext``, so the same code runs against a real host or a
+  fixture tree in tests. Read agent files only with ``openvigie.safeio`` (bounded, no symlinks).
+* Never run the agent's binary, never read credential files, never keep prompt or output text in
+  usage records. Unknown token counts stay ``None``, never 0.
+* Raising is safe but costly: the collector catches it and marks the adapter ``error``.
 """
 
 from __future__ import annotations
@@ -155,6 +160,9 @@ class ActivityBatch:
 
 
 class Adapter(ABC):
+    """Base class of every adapter. Subclasses set ``agent_type`` and ``display_name`` and
+    implement ``detect``; ``collect`` and ``capabilities`` are optional."""
+
     agent_type: ClassVar[str]
     display_name: ClassVar[str]
     interface_version: ClassVar[int] = INTERFACE_VERSION
@@ -165,10 +173,17 @@ class Adapter(ABC):
 
     @abstractmethod
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
-        """Return one instance per install of this agent on the host (may be empty)."""
+        """Return one instance per install of this agent on the host (may be empty).
+
+        Agent ids must be stable: ``stable_id(host_id, agent_type, <install key>)``.
+        """
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
-        """Return activity since the cursors in ``state``. Default: nothing to report."""
+        """Return activity since the cursors in ``state``. Default: nothing to report.
+
+        ``state.stage`` new cursors; the collector commits them once the hub has the data. Build
+        spans only when ``ctx.traces.enabled``, with content only through ``spans.content()``.
+        """
         return ActivityBatch()
 
     def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:

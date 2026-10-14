@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 
-from openvigie.hub.store.db import Database, parse_ts, ts
+from openvigie.hub.store.db import Database, parse_ts, required_ts, ts
 from openvigie.model import (
     AdapterHealth,
     AgentInstance,
@@ -174,7 +174,7 @@ class Inventory:
             ).fetchall()
         return [
             StatusEvent(r["agent_id"], AgentStatus(r["old"]), AgentStatus(r["new"]),
-                        _dt(r["at"]))
+                        required_ts(r["at"]))
             for r in rows
         ]  # fmt: skip
 
@@ -191,25 +191,18 @@ class Inventory:
                 r["host_id"],
                 AdapterHealth(r["adapter"], HealthState(r["state"]), r["reason"],
                               r["parse_errors"], r["skipped"]),
-                _dt(r["updated_at"]),
+                required_ts(r["updated_at"]),
             )
             for r in rows
         ]  # fmt: skip
-
-
-def _dt(value: str) -> datetime:
-    parsed = parse_ts(value)
-    if parsed is None:  # columns are NOT NULL; this guards against schema drift
-        raise ValueError("missing timestamp")
-    return parsed
 
 
 def _host_row(row: sqlite3.Row) -> HostRow:
     return HostRow(
         host=Host(row["host_id"], row["hostname"], row["os"], row["arch"],
                   row["collector_version"]),
-        first_seen=_dt(row["first_seen"]),
-        last_seen=_dt(row["last_seen"]),
+        first_seen=required_ts(row["first_seen"]),
+        last_seen=required_ts(row["last_seen"]),
         clock_skew_s=row["clock_skew_s"],
         revoked_at=parse_ts(row["revoked_at"]),
         spool_dropped=row["spool_dropped"],
@@ -231,4 +224,6 @@ def _agent_row(row: sqlite3.Row) -> AgentRow:
         last_activity_at=parse_ts(row["last_activity_at"]),
         status=AgentStatus(row["status"]),
     )
-    return AgentRow(agent, _dt(row["first_seen"]), _dt(row["last_seen"]), row["hostname"])
+    return AgentRow(
+        agent, required_ts(row["first_seen"]), required_ts(row["last_seen"]), row["hostname"]
+    )

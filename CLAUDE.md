@@ -12,6 +12,8 @@ them with NVIDIA OpenShell. Read `docs/PRD.md` before any design decision; cite 
   is the agent here, what is it doing, what can it access.
 - Internal telemetry format: OpenTelemetry GenAI semantic conventions. No custom formats
   where an open standard exists.
+- `docs/architecture.md` maps every module, what it owns and its public interface. Keep it
+  current when a module's interface changes; `tests/test_architecture.py` checks the boundaries.
 
 ## Hard rules
 

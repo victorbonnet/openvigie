@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from openvigie.adapters.base import ProcessInfo
-from openvigie.adapters.caps import MAX_ITEMS, mcp_server, secret_names, text, texts, unique
+from openvigie.adapters.caps import MAX_ITEMS, mcp_server, secret_names, table, text, texts, unique
 from openvigie.adapters.common import display_path
 from openvigie.model import (
     AgentInstance,
@@ -66,10 +66,6 @@ def _value(args: list[str], *names: str) -> str | None:
     return None
 
 
-def _table(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
 def read_capabilities(
     agent: AgentInstance, root: Path, homes: tuple[Path, ...], procs: list[ProcessInfo], now: Any
 ) -> Capabilities:
@@ -81,13 +77,11 @@ def read_capabilities(
     except (OSError, UnsafeFileError, ValueError):
         config = {}
     profile = text(config.get("profile"))
-    active = (
-        {**config, **_table(_table(config.get("profiles")).get(profile))} if profile else config
-    )
+    active = {**config, **table(table(config.get("profiles")).get(profile))} if profile else config
     cli_sandbox, cli_approval = flags(procs)
     sandbox = cli_sandbox or text(active.get("sandbox_mode"))
     approval = cli_approval or text(active.get("approval_policy"))
-    workspace = _table(active.get("sandbox_workspace_write"))
+    workspace = table(active.get("sandbox_workspace_write"))
     filesystem = SANDBOX.get(sandbox or "", FsAccess.UNKNOWN)
     if filesystem is FsAccess.FULL:
         network = NetAccess.FULL
@@ -100,15 +94,15 @@ def read_capabilities(
 
     servers: list[McpServer] = []
     secrets: list[SecretRef] = []
-    for name, spec in list(_table(active.get("mcp_servers")).items())[:MAX_ITEMS]:
+    for name, spec in list(table(active.get("mcp_servers")).items())[:MAX_ITEMS]:
         found = mcp_server(name, spec, "config.toml") if isinstance(name, str) else None
         if found:
             servers.append(found[0])
             secrets += found[1]
-        bearer = _table(spec).get("bearer_token_env_var")
+        bearer = table(spec).get("bearer_token_env_var")
         if isinstance(bearer, str) and bearer:
             secrets.append(SecretRef(bearer[:256], f"config.toml mcp:{name}"[:256]))
-    policy = _table(active.get("shell_environment_policy"))
+    policy = table(active.get("shell_environment_policy"))
     secrets += [
         SecretRef(n, "shell_environment_policy.set") for n in secret_names(policy.get("set"))
     ]

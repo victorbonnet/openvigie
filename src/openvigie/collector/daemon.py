@@ -71,6 +71,16 @@ class PushState:
     unauthorized: bool = False
 
 
+@dataclass
+class _Collected:
+    """What one slow tick gathered, as wire dicts, and the adapter states to commit after."""
+
+    usage: list[dict[str, Any]] = field(default_factory=list)
+    sessions: list[dict[str, Any]] = field(default_factory=list)
+    spans: list[dict[str, Any]] = field(default_factory=list)
+    touched: list[AdapterState] = field(default_factory=list)
+
+
 class Collector:
     def __init__(
         self,
@@ -219,11 +229,27 @@ class Collector:
         return payload
 
     def slow_tick(self, now: float) -> None:
+        """Collect usage, sessions, spans and capability changes, and send them to the hub."""
         by_type = {a.agent_type: a for a in self.discovery.adapters}
-        usage: list[dict[str, Any]] = []
-        sessions: list[dict[str, Any]] = []
-        spans: list[dict[str, Any]] = []
-        touched: list[AdapterState] = []
+        found = self._collect_all(by_type)
+        capabilities = self._changed_capabilities(by_type, now)
+        if not found.touched and not capabilities:
+            return
+        payloads = self._usage_payloads(found, capabilities)
+        delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
+        if not delivered:
+            if self.store is None:
+                for state in found.touched:
+                    state.rollback()
+                return
+            for p in payloads:
+                self.store.spool_put(redact_obj(p))
+        for state in found.touched:
+            state.commit()  # data is now with the hub or in the durable spool
+
+    def _collect_all(self, by_type: dict[str, Adapter]) -> _Collected:
+        """Run every adapter's ``collect``, with OTLP usage arbitrated against log usage."""
+        found = _Collected()
         reported = self._otlp_by_agent()
         for agent in self.agents:
             adapter = by_type.get(agent.agent_type)
@@ -231,41 +257,38 @@ class Collector:
                 continue
             state = self.adapter_state(adapter)
             from_otlp = self.arbiter.otlp(agent, reported.get(agent.agent_id, []), state)
-            usage += [to_dict(r) for r in from_otlp]
+            found.usage += [to_dict(r) for r in from_otlp]
             batch, _ = run_collect(adapter, self.ctx, agent, state)
             if batch is None:
                 if from_otlp:
-                    touched.append(state)
+                    found.touched.append(state)
                 continue
-            usage += [to_dict(r) for r in self.arbiter.logs(agent, batch.usage, state)]
-            sessions += [to_dict(s) for s in batch.sessions]
-            spans += [to_dict(s) for s in batch.spans]
-            touched.append(state)
-        spans += self._otlp_spans()
-        capabilities = self._changed_capabilities(by_type, now)
-        if not touched and not capabilities:
-            return
-        payloads = [
-            self.usage_payload(usage[i : i + USAGE_CHUNK], sessions if i == 0 else [])
-            for i in range(0, max(len(usage), 1), USAGE_CHUNK)
-        ]
-        if not usage and not sessions:
-            payloads = []
-        payloads += [self.usage_payload([], [], chunk) for chunk in _span_chunks(spans)]
+            found.usage += [to_dict(r) for r in self.arbiter.logs(agent, batch.usage, state)]
+            found.sessions += [to_dict(s) for s in batch.sessions]
+            found.spans += [to_dict(s) for s in batch.spans]
+            found.touched.append(state)
+        found.spans += self._otlp_spans()
+        return found
+
+    def _usage_payloads(
+        self, found: _Collected, capabilities: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Pushes of bounded size: usage chunks (sessions ride the first), spans, capabilities."""
+        usage, sessions = found.usage, found.sessions
+        payloads = []
+        if usage or sessions:
+            payloads = [
+                self.usage_payload(usage[i : i + USAGE_CHUNK], sessions if i == 0 else [])
+                for i in range(0, max(len(usage), 1), USAGE_CHUNK)
+            ]
+        payloads += [self.usage_payload([], [], chunk) for chunk in _span_chunks(found.spans)]
         if capabilities:
             payloads.append(self.usage_payload([], [], capabilities=capabilities))
-        delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
-        if not delivered:
-            if self.store is None:
-                for state in touched:
-                    state.rollback()
-                return
-            for p in payloads:
-                self.store.spool_put(redact_obj(p))
-        for state in touched:
-            state.commit()  # data is now with the hub or in the durable spool
+        return payloads
 
-    def _changed_capabilities(self, by_type: dict[str, Adapter], now: float) -> list[Any]:
+    def _changed_capabilities(
+        self, by_type: dict[str, Adapter], now: float
+    ) -> list[dict[str, Any]]:
         """Capability snapshots that changed, plus a refresh of all of them every so often."""
         refresh = now - self.capabilities_sent_at >= CAPABILITIES_REFRESH_S
         out = []
