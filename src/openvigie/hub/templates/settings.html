@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+{% set s = settings %}
+<h1>Settings</h1>
+<p class="muted">Read-only. Change these in <code>hub.toml</code> and restart the hub.</p>
+<h2>Access</h2>
+<dl class="meta">
+  <dt>Listening on</dt><dd><code>{{ s.bind }}:{{ s.port }}</code>{% if s.allow_non_loopback %} <span class="badge degraded">non-loopback allowed</span>{% endif %}</dd>
+  <dt>Allowed Host headers</dt><dd>{{ s.allowed_hosts | join(", ") }}</dd>
+</dl>
+<h2>Data</h2>
+<dl class="meta">
+  <dt>Database</dt><dd><code>{{ s.resolved_db_path() }}</code></dd>
+  <dt>Display time zone</dt><dd>{{ tz }}</dd>
+  <dt>Usage retention</dt><dd>{% if s.retention.usage_days %}{{ s.retention.usage_days }} days{% else %}kept forever{% endif %}</dd>
+  <dt>Status history retention</dt><dd>{% if s.retention.status_events_days %}{{ s.retention.status_events_days }} days{% else %}kept forever{% endif %}</dd>
+</dl>
+<pre class="panel"><code># hub.toml
+[retention]
+usage_days = 180          # 0 keeps usage forever
+status_events_days = 90</code></pre>
+{% endblock %}

@@ -24,6 +24,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from openvigie import __version__
 from openvigie.config import ConfigError, HubSettings
 from openvigie.hub import api, ui
+from openvigie.hub.retention import retention_lifespan
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.templating import render, templates_env
@@ -121,6 +122,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
         docs_url="/docs" if debug else None,
         redoc_url=None,
         openapi_url="/openapi.json" if debug else None,
+        lifespan=retention_lifespan,
     )
     app.state.settings = settings
     app.state.db = db
