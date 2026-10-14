@@ -14,6 +14,7 @@ import dataclasses
 from pathlib import Path, PurePath
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
+from openvigie.adapters.claude_code.capabilities import read_capabilities
 from openvigie.adapters.claude_code.spans import TranscriptSpans
 from openvigie.adapters.common import (
     attribute_processes,
@@ -30,6 +31,7 @@ from openvigie.adapters.usage import (
 )
 from openvigie.model import (
     AgentInstance,
+    Capabilities,
     SandboxState,
     Session,
     UsageQuality,
@@ -58,6 +60,7 @@ class ClaudeCodeAdapter(Adapter):
     def __init__(self) -> None:
         super().__init__()
         self.roots: dict[str, Path] = {}
+        self.procs: dict[str, list[ProcessInfo]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         roots = [
@@ -70,6 +73,7 @@ class ClaudeCodeAdapter(Adapter):
         for root in roots:
             self.roots[stable_id(ctx.host.host_id, self.agent_type, str(root))] = root
             procs = attribute_processes(claude_procs, root, roots)
+            self.procs[stable_id(ctx.host.host_id, self.agent_type, str(root))] = procs
             newest = newest_mtime(root / "projects", "*.jsonl")
             sandboxed, kind = SandboxState.UNKNOWN, None
             if procs:
@@ -99,6 +103,13 @@ class ClaudeCodeAdapter(Adapter):
         except (OSError, UnsafeFileError):
             self.notes.append("could not read newest transcript")
         return None
+
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        root = self.roots.get(agent.agent_id)
+        if root is None:
+            return None
+        procs = self.procs.get(agent.agent_id, [])
+        return read_capabilities(agent, root, ctx.homes, procs, ctx.now())
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         root = self.roots.get(agent.agent_id)

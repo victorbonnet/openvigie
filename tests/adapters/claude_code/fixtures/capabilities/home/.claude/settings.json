@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": ["Bash(npm test:*)", "Read(~/src/**)"],
+    "deny": ["Read(./.env)", "WebFetch"],
+    "additionalDirectories": ["~/shared"]
+  },
+  "env": {
+    "GITHUB_TOKEN": "ghp_FAKE0000000000000000000000000000000000",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "hooks": {
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/usr/local/bin/audit-bash --strict"}]}]
+  }
+}
