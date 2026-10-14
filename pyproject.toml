@@ -59,3 +59,4 @@ python_version = "3.12"
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers"
 testpaths = ["tests"]
+markers = ["e2e: end-to-end tests that start a real hub on loopback"]
