@@ -69,6 +69,8 @@ class CollectorSettings:
     active_window_s: int = 300
     fast_tick_s: float = 5.0
     slow_tick_s: float = 30.0
+    backfill_days: int = 30  # history read on first run; older usage is skipped
+    spool_limit_mb: int = 50
 
     def resolved_token_file(self) -> Path:
         return self.token_file or state_dir() / "token"
@@ -104,6 +106,8 @@ def validate_collector(settings: CollectorSettings) -> CollectorSettings:
         raise ConfigError("collector.active_window_s must be positive")
     if settings.fast_tick_s <= 0 or settings.slow_tick_s <= 0:
         raise ConfigError("collector tick intervals must be positive")
+    if settings.backfill_days < 0 or settings.spool_limit_mb <= 0:
+        raise ConfigError("collector.backfill_days must be >= 0 and spool_limit_mb > 0")
     return settings
 
 
