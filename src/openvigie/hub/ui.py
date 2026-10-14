@@ -18,6 +18,7 @@ from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
 from openvigie.hub.reports import UsageRow, usage_report
+from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
@@ -96,6 +97,7 @@ def _agent_or_404(request: Request, agent_id: str) -> AgentRow:
 def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
     row = _agent_or_404(request, agent_id)
     inventory = _inventory(request)
+    capabilities = CapabilityStore(request.app.state.db)
     health = [
         h for h in inventory.adapter_health(row.agent.host_id)
         if h.health.adapter == row.agent.agent_type
@@ -107,6 +109,8 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         row=row,
         health=health[0] if health else None,
         history=inventory.status_history(agent_id, limit=50),
+        caps=capabilities.get(agent_id),
+        cap_changes=capabilities.changes(agent_id, limit=20),
         usage=agent_usage(request, agent_id),
         money=money,
         compact=compact,

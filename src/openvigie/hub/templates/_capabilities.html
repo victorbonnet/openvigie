@@ -1,0 +1,48 @@
+<h2>Capabilities</h2>
+{% if not caps %}
+<p class="muted">Not reported yet: this agent's adapter doesn't report capabilities, or its collector hasn't sent them.</p>
+{% else %}
+{% set approval_labels = {
+  "ask": "asks before edits and commands",
+  "auto_edit": "edits without asking, asks for some commands",
+  "never_ask": "runs anything without asking",
+  "unknown": "unknown"} %}
+{% set fs_labels = {"read_only": "read only", "workspace": "project folders only", "full": "full access", "unknown": "unknown"} %}
+{% set net_labels = {"none": "no network", "allowlist": "allowlisted hosts only", "full": "unrestricted", "unknown": "unknown"} %}
+<p class="muted">From {% for s in caps.sources %}<code>{{ s }}</code>{% if not loop.last %}, {% endif %}{% else %}no config file{% endfor %} · checked {{ caps.observed_at | ago }}</p>
+<dl class="meta">
+  <dt>Approvals</dt><dd>{% if caps.approvals.value == "never_ask" %}<span class="badge error">{{ approval_labels[caps.approvals.value] }}</span>{% elif caps.approvals.value == "unknown" %}<span class="badge unknown">unknown</span>{% else %}{{ approval_labels[caps.approvals.value] }}{% endif %}{% if caps.approval_mode %} <span class="muted">(<code>{{ caps.approval_mode }}</code>)</span>{% endif %}</dd>
+  <dt>Files</dt><dd>{{ fs_labels[caps.filesystem.value] }}{% if caps.writable_roots %}, plus {% for r in caps.writable_roots %}<code>{{ r }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</dd>
+  <dt>Network</dt><dd>{{ net_labels[caps.network.value] }}{% if caps.network_allowlist %}: {{ caps.network_allowlist | join(", ") }}{% endif %}</dd>
+  <dt>Shell commands</dt><dd>{% if caps.shell is none %}unknown{% elif caps.shell %}yes{% else %}no{% endif %}</dd>
+  <dt>Tools allowed</dt><dd>{% for t in caps.tools_allowed %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">no rules</span>{% endfor %}</dd>
+  <dt>Tools denied</dt><dd>{% for t in caps.tools_denied %}<code>{{ t }}</code>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">no rules</span>{% endfor %}</dd>
+  <dt>Skills</dt><dd>{{ caps.skills | join(", ") if caps.skills else "none" }}</dd>
+  <dt>Hooks</dt><dd>{% for h in caps.hooks %}{{ h.event }} → <code>{{ h.command or "?" }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</dd>
+  <dt>Secrets reachable</dt><dd>{% for s in caps.secrets %}<code>{{ s.name }}</code> <span class="muted">({{ s.where }})</span>{% if not loop.last %}, {% endif %}{% else %}none found{% endfor %}</dd>
+</dl>
+<h3>MCP servers</h3>
+{% if caps.mcp_servers %}
+<table>
+  <thead><tr><th>Name</th><th>Transport</th><th>Runs</th><th>Version pinned</th><th>Secrets</th></tr></thead>
+  <tbody>
+  {% for s in caps.mcp_servers %}
+    <tr><td>{{ s.name }}</td><td>{{ s.transport }}</td>
+      <td>{% if s.command %}<code>{{ s.command }}</code>{% elif s.url_host %}{{ s.url_host }}{% else %}unknown{% endif %}</td>
+      <td>{% if s.pinned is none %}<span class="muted">n/a</span>{% elif s.pinned %}yes{% else %}<span class="badge degraded">no</span>{% endif %}</td>
+      <td>{{ s.secret_names | join(", ") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">None configured.</p>
+{% endif %}
+{% if cap_changes %}
+<h3>Recent changes</h3>
+<ul class="changes">
+{% for c in cap_changes %}
+  <li><span class="muted">{{ c.at | ago }}</span> · {{ c.field | replace("_", " ") }} {{ c.change }}: {{ c.detail }}</li>
+{% endfor %}
+</ul>
+{% endif %}
+{% endif %}
