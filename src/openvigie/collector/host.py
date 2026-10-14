@@ -9,6 +9,7 @@ from openvigie.adapters.base import HostContext
 from openvigie.collector.probes import listening_ports, load_host, snapshot_processes
 from openvigie.collector.sandbox import SandboxProbe
 from openvigie.config import CollectorSettings, state_dir
+from openvigie.openshell.mapping import OpenShellProbe
 
 
 def build_context(settings: CollectorSettings, state: Path | None = None) -> HostContext:
@@ -19,5 +20,6 @@ def build_context(settings: CollectorSettings, state: Path | None = None) -> Hos
         process_source=snapshot_processes,
         port_source=listening_ports,
     )
-    ctx.sandbox_probe = SandboxProbe(ctx.processes)
+    # names the OpenShell sandbox when the collector's OpenShell reader knows it (FR-10)
+    ctx.sandbox_probe = OpenShellProbe(SandboxProbe(ctx.processes), ctx.processes)
     return ctx

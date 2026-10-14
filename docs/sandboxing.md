@@ -12,6 +12,27 @@ OpenShell isolates an agent with Landlock, seccomp and a network proxy. Network 
 named blocks of allowed endpoints and the binaries allowed to use them. Network rules can be
 changed on a running sandbox; filesystem and process rules only take effect in a new one.
 
+### What openvigie sees (FR-10)
+
+On Linux, the collector reads OpenShell through its CLI every 30 seconds (PRD decision D13). It
+runs only read-only commands: `openshell sandbox list`, `sandbox get` and `policy get`.
+
+- Each agent running in a sandbox shows **`openshell:<sandbox name>`** as its sandbox.
+  - The collector recognises the sandbox's main process: a child of `openshell-sandbox` that
+    started when OpenShell says it did.
+  - Every process under it belongs to that sandbox.
+  - It doesn't need the Docker socket.
+- To name the agent type of a sandbox yourself, add a label when you create it:
+  `openshell sandbox create --label openvigie.agent=claude-code …`
+- The collector's user needs the `openshell` CLI registered with your gateway, which the
+  OpenShell installer does for the user who runs it.
+  - If the collector runs as its own user, register the gateway for that user too, for example
+    `sudo -u openvigie openshell gateway add …`.
+- The host's health list shows an `openshell` row:
+  - OK;
+  - degraded with the reason: an unsupported version or an unreachable gateway;
+  - absent when OpenShell isn't installed.
+
 ## macOS
 
 OpenShell relies on Linux kernel features, so it can't sandbox an agent that runs directly on

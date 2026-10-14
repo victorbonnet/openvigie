@@ -22,6 +22,7 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from openvigie.model import AdapterHealth, HealthState
 from openvigie.openshell.models import Policy, Sandbox, SandboxPage
 from openvigie.openshell.versions import MIN_SUPPORTED, is_supported
 from openvigie.redact import redact
@@ -183,6 +184,15 @@ def _get[M: (Sandbox, Policy)](run: Run, model: type[M], group: str, verb: str, 
         return model.model_validate_json(run(args))
     except (CommandError, ValidationError):
         return None
+
+
+def inventory_health(inventory: Inventory) -> AdapterHealth | None:
+    """An ``openshell`` row for the host's health list; none when OpenShell isn't installed."""
+    if inventory.state == "not_installed":
+        return None
+    if inventory.state == "ok":
+        return AdapterHealth("openshell", HealthState.OK)
+    return AdapterHealth("openshell", HealthState.DEGRADED, inventory.reason)
 
 
 def _version(output: str) -> str | None:

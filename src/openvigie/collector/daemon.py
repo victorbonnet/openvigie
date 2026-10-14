@@ -38,6 +38,8 @@ from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
 from openvigie.config import CollectorSettings
 from openvigie.model import SCHEMA_VERSION, AdapterHealth, AgentInstance, StatusEvent, to_dict
+from openvigie.openshell.cli import Inventory, Reader, inventory_health
+from openvigie.openshell.mapping import OpenShellProbe
 from openvigie.redact import redact_obj
 
 log = logging.getLogger(__name__)
@@ -92,6 +94,7 @@ class Collector:
         store: StateStore | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         otlp: OtlpReceiver | None = None,
+        openshell: Reader | None = None,
     ) -> None:
         self.settings = settings
         self.ctx = ctx
@@ -112,6 +115,8 @@ class Collector:
         self.capabilities_sent: dict[str, str] = {}
         self.capabilities_sent_at = float("-inf")
         self.arbiter = Arbiter(settings.otlp.usage_source)
+        self.openshell = openshell
+        self.openshell_inventory = Inventory("not_installed")
 
     # --- one tick ---------------------------------------------------------------------------
 
@@ -123,6 +128,8 @@ class Collector:
             found, adapter_health = run_detect(adapter, self.ctx)
             agents.extend(found)
             health.append(adapter_health)
+        if (openshell := inventory_health(self.openshell_inventory)) is not None:
+            health.append(openshell)
         agents, events = self.tracker.observe(agents, self.ctx.now())
         self.state.pending_events.extend(events)
         self.agents = agents
@@ -230,6 +237,7 @@ class Collector:
 
     def slow_tick(self, now: float) -> None:
         """Collect usage, sessions, spans and capability changes, and send them to the hub."""
+        self._read_openshell()
         by_type = {a.agent_type: a for a in self.discovery.adapters}
         found = self._collect_all(by_type)
         capabilities = self._changed_capabilities(by_type, now)
@@ -246,6 +254,14 @@ class Collector:
                 self.store.spool_put(redact_obj(p))
         for state in found.touched:
             state.commit()  # data is now with the hub or in the durable spool
+
+    def _read_openshell(self) -> None:
+        """Refresh the OpenShell inventory, and with it which agent runs in which sandbox."""
+        if self.openshell is None:
+            return
+        self.openshell_inventory = self.openshell.read()
+        if isinstance(self.ctx.sandbox_probe, OpenShellProbe):
+            self.ctx.sandbox_probe.update(self.openshell_inventory)
 
     def _collect_all(self, by_type: dict[str, Adapter]) -> _Collected:
         """Run every adapter's ``collect``, with OTLP usage arbitrated against log usage."""

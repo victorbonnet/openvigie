@@ -165,8 +165,12 @@ def cmd_collect(args: argparse.Namespace) -> int:
         except (ConfigError, OSError) as exc:
             print(f"openvigie: OTLP receiver: {exc}", file=sys.stderr)
             return 2
+    from openvigie.openshell.cli import Reader, cli_runner
+
+    # OpenShell sandboxes are Linux-only (D11)
+    openshell = Reader(cli_runner()) if sys.platform.startswith("linux") else None
     collector = Collector(settings, build_context(settings), discovery, client, store=store,
-                          otlp=otlp)  # fmt: skip
+                          otlp=otlp, openshell=openshell)  # fmt: skip
     if args.once:
         return 0 if collector.tick() else 1
     stop = threading.Event()
