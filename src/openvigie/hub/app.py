@@ -6,6 +6,7 @@ Defences that apply to every route:
 * Strict CSP and related headers, no inline scripts, vendored assets only.
 * Jinja2 autoescape (agent names and versions come from untrusted files).
 * A request body limit.
+* Identity: ``Tailscale-*`` headers are read once (only if trusted, see ``roles``) and dropped.
 """
 
 from __future__ import annotations
@@ -30,9 +31,9 @@ from openvigie.hub import api, ui
 from openvigie.hub.api_models import describe_invalid
 from openvigie.hub.langfuse import LangfuseExporter, export_lifespan
 from openvigie.hub.retention import retention_lifespan
+from openvigie.hub.roles import IdentityMiddleware, RefusalBudget
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.hub.tailscale import StripIdentityHeaders
 from openvigie.hub.templating import render, templates_env
 from openvigie.pricing import load_price_table
 from openvigie.risk import load_rules
@@ -145,13 +146,14 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.templates = templates_env()
     app.state.enrol_limiter = api.FailureLimiter()
     app.state.risk_rules = load_rules()
+    app.state.refusals = RefusalBudget()
     app.state.exporter = (
         LangfuseExporter(settings.langfuse, db, queue_hours=settings.retention.span_queue_hours)
         if settings.langfuse
         else None
     )
 
-    app.add_middleware(StripIdentityHeaders)
+    app.add_middleware(IdentityMiddleware, settings=settings)
     app.add_middleware(BodyLimit)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.add_middleware(SecurityHeaders)

@@ -31,6 +31,8 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
    validated as untrusted input.
 3. **Browser → hub.** The hub listens on loopback. Any web page the operator visits can make
    requests to `127.0.0.1`, so the hub checks the `Host` header and sends a strict CSP.
+   Everyone is a viewer; admins (write actions, P1) are recognised from Tailscale Serve's
+   identity header only when the operator opts in, which requires a single-user hub host (T13).
 4. **Hub → Langfuse.** Only explicitly configured, and only redacted metadata by default.
 
 ## Threats and mitigations
@@ -49,6 +51,8 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T10 | A prompt-injected agent edits its own config or skills to gain access | MVP is read-only; write actions wait for the audit log and roles | #12 |
 | T11 | A bad sandbox policy locks an agent out, or a loose one silently opens it up | Diff, dry-run and rollback; every change audited | #17 |
 | T12 | A third-party adapter plugin runs malicious code in the collector | Only built-in adapters load by default; third-party plugins must be enabled by name | #27 |
+| T13 | Someone forges `Tailscale-User-Login` to become admin | Identity is ignored unless `trust_tailscale_identity` is on; then only on loopback requests addressed to the MagicDNS name; `Tailscale-*` headers removed before handlers. Residual risk: any local user on the hub host can forge it, so trust requires a single-user hub host | #162 |
+| T14 | Admin actions are denied or hidden after the fact | Hash-chained audit log, kept forever, redacted, verified by `openvigie hub audit verify`; keep the printed head hash elsewhere to detect truncation | #161 |
 
 ## Rules for every change
 

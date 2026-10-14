@@ -2,8 +2,7 @@
 
 ``tailscale serve`` terminates HTTPS with the node's MagicDNS certificate and proxies to
 ``http://127.0.0.1:<port>``. The hub only has to accept that MagicDNS name in the ``Host``
-header (``allowed_hosts``). Tailscale identity headers are stripped in P0: nothing may trust
-them until roles exist (#12), and then only for requests arriving from the local proxy.
+header (``allowed_hosts``). Tailscale's identity headers are handled by ``roles``.
 """
 
 from __future__ import annotations
@@ -13,10 +12,6 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
-
-from starlette.types import ASGIApp, Receive, Scope, Send
-
-IDENTITY_PREFIX = b"tailscale-"
 
 
 @dataclass(frozen=True)
@@ -71,18 +66,3 @@ def advice(info: TailscaleInfo | None, port: int, allowed_hosts: tuple[str, ...]
             f'"{info.dns_name}"]'
         )
     return lines
-
-
-class StripIdentityHeaders:
-    """Drop ``Tailscale-*`` request headers so no P0 code can come to rely on them."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
-            headers = [
-                (k, v) for k, v in scope.get("headers", []) if not k.startswith(IDENTITY_PREFIX)
-            ]
-            scope = {**scope, "headers": headers}
-        await self.app(scope, receive, send)

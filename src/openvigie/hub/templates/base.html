@@ -20,6 +20,8 @@
       <a href="/audit">Audit</a>
       {% endblock %}
     </nav>
+    {% set me = whoami(request) %}
+    <span class="who muted" title="admins can change things; viewers can only look">{{ me.login or "local / anonymous" }} · {{ me.role }}</span>
   </header>
   <main>
     {% block content %}{% endblock %}

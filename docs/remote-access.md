@@ -56,6 +56,18 @@ Tailscale Serve gives you encryption, a certificate and an access policy for fre
 
 ## Identity headers
 
-Tailscale Serve adds `Tailscale-User-Login` and similar headers. The read-only MVP ignores and
-strips them; the admin roles planned for write actions (P1) will use them, trusting them only
-on requests that come from the local Tailscale proxy.
+Tailscale Serve adds `Tailscale-User-Login` and similar headers. By default the hub ignores
+them, and everyone is a **viewer**. To let some people make changes (P1 write actions), list
+their Tailscale logins and turn trust on:
+
+```toml
+admins = ["you@example.com"]
+trust_tailscale_identity = true
+```
+
+Only turn this on if **nobody else has a shell on the hub machine**. Tailscale Serve forwards
+from `127.0.0.1`, so the hub can't tell its requests from a local user's `curl` with the same
+header. The hub narrows it as far as it can: identity counts only on requests from loopback
+addressed to the MagicDNS name, never on `http://127.0.0.1:7878`, and every `Tailscale-*` header
+is removed before any page or API code runs. The header of every page shows who you are and
+your role. Refused admin actions are recorded in the audit log (`/audit`).
