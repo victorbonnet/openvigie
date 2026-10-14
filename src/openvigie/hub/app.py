@@ -27,6 +27,7 @@ from openvigie.hub import api, ui
 from openvigie.hub.retention import retention_lifespan
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
+from openvigie.hub.tailscale import StripIdentityHeaders
 from openvigie.hub.templating import render, templates_env
 from openvigie.pricing import load_price_table
 
@@ -132,6 +133,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.templates = templates_env()
     app.state.enrol_limiter = api.FailureLimiter()
 
+    app.add_middleware(StripIdentityHeaders)
     app.add_middleware(BodyLimit)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.add_middleware(SecurityHeaders)
