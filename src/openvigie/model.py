@@ -123,6 +123,9 @@ class UsageRecord:
     output_tokens: int | None = None
     cache_read_input_tokens: int | None = None
     cache_creation_input_tokens: int | None = None
+    # Anthropic: the part of cache_creation_input_tokens written with the 1-hour TTL (billed 2x
+    # input instead of 1.25x). None when the provider doesn't say.
+    cache_creation_1h_input_tokens: int | None = None
     reasoning_tokens: int | None = None
     quality: UsageQuality = UsageQuality.UNKNOWN
 

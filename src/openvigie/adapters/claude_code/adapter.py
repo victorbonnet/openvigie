@@ -143,12 +143,15 @@ class ClaudeCodeAdapter(Adapter):
             return record  # usage unknown, not zero
         details = usage.get("output_tokens_details")
         thinking = details.get("thinking_tokens") if isinstance(details, dict) else None
+        creation = usage.get("cache_creation")
+        one_hour = creation.get("ephemeral_1h_input_tokens") if isinstance(creation, dict) else None
         return dataclasses.replace(
             record,
             input_tokens=int_or_none(usage.get("input_tokens")),
             output_tokens=int_or_none(usage.get("output_tokens")),
             cache_read_input_tokens=int_or_none(usage.get("cache_read_input_tokens")),
             cache_creation_input_tokens=int_or_none(usage.get("cache_creation_input_tokens")),
+            cache_creation_1h_input_tokens=int_or_none(one_hour),
             reasoning_tokens=int_or_none(thinking),
             quality=UsageQuality.EXACT,
         )
