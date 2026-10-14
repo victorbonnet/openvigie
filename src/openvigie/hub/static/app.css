@@ -1,0 +1,91 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1d2129;
+  --muted: #5f6673;
+  --line: #e3e6ea;
+  --panel: #f6f7f9;
+  --accent: #2856d6;
+  --ok: #1e7a3c;
+  --idle: #8a6100;
+  --stopped: #6b7280;
+  --bad: #b42318;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --fg: #e6e8eb;
+    --muted: #9aa3ae;
+    --line: #2a2f36;
+    --panel: #181c21;
+    --accent: #7aa2ff;
+    --ok: #5fd08a;
+    --idle: #f0b94d;
+    --stopped: #9aa3ae;
+    --bad: #ff8577;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+header.top {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+header.top .brand { font-weight: 700; color: var(--fg); }
+header.top nav { display: flex; gap: 16px; }
+
+main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+footer { padding: 16px 24px; color: var(--muted); font-size: 13px; }
+
+h1 { font-size: 22px; margin: 0 0 16px; }
+h2 { font-size: 17px; margin: 24px 0 8px; }
+.muted { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 13px; color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+.badge.active, .badge.ok, .badge.yes { color: var(--ok); }
+.badge.idle, .badge.degraded { color: var(--idle); }
+.badge.stopped, .badge.no { color: var(--stopped); }
+.badge.unknown { color: var(--muted); border-style: dashed; }
+.badge.error, .badge.stale { color: var(--bad); }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters select, .filters button { font: inherit; padding: 4px 8px; }
+dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+dl.meta dt { color: var(--muted); }
+dl.meta dd { margin: 0; }
+code { font-size: 13px; }
