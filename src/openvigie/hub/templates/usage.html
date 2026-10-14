@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% macro cost(row) %}{% if not row.cost_complete %}≥ {% endif %}{{ money(row.cost) }}{% endmacro %}
+{% block content %}
+<h1>Usage</h1>
+
+<form class="filters" method="get" action="/usage">
+  {% for n in ranges %}
+    <a href="/usage?days={{ n }}" {% if not custom and days == n %}aria-current="page"{% endif %}>Last {{ n }} days</a>
+  {% endfor %}
+  <label>From <input type="date" name="from" value="{{ begin.isoformat() }}"></label>
+  <label>To <input type="date" name="to" value="{{ last.isoformat() }}"></label>
+  <button type="submit">Apply</button>
+</form>
+
+<div class="tiles">
+  <div class="tile">
+    <div class="k">Cost</div>
+    <div class="v">{{ cost(total) }}</div>
+    <div class="s">{{ begin.isoformat() }} → {{ last.isoformat() }}</div>
+  </div>
+  <div class="tile">
+    <div class="k">Tokens</div>
+    <div class="v">{{ compact(total.tokens) }}</div>
+    <div class="s">{{ compact(total.input_tokens) }} in · {{ compact(total.output_tokens) }} out · {{ compact(total.cache_read_tokens) }} cache read</div>
+  </div>
+  <div class="tile">
+    <div class="k">Most expensive agent</div>
+    <div class="v">{% if top_agent %}{{ money(top_agent.cost) }}{% else %}—{% endif %}</div>
+    <div class="s">{% if top_agent %}{{ top_agent.labels.agent }}{% else %}no usage{% endif %}</div>
+  </div>
+  <div class="tile">
+    <div class="k">Coverage</div>
+    <div class="v">{{ total.records }} calls</div>
+    <div class="s">{{ total.exact }} exact · {{ total.estimated }} estimated · {{ total.unknown }} unknown{% if total.unpriced_tokens %} · {{ compact(total.unpriced_tokens) }} unpriced tokens{% endif %}</div>
+  </div>
+</div>
+
+{% if not total.cost_complete %}
+<p class="notice">Some usage could not be priced (unknown token counts or a model missing from the
+  <a href="/prices">price table</a>), so costs marked ≥ are lower bounds, not totals.</p>
+{% endif %}
+<p class="notice">Costs are the <strong>list-price equivalent</strong> of the tokens used. Subscription
+  plans (Claude Pro/Max, ChatGPT plans) are billed differently.</p>
+
+<h2>Daily cost by agent</h2>
+{% if total.records %}
+<div class="legend">
+  {% for s in series %}<span><span class="swatch {{ 's%d' % s.slot if s.slot else 's-other' }}"></span>{{ s.label }}</span>{% endfor %}
+</div>
+{{ daily_chart }}
+<details class="table-view"><summary>Show as table</summary>
+<table>
+  <thead><tr><th>Day</th><th>Agent</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+  <tbody>
+  {% for row in per_day %}
+    <tr><td>{{ row.key.day }}</td><td>{{ row.labels.agent }}</td><td class="num">{{ row.records }}</td>
+      <td class="num">{{ compact(row.tokens) }}</td><td class="num">{{ cost(row) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</details>
+
+<h2>Tokens by model</h2>
+{{ model_chart }}
+<details class="table-view"><summary>Show as table</summary>
+<table>
+  <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Cost</th></tr></thead>
+  <tbody>
+  {% for row in models %}
+    <tr><td>{{ row.labels.model }}</td><td class="num">{{ row.records }}</td><td class="num">{{ compact(row.input_tokens) }}</td>
+      <td class="num">{{ compact(row.output_tokens) }}</td><td class="num">{{ compact(row.cache_read_tokens) }}</td>
+      <td class="num">{{ compact(row.cache_write_tokens) }}</td><td class="num">{{ cost(row) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</details>
+
+<h2>Top sessions</h2>
+<table>
+  <thead><tr><th>Session</th><th>Agent</th><th class="num">Calls</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+  <tbody>
+  {% for row in sessions %}
+    <tr><td><code>{{ row.key.session[:12] or "unknown" }}</code></td><td><a href="/agents/{{ row.key.agent }}">{{ row.labels.agent }}</a></td>
+      <td class="num">{{ row.records }}</td><td class="num">{{ compact(row.tokens) }}</td><td class="num">{{ cost(row) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No usage recorded in this period.</p>
+{% endif %}
+{% endblock %}

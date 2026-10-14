@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from functools import partial
 from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse
 
+from openvigie.hub.api import DateParam, date_range
+from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
+from openvigie.hub.reports import usage_report
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
 from openvigie.hub.templating import render
 from openvigie.model import AgentStatus, HealthState
@@ -162,4 +167,64 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
         rows=inventory.agents(host_id=host_id),
         query=urlencode({"host": host_id}),
         health=inventory.adapter_health(host_id),
+    )
+
+
+RANGES = (7, 30, 90)
+
+
+@router.get("/usage", response_class=HTMLResponse)
+def usage_page(
+    request: Request,
+    days: Annotated[int, Query(ge=1, le=366)] = 30,
+    start: Annotated[DateParam, Query(alias="from")] = None,
+    end: Annotated[DateParam, Query(alias="to")] = None,
+) -> HTMLResponse:
+    state = request.app.state
+    tz = state.tz
+    begin, finish = date_range(tz, start, end, default_days=days)
+    report = partial(usage_report, state.db, state.prices, start=begin, end=finish, tz=tz)
+    per_agent = report(group_by=["agent"])
+    per_day = report(group_by=["agent", "day"])
+    per_model = report(group_by=["model"])
+    per_session = report(group_by=["agent", "session"])
+
+    day_list = []
+    day = begin.date()
+    while day < finish.date():
+        day_list.append(day.isoformat())
+        day += timedelta(days=1)
+    slots = assign_slots([r.key["agent"] for r in per_agent.rows])
+    values: dict[str, dict[str, Decimal]] = {}
+    for row in per_day.rows:
+        bucket = row.key["agent"] if row.key["agent"] in slots else OTHER
+        values.setdefault(bucket, {})
+        values[bucket][row.key["day"]] = values[bucket].get(row.key["day"], Decimal(0)) + row.cost
+    labels = {r.key["agent"]: r.labels["agent"] for r in per_agent.rows}
+    series = [
+        Series(key, labels.get(key, OTHER), slots.get(key, 0), values[key])
+        for key in sorted(values, key=lambda k: (k == OTHER, slots.get(k, 99)))
+    ]
+    top_agent = max(per_agent.rows, key=lambda r: r.cost, default=None)
+    sessions = sorted(per_session.rows, key=lambda r: r.cost, reverse=True)[:10]
+    models = sorted(per_model.rows, key=lambda r: r.tokens, reverse=True)
+    return render(
+        request,
+        "usage.html",
+        title="Usage",
+        begin=begin.date(),
+        last=(finish - timedelta(days=1)).date(),
+        days=days,
+        ranges=RANGES,
+        custom=bool(start or end),
+        total=per_agent.total,
+        top_agent=top_agent,
+        series=series,
+        daily_chart=stacked_bars(day_list, series),
+        model_chart=hbars([(r.labels["model"], float(r.tokens)) for r in models]),
+        per_day=per_day.rows,
+        models=models,
+        sessions=sessions,
+        money=money,
+        compact=compact,
     )
