@@ -33,3 +33,17 @@ jobs:
       - run: uv run ruff check .
       - run: uv run mypy
       - run: uv run pytest --cov=openvigie --cov-report=term-missing
+
+  perf:
+    # Footprint budget (NFR): peak RSS < 100 MB after backfilling ~90 MB of agent logs.
+    # Runs on ARM, the closest hosted runner to a Raspberry Pi.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run scripts/bench_collector.py generate "$RUNNER_TEMP/bench" --sessions 100 --lines 1000
+      - run: uv run scripts/bench_collector.py run "$RUNNER_TEMP/bench" --max-rss-mb 100
