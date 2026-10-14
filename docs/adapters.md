@@ -85,7 +85,8 @@ enable_plugins = ["my-agent"]
 ## Testing
 
 Subclass the contract suite from `openvigie.adapters.testing` and describe fake hosts built from
-recorded fixtures (see [contributing-adapters.md](contributing-adapters.md)):
+recorded fixtures (see [contributing-adapters.md](contributing-adapters.md); to record them from a
+real install, see [recording-fixtures.md](recording-fixtures.md)):
 
 ```python
 from openvigie.adapters.testing import AdapterContract, fake_context, fake_process
