@@ -52,6 +52,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   background: var(--bg);
@@ -153,6 +154,7 @@ main { padding-block: 24px 112px; display: block; }
 .sev-low { color: var(--muted); }
 .sev-none { color: var(--ok); }
 .sev-unknown { color: var(--muted); }
+.sev-blocked { color: var(--accent); }
 .tag { display: inline-block; font-size: 0.74rem; font-weight: 550; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
 .tag.yes { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
 .tag.no { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
@@ -241,6 +243,63 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .host .adapters li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.9rem; }
 .host .note { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.82rem; color: var(--muted); }
 
+/* Sandbox (OpenShell): blocked requests, allowed network, policy history */
+#sandbox { scroll-margin-top: 72px; }
+.after { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.policy-head { padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
+.sub { margin: 0; padding: 10px 16px; font-size: 0.75rem; font-weight: 600; color: var(--muted); border-top: 1px solid var(--line); }
+.blocked { list-style: none; margin: 0; padding: 0; }
+.blocked li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); }
+.blocked .dest { font-family: var(--font-mono); font-size: 0.88rem; overflow-wrap: anywhere; }
+.blocked .why { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
+.blocked .risky { color: var(--bad); }
+.blocked .btn { grid-column: 2; grid-row: 1 / span 3; }
+.empty { padding: 12px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; margin: 0; }
+.netblocks { list-style: none; margin: 0; padding: 0; }
+.netblocks li { display: grid; gap: 2px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.88rem; }
+.netblocks li:first-child, .hist li:first-child { border-top: 0; }
+.netblocks b { font-family: var(--font-mono); font-weight: 600; font-size: 0.86rem; }
+.hist { list-style: none; margin: 0; padding: 0; }
+.hist li { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); gap: 0 10px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.88rem; }
+.hist .v { font-family: var(--font-mono); color: var(--muted); }
+.hist .w { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
+.callout .btn { margin-top: 10px; }
+
+.btn { font: inherit; font-size: 0.85rem; font-weight: 550; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: var(--surface); }
+.btn.primary:hover, .btn.danger:hover { color: var(--surface); filter: brightness(1.08); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
+/* Sheet: bottom sheet on phones, centred dialog from 720px */
+dialog.sheet { border: 0; padding: 0; width: 100%; max-width: min(580px, 100%); max-height: none; margin: auto auto 0; border-radius: 16px 16px 0 0; background: var(--surface); color: var(--ink); box-shadow: 0 -10px 40px rgb(0 0 0 / 0.25); }
+dialog.sheet::backdrop { background: rgb(8 12 18 / 0.5); }
+@media (min-width: 720px) { dialog.sheet { margin: auto; border-radius: 14px; } }
+.sheet-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-height: 88vh; overflow-y: auto; padding-block: 20px calc(20px + env(safe-area-inset-bottom, 0px)); padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.sheet-body h3 { font-size: 1.15rem; overflow-wrap: anywhere; }
+.sheet-body > header { display: grid; gap: 4px; }
+.sheet fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sheet legend, .sheet .lbl { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 6px; padding: 0; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt input { margin-top: 3px; accent-color: var(--accent); }
+.opt small { display: block; color: var(--muted); }
+.field { display: grid; gap: 4px; }
+.field input { font: inherit; font-family: var(--font-mono); font-size: 0.9rem; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.field .err { font-size: 0.8rem; color: var(--bad); }
+.diff { margin: 0; padding: 12px 0; border-radius: 9px; background: var(--bg); border: 1px solid var(--line); overflow-x: auto; font: 0.8rem/1.6 var(--font-mono); }
+.diff span { display: block; padding: 0 14px; white-space: pre; }
+.diff .add { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.diff .ctx { color: var(--muted); }
+.check { font-size: 0.88rem; color: var(--ok); margin: 0; }
+.warnbox { padding: 12px 14px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line)); color: var(--bad); font-size: 0.88rem; }
+.sheet-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; padding-block: 12px 4px; background: var(--surface); border-top: 1px solid var(--line); }
+
+.toast { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); width: max-content; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 16px; border-radius: 10px; background: var(--ink); color: var(--bg); font-size: 0.88rem; box-shadow: 0 8px 30px rgb(0 0 0 / 0.25); }
+.toast button { font: inherit; font-weight: 600; background: none; border: 0; color: inherit; text-decoration: underline; cursor: pointer; padding: 4px; }
+@media (min-width: 720px) { .toast { bottom: 24px; } }
+
 footer.foot { padding-block: 0 24px; font-size: 0.8rem; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
@@ -285,18 +344,21 @@ footer.foot { padding-block: 0 24px; font-size: 0.8rem; color: var(--muted); }
   </a>
 </nav>
 
+<dialog class="sheet" id="sheet" aria-labelledby="sheet-title"><div class="sheet-body" id="sheet-body"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+
 <script>
 "use strict";
 
 // ---------- Example data (shapes follow the hub's inventory, capability and usage models) ----------
 
 const HOSTS = [
-  { id: "pi5", name: "pi5-garage", platform: "linux/arm64", collector: "0.4.2", last: "4 s ago",
+  { id: "pi5", name: "pi5-garage", platform: "linux/arm64", collector: "0.4.2", last: "4 s ago", openshell: "0.1.6",
     adapters: [["hermes", "ok"], ["openclaw", "ok"]] },
   { id: "studio", name: "studio-mac", platform: "darwin/arm64", collector: "0.4.2", last: "7 s ago",
     adapters: [["claude-code", "ok"], ["codex", "degraded", "1 session file in an unknown format was skipped"]],
     note: "Agents running directly on macOS can be monitored but not sandboxed. Run them in a Linux VM to sandbox them." },
-  { id: "lima", name: "lima-dev", platform: "linux/arm64", collector: "0.4.2", last: "2 s ago", parent: "VM on studio-mac",
+  { id: "lima", name: "lima-dev", platform: "linux/arm64", collector: "0.4.2", last: "2 s ago", parent: "VM on studio-mac", openshell: "0.1.6",
     adapters: [["claude-code", "ok"], ["codex", "ok"]] },
 ];
 
@@ -351,8 +413,50 @@ const AGENTS = [
     flags: null, caps: null, base: 0.4, models: "claude-sonnet-5-5", stoppedDaysAgo: 3 },
 ];
 
-const SEV_ORDER = { high: 3, medium: 2, low: 1, none: 0, unknown: -1 };
-const SEV_ICON = { high: "▲", medium: "◆", low: "●", none: "✓", unknown: "?" };
+// OpenShell state per sandboxed agent (FR-10). Network rules are named blocks of endpoints
+// plus the programs allowed to use them; blocked requests come from the sandbox's proxy.
+const SANDBOX = {
+  a5: { policy: "codex-dev", version: 3, applied: "2 days ago",
+    files: "read-write /home/dev/projects · read-only /usr, /etc",
+    blocks: [
+      { name: "openai", hosts: ["api.openai.com:443"], bins: ["/usr/local/bin/codex"] },
+      { name: "github", hosts: ["github.com:443", "api.github.com:443"], bins: ["/usr/bin/git", "/usr/bin/gh"] },
+    ],
+    blocked: [
+      { host: "registry.npmjs.org", port: 443, bin: "/usr/bin/node", count: 14, last: "6 min ago" },
+      { host: "files.pythonhosted.org", port: 443, bin: "/usr/local/bin/uv", count: 9, last: "22 min ago" },
+      { host: "169.254.169.254", port: 80, bin: "/usr/bin/curl", count: 1, last: "1 h ago",
+        risky: "Cloud metadata address. A prompt-injected agent can read machine credentials from it." },
+    ],
+    history: [
+      ["v3", "2 days ago", "allowed github.com:443, api.github.com:443 for git, gh"],
+      ["v2", "9 days ago", "allowed api.openai.com:443 for codex"],
+      ["v1", "9 days ago", "starter policy from observed capabilities"],
+    ] },
+  a3: { policy: "hermes-home", version: 5, applied: "6 days ago",
+    files: "read-write ~/.hermes · read-only /usr, /etc",
+    blocks: [
+      { name: "anthropic", hosts: ["api.anthropic.com:443"], bins: ["/usr/bin/python3"] },
+      { name: "telegram", hosts: ["api.telegram.org:443"], bins: ["/usr/bin/python3"] },
+    ],
+    blocked: [
+      { host: "homeassistant.local", port: 8123, bin: "/usr/bin/python3", count: 31, last: "2 min ago" },
+    ],
+    history: [
+      ["v5", "6 days ago", "allowed api.telegram.org:443 for python3"],
+      ["v4", "3 weeks ago", "removed api.openai.com:443"],
+    ] },
+  a6: { policy: "claude-dev", version: 2, applied: "12 days ago",
+    files: "read-write /home/dev/projects · read-only /usr, /etc",
+    blocks: [{ name: "anthropic", hosts: ["api.anthropic.com:443"], bins: ["/usr/local/bin/claude"] }],
+    blocked: [],
+    history: [["v2", "12 days ago", "allowed api.anthropic.com:443 for claude"]] },
+};
+const blockedCount = (a) => sum((SANDBOX[a.id]?.blocked || []).map((b) => b.count));
+const base = (p) => p.split("/").pop();
+
+const SEV_ORDER = { high: 3, blocked: 2.5, medium: 2, low: 1, none: 0, unknown: -1 };
+const SEV_ICON = { high: "▲", blocked: "⊘", medium: "◆", low: "●", none: "✓", unknown: "?" };
 const hostOf = (a) => HOSTS.find((h) => h.id === a.host);
 const flagsOf = (a) => (a.flags || []).map((k) => FLAG[k]);
 function riskOf(a) {
@@ -390,6 +494,8 @@ const costLabel = (a, v) => (lowerBound(a) ? "≥ " : "") + money(v);
 const statusPill = (s) => `<span class="pill st-${s}"><span class="dot"></span>${s}</span>`;
 const riskMark = (lvl) => `<span class="sev sev-${lvl}"><span aria-hidden="true">${SEV_ICON[lvl]}</span> ${lvl === "none" ? "no flags" : lvl}</span>`;
 function sandboxTag(a) {
+  const n = blockedCount(a);
+  if (a.sandbox === "yes" && n) return `<span class="tag warn">${esc(a.kind)} · ${n} blocked</span>`;
   if (a.sandbox === "yes") return `<span class="tag yes">sandboxed · ${esc(a.kind)}</span>`;
   if (a.sandbox === "no") return `<span class="tag no">not sandboxed</span>`;
   return `<span class="tag unk">sandbox unknown</span>`;
@@ -463,7 +569,13 @@ function screenAgents() {
   const week = sum(AGENTS.map((a) => sum(lastN(a.daily, 7))));
   const anyLower = AGENTS.some(lowerBound);
 
+  const blockedItems = AGENTS.filter((a) => blockedCount(a)).map((a) => {
+    const top = [...SANDBOX[a.id].blocked].sort((p, q) => q.count - p.count)[0];
+    return { a, f: ["blocked", `${blockedCount(a)} network requests blocked by the sandbox today`,
+      `mostly ${base(top.bin)} → ${top.host}:${top.port}. Allow it or keep it blocked.`] };
+  });
   const attention = AGENTS.flatMap((a) => flagsOf(a).filter((f) => f[0] !== "low").map((f) => ({ a, f })))
+    .concat(blockedItems)
     .sort((p, q) => SEV_ORDER[q.f[0]] - SEV_ORDER[p.f[0]]);
 
   const counts = { all: AGENTS.length };
@@ -480,7 +592,7 @@ function screenAgents() {
 
     <div class="stats">
       <div class="stat"><span class="k">Active now</span><span class="v">${active}</span><span class="s">of ${AGENTS.length} agents</span></div>
-      <div class="stat"><span class="k">High risk</span><span class="v" style="color:var(--bad)">${high}</span><span class="s">${attention.length} flags need a look</span></div>
+      <div class="stat"><span class="k">High risk</span><span class="v" style="color:var(--bad)">${high}</span><span class="s">${attention.length} items need a look</span></div>
       <div class="stat"><span class="k">Not sandboxed</span><span class="v">${unsandboxed}</span><span class="s">2 on macOS, 1 on Linux</span></div>
       <div class="stat"><span class="k">Cost, last 7 days</span><span class="v">${anyLower ? "≥ " : ""}${money(week)}</span><span class="s">list-price equivalent</span></div>
     </div>
@@ -492,7 +604,7 @@ function screenAgents() {
           <li>
             <span class="ic sev-${f[0]}" aria-label="${f[0]}">${SEV_ICON[f[0]]}</span>
             <span class="t">${esc(f[1])}</span>
-            <span class="r"><a class="who" href="#${a.id}">${esc(a.type)} · ${esc(hostOf(a).name)}</a> — ${esc(f[2])}</span>
+            <span class="r"><a class="who" href="#${a.id}${f[0] === "blocked" ? "-sandbox" : ""}">${esc(a.type)} · ${esc(hostOf(a).name)}</a> — ${esc(f[2])}</span>
           </li>`).join("")}
       </ul>
     </section>
@@ -558,6 +670,8 @@ function screenAgent(a) {
       <div class="legend" style="justify-content:space-between"><span>${fmtDay(lastN(DATES, 30)[0])}</span><span>today ${money(d30[29])}</span></div>
     </section>
 
+    ${sandboxSection(a)}
+
     <div class="cols">
       <section class="section" aria-labelledby="risk">
         <header><h2 id="risk">Risk flags</h2></header>
@@ -613,6 +727,149 @@ function screenAgent(a) {
       </div>
     </section>
   </div>`;
+}
+
+function sandboxSection(a) {
+  const s = SANDBOX[a.id];
+  const h = hostOf(a);
+  const head = `<header><h2 id="sbx">Sandbox</h2><span class="after" title="Seeing and changing sandbox policies is planned after the read-only MVP (FR-10, FR-12)">after MVP</span></header>`;
+  if (!s) {
+    const body = h.platform.startsWith("darwin")
+      ? `This agent runs directly on macOS, where OpenShell can't sandbox it. Run it in a Linux VM such as Lima or OrbStack with its own collector, and its sandbox shows up here.`
+      : `Not sandboxed. openvigie can draft a starter OpenShell policy from what this agent can access, for you to review before anything changes.
+         <div><button class="btn" id="starter-${a.id}" data-starter="${a.id}">Draft a starter policy…</button></div>`;
+    return `<section class="section" id="sandbox" aria-labelledby="sbx">${head}<div class="callout">${body}</div></section>`;
+  }
+  return `
+    <section class="section" id="sandbox" aria-labelledby="sbx">
+      ${head}
+      <div class="panel">
+        <div class="policy-head">
+          <span><b>${esc(s.policy)}</b> <span class="muted">v${s.version} · OpenShell ${esc(h.openshell)} · applied ${esc(s.applied)}</span></span>
+          <span class="muted" style="font-size:.82rem">${esc(s.files)}</span>
+        </div>
+        <h3 class="sub">Blocked requests · last 24 hours</h3>
+        ${s.blocked.length ? `<ul class="blocked">${s.blocked.map((b, i) => `
+          <li>
+            <span class="dest">${esc(b.host)}:${b.port}</span>
+            <span class="why">by <span class="mono">${esc(b.bin)}</span> · ${b.count}× · last ${esc(b.last)}</span>
+            ${b.risky ? `<span class="why risky">▲ ${esc(b.risky)}</span>` : ""}
+            <button class="btn" id="allow-${a.id}-${i}" data-allow="${a.id}:${i}">Allow…</button>
+          </li>`).join("")}</ul>`
+        : `<p class="empty">Nothing blocked in the last 24 hours.</p>`}
+      </div>
+      <div class="cols">
+        <div class="section">
+          <h2>Allowed network</h2>
+          <ul class="netblocks panel">${s.blocks.map((nb) => `
+            <li><b>${esc(nb.name)}</b><span class="mono">${nb.hosts.map(esc).join(", ")}</span>
+              <span class="muted">for ${nb.bins.length ? nb.bins.map((p) => esc(base(p))).join(", ") : "any program"}</span></li>`).join("")}
+          </ul>
+        </div>
+        <div class="section">
+          <h2>Policy history</h2>
+          <ul class="hist panel">${s.history.map((r) => `
+            <li><span class="v">${esc(r[0])}</span><span>${esc(r[2])}</span><span class="w">${esc(r[1])} · by you · in the audit log</span></li>`).join("")}
+          </ul>
+        </div>
+      </div>
+    </section>`;
+}
+
+// ---------- Allow flow (sheet): choose scope, review the policy diff, dry run, apply ----------
+
+const sheet = document.getElementById("sheet");
+const sheetBody = document.getElementById("sheet-body");
+let undo = null;
+
+function allowDiff(s, b, name, anyProgram) {
+  const ctx = s.blocks.map((nb) => `<span class="ctx">  ${esc(nb.name)}: …</span>`).join("");
+  return `<span class="ctx">network_policies:</span>${ctx}` +
+    `<span class="add">+ ${esc(name || "…")}:</span>` +
+    `<span class="add">+   endpoints:</span>` +
+    `<span class="add">+     - { host: ${esc(b.host)}, port: ${b.port} }</span>` +
+    (anyProgram ? `<span class="add">+   binaries: any</span>`
+      : `<span class="add">+   binaries:</span><span class="add">+     - { path: ${esc(b.bin)} }</span>`);
+}
+
+function openAllow(agentId, i) {
+  const a = AGENTS.find((x) => x.id === agentId), s = SANDBOX[agentId], b = s.blocked[i];
+  const suggested = /^\d/.test(b.host) ? "ip_" + b.host.replace(/\./g, "_")
+    : b.host.replace(/^(registry|files|api)\./, "").split(".")[0].replace(/[^a-z0-9_]/g, "_") || "allowed";
+  sheetBody.innerHTML = `
+    <header>
+      <h3 id="sheet-title">Allow ${esc(b.host)}:${b.port}</h3>
+      <span class="muted">${esc(a.type)} on ${esc(hostOf(a).name)} · policy ${esc(s.policy)} v${s.version} · blocked ${b.count}× today</span>
+    </header>
+    ${b.risky ? `<div class="warnbox">▲ ${esc(b.risky)} Allow it only if you know why this agent needs it.</div>` : ""}
+    <fieldset>
+      <legend>Which programs can reach it</legend>
+      <label class="opt"><input type="radio" name="scope" id="scope-bin" value="bin" checked>
+        <span>Only <span class="mono">${esc(base(b.bin))}</span><small>The program that was blocked. Recommended.</small></span></label>
+      <label class="opt"><input type="radio" name="scope" id="scope-any" value="any">
+        <span>Any program in this sandbox<small>Wider than needed: every tool the agent runs can use it.</small></span></label>
+    </fieldset>
+    <label class="field" for="block-name"><span class="lbl">Network rule name</span>
+      <input id="block-name" value="${esc(suggested)}" autocomplete="off" spellcheck="false">
+      <span class="err" id="block-err" hidden>Use lowercase letters, digits and _ only, and a name not already in the policy.</span>
+    </label>
+    <div><div class="lbl">Change to ${esc(s.policy)}</div><pre class="diff" id="diff">${allowDiff(s, b, suggested, false)}</pre></div>
+    <p class="check">✓ Dry run passed. Network rules apply to the running sandbox, so ${esc(a.type)} keeps running.</p>
+    <p class="muted" style="margin:0;font-size:.82rem">Saved as v${s.version + 1}, with you as the author, in the policy history and the audit log. You can roll back to v${s.version}.</p>
+    <div class="sheet-actions">
+      <button class="btn" id="sheet-cancel" data-close>Cancel</button>
+      <button class="btn ${b.risky ? "danger" : "primary"}" id="sheet-apply" data-apply="${agentId}:${i}">${b.risky ? "Allow anyway" : "Apply to sandbox"}</button>
+    </div>`;
+  const update = () => {
+    const name = document.getElementById("block-name").value.trim();
+    const bad = !/^[a-z0-9_]{1,40}$/.test(name) || s.blocks.some((nb) => nb.name === name);
+    document.getElementById("block-err").hidden = !bad;
+    document.getElementById("sheet-apply").disabled = bad;
+    document.getElementById("diff").innerHTML = allowDiff(s, b, name, document.getElementById("scope-any").checked);
+  };
+  sheetBody.oninput = update;
+  sheet.showModal();
+}
+
+function applyAllow(agentId, i) {
+  const s = SANDBOX[agentId], b = s.blocked[i];
+  undo = { agentId, snapshot: structuredClone(s) };
+  const any = document.getElementById("scope-any").checked;
+  const name = document.getElementById("block-name").value.trim();
+  s.blocks.push({ name, hosts: [`${b.host}:${b.port}`], bins: any ? [] : [b.bin] });
+  s.blocked.splice(i, 1);
+  s.version += 1;
+  s.applied = "just now";
+  s.history.unshift([`v${s.version}`, "just now", `allowed ${b.host}:${b.port} for ${any ? "any program" : base(b.bin)}`]);
+  sheet.close();
+  route();
+  toast(`Allowed ${b.host}:${b.port}. ${s.policy} is now v${s.version}.`, true);
+}
+
+function openStarter(agentId) {
+  const a = AGENTS.find((x) => x.id === agentId);
+  sheetBody.innerHTML = `
+    <header>
+      <h3 id="sheet-title">Starter policy for ${esc(a.type)}</h3>
+      <span class="muted">Drafted from what ${esc(a.type)} on ${esc(hostOf(a).name)} can access today. Nothing changes until you apply it.</span>
+    </header>
+    <pre class="diff"><span class="add">+ filesystem:</span><span class="add">+   read_write: [~/.openclaw, ~/projects]</span><span class="add">+   read_only: [/usr, /etc]</span><span class="add">+ network_policies:</span><span class="add">+   openai:</span><span class="add">+     endpoints: [{ host: api.openai.com, port: 443 }]</span><span class="add">+     binaries: [{ path: /usr/bin/node }]</span></pre>
+    <p class="muted" style="margin:0;font-size:.88rem">Filesystem rules only take effect in a new sandbox, so ${esc(a.type)} restarts inside OpenShell when you apply. Requests it then makes outside this policy show up under Blocked requests, where you can allow them.</p>
+    <div class="sheet-actions">
+      <button class="btn" id="sheet-cancel" data-close>Cancel</button>
+      <button class="btn primary" id="sheet-restart" data-restart>Restart in sandbox</button>
+    </div>`;
+  sheetBody.oninput = null;
+  sheet.showModal();
+}
+
+let toastTimer;
+function toast(text, withUndo) {
+  const t = document.getElementById("toast");
+  t.innerHTML = `<span>${esc(text)}</span>${withUndo ? `<button id="toast-undo" data-undo>Undo</button>` : ""}`;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.hidden = true), 6000);
 }
 
 function screenUsage() {
@@ -688,7 +945,7 @@ function screenHosts() {
         <article class="host panel">
           <header>
             <h3>${esc(h.name)}</h3>
-            <span class="muted" style="font-size:.85rem">${esc(h.platform)}${h.parent ? " · " + esc(h.parent) : ""} · collector ${esc(h.collector)}</span>
+            <span class="muted" style="font-size:.85rem">${esc(h.platform)}${h.parent ? " · " + esc(h.parent) : ""} · collector ${esc(h.collector)}${h.openshell ? " · OpenShell " + esc(h.openshell) : ""}</span>
             <span style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px">
               <span class="pill st-active"><span class="dot"></span>reported ${esc(h.last)}</span>
               ${high ? `<span class="sev sev-high">▲ ${high} high-risk</span>` : `<span class="sev sev-none">✓ no high-risk agents</span>`}
@@ -711,7 +968,7 @@ function screenHosts() {
 // ---------- Router (plain #tokens only) ----------
 
 function route() {
-  const key = (location.hash || "#agents").slice(1);
+  const [key, part] = (location.hash || "#agents").slice(1).split("-");
   const agent = AGENTS.find((a) => a.id === key);
   const tab = agent ? "agents" : ["usage", "hosts"].includes(key) ? key : "agents";
   const app = document.getElementById("app");
@@ -720,16 +977,36 @@ function route() {
     if (el.dataset.nav === tab) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
   });
   document.title = (agent ? agent.type : tab[0].toUpperCase() + tab.slice(1)) + " · openvigie";
+  return part;
+}
+
+function go() {
+  const part = route();
+  const target = part && document.getElementById(part);
+  if (target) target.scrollIntoView({ block: "start" }); else window.scrollTo(0, 0);
 }
 
 document.addEventListener("click", (e) => {
-  const f = e.target.closest("[data-filter]");
-  const r = e.target.closest("[data-range]");
-  if (f) { state.filter = f.dataset.filter; route(); document.getElementById("f-" + state.filter)?.focus(); }
-  if (r) { state.range = Number(r.dataset.range); route(); document.getElementById("r-" + state.range)?.focus(); }
+  const el = (sel) => e.target.closest(sel);
+  if (el("[data-filter]")) { state.filter = el("[data-filter]").dataset.filter; route(); document.getElementById("f-" + state.filter)?.focus(); }
+  if (el("[data-range]")) { state.range = Number(el("[data-range]").dataset.range); route(); document.getElementById("r-" + state.range)?.focus(); }
+  if (el("[data-allow]")) { const [id, i] = el("[data-allow]").dataset.allow.split(":"); openAllow(id, Number(i)); }
+  if (el("[data-apply]")) { const [id, i] = el("[data-apply]").dataset.apply.split(":"); applyAllow(id, Number(i)); }
+  if (el("[data-starter]")) openStarter(el("[data-starter]").dataset.starter);
+  if (el("[data-close]")) sheet.close();
+  if (el("[data-restart]")) { sheet.close(); toast("Mock only: the agent would restart inside OpenShell with this policy."); }
+  if (el("[data-undo]") && undo) {
+    SANDBOX[undo.agentId] = undo.snapshot;
+    const v = undo.snapshot.version;
+    undo = null;
+    route();
+    toast(`Rolled back to v${v}.`);
+  }
 });
-window.addEventListener("hashchange", () => { route(); window.scrollTo(0, 0); });
-route();
+// Click on the backdrop closes the sheet.
+sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); });
+window.addEventListener("hashchange", go);
+go();
 
 // Mimic the hub's 5 s refresh label.
 let ago = 3;
