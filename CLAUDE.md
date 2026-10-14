@@ -30,6 +30,16 @@ them with NVIDIA OpenShell. Read `docs/PRD.md` before any design decision; cite 
 - Platforms: Linux ARM64 + macOS arm64 first. Note: cloud dev VMs are x86_64 — don't
   rely on arch-specific wheels or binaries without a fallback.
 
+## Code conventions
+
+- **One typed model per boundary** (D12): wire format, HTTP API, config and rule files are
+  Pydantic v2 models (`frozen`, `strict`, `extra="forbid"`, bounded strings and lists,
+  `hide_input_in_errors=True`). No hand-written parsing of untrusted structures.
+- **Small public interfaces.** Each module says at the top what it offers; other modules use
+  only that. Never import another module's `_private` names.
+- **Simple first.** Plain functions and data over class hierarchies; functions short enough to
+  read at once; obvious names. Comments explain *why*, not *what*.
+
 ## Workflow
 
 - Python 3.12+, managed with `uv`. Setup: `uv sync`.
