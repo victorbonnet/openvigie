@@ -1,0 +1,34 @@
+{
+  "labels": [
+    { "name": "roadmap", "color": "0e8a16", "description": "Top-level roadmap tracker" },
+    { "name": "epic", "color": "3e4b9e", "description": "Parent issue grouping PR-sized tasks" },
+    { "name": "P0", "color": "b60205", "description": "MVP requirement (read-only monitoring)" },
+    { "name": "P1", "color": "d93f0b", "description": "Next release; write actions need FR-17 first" },
+    { "name": "M0-foundations", "color": "c5def5", "description": "Milestone M0: foundations" },
+    { "name": "M1-inventory", "color": "c5def5", "description": "Milestone M1: single-host inventory" },
+    { "name": "M2-usage-cost", "color": "c5def5", "description": "Milestone M2: usage and cost" },
+    { "name": "M3-multi-host", "color": "c5def5", "description": "Milestone M3: multi-host over Tailscale" },
+    { "name": "M4-adapters", "color": "c5def5", "description": "Milestone M4: Hermes and OpenClaw adapters" },
+    { "name": "M5-traces", "color": "c5def5", "description": "Milestone M5: traces and OpenTelemetry" },
+    { "name": "M6-release", "color": "c5def5", "description": "Milestone M6: packaging and release" },
+    { "name": "area:core", "color": "d4c5f9", "description": "Shared model, config, safe I/O, pricing" },
+    { "name": "area:adapters", "color": "d4c5f9", "description": "Agent adapters (Claude Code, Codex, Hermes, OpenClaw)" },
+    { "name": "area:collector", "color": "d4c5f9", "description": "Per-host collector daemon" },
+    { "name": "area:hub", "color": "d4c5f9", "description": "Hub store and API" },
+    { "name": "area:ui", "color": "d4c5f9", "description": "Web UI (FastAPI + Jinja + HTMX)" },
+    { "name": "area:security", "color": "e11d21", "description": "Security-sensitive: review with the threat model" },
+    { "name": "area:tests", "color": "d4c5f9", "description": "Tests, fixtures, benchmarks" },
+    { "name": "area:docs", "color": "d4c5f9", "description": "Documentation" },
+    { "name": "area:packaging", "color": "d4c5f9", "description": "Packaging, services, release" },
+    { "name": "needs-maintainer", "color": "e99695", "description": "Needs a maintainer action, e.g. access to a real agent install" }
+  ],
+  "milestones": [
+    { "title": "M0 Foundations", "label": "M0-foundations", "description": "Domain model, config, redaction, safe readers, fixture tooling. Epic #5." },
+    { "title": "M1 Single-host inventory", "label": "M1-inventory", "description": "Claude Code + Codex detected, live status in the UI (FR-1, FR-2, FR-5, FR-7). Epic #6." },
+    { "title": "M2 Usage & cost", "label": "M2-usage-cost", "description": "Token usage, price table, charts, retention, footprint budget (FR-3, FR-4, FR-5). Epic #7." },
+    { "title": "M3 Multi-host", "label": "M3-multi-host", "description": "Pi + Mac over Tailscale Serve; hub stays on 127.0.0.1. Epic #8." },
+    { "title": "M4 Hermes & OpenClaw", "label": "M4-adapters", "description": "Remaining MVP adapters from recorded fixtures (FR-1, FR-3). Epic #9." },
+    { "title": "M5 Traces & OpenTelemetry", "label": "M5-traces", "description": "Langfuse export, trace links, OTLP receiver (FR-3, FR-6). Epic #10." },
+    { "title": "M6 Packaging & release", "label": "M6-release", "description": "Services, docs, PyPI release (v0.1.0). Epic #11." }
+  ]
+}

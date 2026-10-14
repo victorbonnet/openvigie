@@ -1,0 +1,30 @@
+name: repo-metadata
+
+# Labels and milestones as code: edit .github/repo-metadata.json, merge, and this applies it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/repo-metadata.json
+      - .github/scripts/sync-repo-metadata.js
+      - .github/workflows/repo-metadata.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: repo-metadata
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const sync = require('./.github/scripts/sync-repo-metadata.js');
+            await sync({ github, context, core });
