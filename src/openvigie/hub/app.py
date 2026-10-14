@@ -33,6 +33,7 @@ from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.tailscale import StripIdentityHeaders
 from openvigie.hub.templating import render, templates_env
 from openvigie.pricing import load_price_table
+from openvigie.risk import load_rules
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 CSP = (
@@ -141,6 +142,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.tz = display_timezone(settings)
     app.state.templates = templates_env()
     app.state.enrol_limiter = api.FailureLimiter()
+    app.state.risk_rules = load_rules()
     app.state.exporter = (
         LangfuseExporter(settings.langfuse, db, queue_hours=settings.retention.span_queue_hours)
         if settings.langfuse

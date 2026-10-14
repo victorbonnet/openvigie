@@ -1,0 +1,74 @@
+# Risk rules (FR-9, PRD D10). Each matching rule raises a flag with a severity and a reason;
+# an agent's risk level is its most severe flag. Override or add rules in
+# ~/.config/openvigie/risk.toml (same format; a rule with the same id replaces this one,
+# `enabled = false` turns it off).
+#
+# Facts a rule can test: agent_type, sandboxed (yes/no/unknown), host_os, capabilities_known,
+# approvals (ask/auto_edit/never_ask/unknown), approval_mode, filesystem
+# (read_only/workspace/full/unknown), network (none/allowlist/full/unknown), shell
+# (true/false/"unknown"), writes_anywhere, and the lists mcp_servers, mcp_unpinned, secrets, hooks.
+# Tests: { field, equals } { field, not_equals } { field, in = [...] } { field, nonempty = bool },
+# combined with all = [...], any = [...], not = {...}. Reasons can quote facts as {name}.
+
+[[rules]]
+id = "never-asks-unsandboxed"
+severity = "high"
+title = "Runs anything without asking, outside a sandbox"
+reason = "Approvals are bypassed ({approval_mode}) and the agent is not in a sandbox: a prompt injection can run any command on this machine."
+when = { all = [
+  { field = "approvals", equals = "never_ask" },
+  { field = "sandboxed", not_equals = "yes" },
+] }
+
+[[rules]]
+id = "shell-network-unsandboxed"
+severity = "high"
+title = "Shell and unrestricted network, outside a sandbox"
+reason = "It can run shell commands with unrestricted network access and is not sandboxed: data on this machine can be sent anywhere."
+when = { all = [
+  { field = "shell", equals = true },
+  { field = "network", equals = "full" },
+  { field = "sandboxed", not_equals = "yes" },
+  { field = "approvals", not_equals = "never_ask" },
+] }
+
+[[rules]]
+id = "full-filesystem"
+severity = "medium"
+title = "Can write anywhere"
+reason = "File access is not limited to project folders."
+when = { all = [
+  { field = "writes_anywhere", equals = true },
+  { field = "sandboxed", not_equals = "yes" },
+] }
+
+[[rules]]
+id = "unpinned-mcp"
+severity = "medium"
+title = "MCP server from an unpinned package"
+reason = "{mcp_unpinned} run the latest published version of a package each time: a compromised release would run with this agent's access."
+when = { field = "mcp_unpinned", nonempty = true }
+
+[[rules]]
+id = "secrets-reachable"
+severity = "medium"
+title = "Secrets reachable by tools"
+reason = "These credentials are passed to the agent or its tools: {secrets}."
+when = { field = "secrets", nonempty = true }
+
+[[rules]]
+id = "hooks-run-commands"
+severity = "low"
+title = "Hooks run commands"
+reason = "Hooks run {hooks} automatically on agent events."
+when = { field = "hooks", nonempty = true }
+
+[[rules]]
+id = "macos-no-sandbox"
+severity = "low"
+title = "Can't be sandboxed on macOS"
+reason = "Agents running directly on macOS can't use OpenShell; run it in a Linux VM or container to sandbox it (D11)."
+when = { all = [
+  { field = "host_os", equals = "darwin" },
+  { field = "sandboxed", not_equals = "yes" },
+] }

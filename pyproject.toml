@@ -49,7 +49,7 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S604"]  # S604: `shell=True` is a Capabilities field in tests
 
 [tool.mypy]
 strict = true

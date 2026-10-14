@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from openvigie.hub.reports import DIMENSIONS, usage_report
+from openvigie.hub.riskview import agent_risks
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.spans import SpanQueue
@@ -30,6 +31,7 @@ from openvigie.model import (
     StatusEvent,
     UsageRecord,
     from_dict,
+    to_dict,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -230,6 +232,31 @@ def date_range(
     begin = datetime.combine(first, day_time.min, tzinfo=tz)
     finish = datetime.combine(last + timedelta(days=1), day_time.min, tzinfo=tz)
     return begin, finish
+
+
+@router.get("/agents")
+def agents(request: Request) -> dict[str, Any]:
+    """Every agent with its status and risk flags (FR-2, FR-9)."""
+    rows = request.app.state.inventory.agents()
+    risks = agent_risks(request.app.state.db, request.app.state.risk_rules, rows)
+    return {
+        "agents": [
+            {
+                **to_dict(row.agent),
+                "hostname": row.hostname,
+                "risk": {
+                    "level": risks[row.agent.agent_id].level,
+                    "flags": [
+                        {"id": f.rule_id, "severity": f.severity.label, "title": f.title,
+                         "reason": f.reason}
+                        for f in risks[row.agent.agent_id].flags
+                    ],
+                },
+            }
+            for row in rows
+        ],
+        "rule_problems": request.app.state.risk_rules.problems,
+    }  # fmt: skip
 
 
 @router.get("/usage")
