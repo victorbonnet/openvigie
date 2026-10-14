@@ -22,6 +22,7 @@ from openvigie.hub.api_models import (
     IngestRequest,
     IngestResponse,
     RiskOut,
+    SandboxesResponse,
     TracesWanted,
     UsageResponse,
     UsageRowOut,
@@ -30,6 +31,7 @@ from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.riskview import agent_risks
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.credentials import Credentials
+from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.model import SCHEMA_VERSION
@@ -121,6 +123,8 @@ async def ingest(
         raise HTTPException(403, "token does not belong to this host")
     if any(a.host_id != host_id for a in body.agents):
         raise HTTPException(403, "agents must belong to the authenticated host")
+    if any(s.host_id != host_id for s in body.sandboxes or ()):
+        raise HTTPException(403, "sandboxes must belong to the authenticated host")
 
     now = now_utc()
     skew = round((body.sent_at - now).total_seconds(), 1)
@@ -140,6 +144,11 @@ async def ingest(
         capabilities=CapabilityStore(request.app.state.db).put(body.capabilities, host_id),
         # spans are only queued when they will be exported; never stored otherwise
         spans=SpanQueue(request.app.state.db).enqueue(body.spans, host_id, now) if exporter else 0,
+        sandboxes=(
+            0
+            if body.sandboxes is None
+            else SandboxStore(request.app.state.db).replace(host_id, body.sandboxes, now)
+        ),
     )
     if body.collector.spool_dropped is not None:
         usage_store.set_spool_dropped(host_id, body.collector.spool_dropped)
@@ -170,6 +179,12 @@ def date_range(
     begin = datetime.combine(first, day_time.min, tzinfo=tz)
     finish = datetime.combine(last + timedelta(days=1), day_time.min, tzinfo=tz)
     return begin, finish
+
+
+@router.get("/sandboxes")
+def sandboxes(request: Request) -> SandboxesResponse:
+    """OpenShell sandboxes with their network rules and the agents in them (FR-10)."""
+    return SandboxesResponse(sandboxes=SandboxStore(request.app.state.db).all())
 
 
 @router.get("/agents")

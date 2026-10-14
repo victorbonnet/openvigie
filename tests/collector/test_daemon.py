@@ -23,6 +23,7 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
+from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.model import AgentStatus, HealthState, SandboxState, to_dict
 from openvigie.openshell.cli import Reader
 from openvigie.openshell.mapping import OpenShellProbe
@@ -317,3 +318,22 @@ def test_unsupported_openshell_is_reported_as_health(
     (row,) = [h for h in health if h.adapter == "openshell"]
     assert row.state is HealthState.DEGRADED and "0.1.4 or newer" in (row.reason or "")
     assert agents[0].sandboxed is SandboxState.NO  # falls back to the generic probe
+
+
+def test_sandboxes_reach_the_hub_with_their_agents(
+    tmp_path: Path, hub: tuple[TestClient, Database]
+) -> None:
+    collector = sandboxed_collector(tmp_path, hub, fake_openshell())
+    clock = collector.monotonic
+    assert isinstance(clock, Clock)
+    collector.tick()  # reads OpenShell; the agent isn't placed yet when it was detected
+    clock.t += 31
+    collector.tick()  # detected inside the sandbox, so the sandbox now lists it
+    (box,) = SandboxStore(hub[1]).all()
+    (agent,) = Inventory(hub[1]).agents()
+    assert box.name == "ov-fixture" and box.agent_ids == (agent.agent.agent_id,)
+    assert agent.agent.sandbox_kind == "openshell:ov-fixture"
+    sent_at = collector.sandboxes_sent_at
+    clock.t += 31
+    collector.tick()
+    assert collector.sandboxes_sent_at == sent_at  # unchanged, so not sent again

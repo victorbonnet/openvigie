@@ -85,6 +85,43 @@
   "hostname": "pi5",
   "os": "linux"
  },
+ "OpenShellSandbox": {
+  "agent_ids": [
+   "a1"
+  ],
+  "agent_type": "claude-code",
+  "host_id": "h1",
+  "labels": {
+   "openvigie.agent": "claude-code"
+  },
+  "name": "ov-net",
+  "network_rules": [
+   {
+    "binaries": [
+     "/usr/bin/curl"
+    ],
+    "endpoints": [
+     {
+      "access": "read-only",
+      "enforcement": "enforce",
+      "host": "api.github.com",
+      "path": null,
+      "ports": [
+       443
+      ],
+      "protocol": "rest"
+     }
+    ],
+    "name": "github_readonly"
+   }
+  ],
+  "observed_at": "2026-10-14T12:30:15.123456+00:00",
+  "phase": "Ready",
+  "policy_hash": "4b27e5bf",
+  "policy_version": 3,
+  "sandbox_id": "267c2951",
+  "workspace": "default"
+ },
  "Session": {
   "agent_id": "a1",
   "last_event_at": "2026-10-14T14:30:15.123456+02:00",

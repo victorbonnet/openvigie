@@ -39,7 +39,7 @@ from openvigie.collector.status import StatusTracker
 from openvigie.config import CollectorSettings
 from openvigie.model import SCHEMA_VERSION, AdapterHealth, AgentInstance, StatusEvent, to_dict
 from openvigie.openshell.cli import Inventory, Reader, inventory_health
-from openvigie.openshell.mapping import OpenShellProbe
+from openvigie.openshell.mapping import OpenShellProbe, records
 from openvigie.redact import redact_obj
 
 log = logging.getLogger(__name__)
@@ -117,6 +117,8 @@ class Collector:
         self.arbiter = Arbiter(settings.otlp.usage_source)
         self.openshell = openshell
         self.openshell_inventory = Inventory("not_installed")
+        self.sandboxes_sent: str | None = None  # digest of the last list sent; None: never
+        self.sandboxes_sent_at = float("-inf")
 
     # --- one tick ---------------------------------------------------------------------------
 
@@ -219,6 +221,7 @@ class Collector:
         sessions: list[Any],
         spans: list[Any] | None = None,
         capabilities: list[Any] | None = None,
+        sandboxes: list[Any] | None = None,
     ) -> dict[str, Any]:
         payload = {
             "schema_version": SCHEMA_VERSION,
@@ -231,6 +234,8 @@ class Collector:
             payload["spans"] = spans
         if capabilities:
             payload["capabilities"] = capabilities
+        if sandboxes is not None:  # [] is meaningful: the host has no sandboxes any more
+            payload["sandboxes"] = sandboxes
         if self.store:
             payload["collector"] = {"spool_dropped": self.store.dropped()}
         return payload
@@ -241,9 +246,12 @@ class Collector:
         by_type = {a.agent_type: a for a in self.discovery.adapters}
         found = self._collect_all(by_type)
         capabilities = self._changed_capabilities(by_type, now)
-        if not found.touched and not capabilities:
+        sandboxes = self._changed_sandboxes(now)
+        if not found.touched and not capabilities and sandboxes is None:
             return
         payloads = self._usage_payloads(found, capabilities)
+        if sandboxes is not None:
+            payloads.append(self.usage_payload([], [], sandboxes=sandboxes))
         delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
         if not delivered:
             if self.store is None:
@@ -262,6 +270,26 @@ class Collector:
         self.openshell_inventory = self.openshell.read()
         if isinstance(self.ctx.sandbox_probe, OpenShellProbe):
             self.ctx.sandbox_probe.update(self.openshell_inventory)
+
+    def _changed_sandboxes(self, now: float) -> list[dict[str, Any]] | None:
+        """This host's full sandbox list when it changed (or hourly); ``None``: nothing to send."""
+        inventory = self.openshell_inventory
+        if inventory.state == "ok":
+            boxes = records(inventory, self.ctx.host.host_id, self.agents, self.ctx.now())
+            body = [to_dict(b) for b in boxes]
+        elif inventory.state in ("not_installed", "unsupported"):
+            if self.sandboxes_sent in (None, "[]"):
+                return None  # nothing shown on the hub
+            body = []  # OpenShell went away: clear what the hub shows, once
+        else:
+            return None  # unreachable or never seen: keep what the hub has
+        key = json.dumps([{k: v for k, v in b.items() if k != "observed_at"} for b in body],
+                         sort_keys=True)  # fmt: skip
+        refresh = now - self.sandboxes_sent_at >= CAPABILITIES_REFRESH_S
+        if key == self.sandboxes_sent and not refresh:
+            return None
+        self.sandboxes_sent, self.sandboxes_sent_at = key, now
+        return body
 
     def _collect_all(self, by_type: dict[str, Adapter]) -> _Collected:
         """Run every adapter's ``collect``, with OTLP usage arbitrated against log usage."""

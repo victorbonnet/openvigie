@@ -22,6 +22,9 @@ from openvigie.model import (
     Host,
     McpServer,
     NetAccess,
+    OpenShellSandbox,
+    SandboxEndpoint,
+    SandboxRule,
     SandboxState,
     SecretRef,
     Session,
@@ -64,6 +67,13 @@ SAMPLES: dict[str, Any] = {
          McpServer("docs", "http", None, "mcp.example.com", None)),
         ("pdf",), (Hook("PreToolUse", "jq"),), (SecretRef("GH_TOKEN", "mcp:gh"),),
         ("~/.claude/settings.json",),
+    ),
+    "OpenShellSandbox": OpenShellSandbox(
+        "267c2951", "h1", "ov-net", AT, "default", "Ready", {"openvigie.agent": "claude-code"},
+        "claude-code", ("a1",), 3, "4b27e5bf",
+        (SandboxRule("github_readonly", (SandboxEndpoint("api.github.com", (443,), None, "rest",
+                                                         "read-only", "enforce"),),
+                     ("/usr/bin/curl",)),),
     ),
 }  # fmt: skip
 
