@@ -21,7 +21,7 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.model import AgentStatus, SandboxState
+from openvigie.model import AgentStatus, SandboxState, to_dict
 
 FIXTURE = Path(__file__).parents[1] / "adapters/claude_code/fixtures/home/.claude"
 
@@ -198,3 +198,51 @@ def test_cli_collect_requires_enrolment(
     monkeypatch.setenv("OPENVIGIE_STATE_DIR", str(tmp_path / "state"))
     assert cli.main(["collect", "--once"]) == 2
     assert "openvigie enrol" in capsys.readouterr().err
+
+
+def test_usage_flows_to_hub_once(tmp_path: Path, hub: tuple[TestClient, Database]) -> None:
+    from openvigie.collector.state import StateStore
+    from openvigie.hub.store.usage import UsageStore
+
+    collector, _, transport, clock = make_collector(tmp_path, hub)
+    collector.store = StateStore(tmp_path / "state" / "collector.db")
+    assert collector.tick()
+    records = UsageStore(hub[1]).records()
+    assert len(records) == 9
+    assert sum(r.output_tokens or 0 for r in records) == 24009
+    calls = transport.calls
+    clock.t += collector.settings.slow_tick_s
+    collector.tick()
+    assert len(UsageStore(hub[1]).records()) == 9
+    assert transport.calls == calls + 1  # inventory only: nothing new to send
+
+
+def test_usage_waits_while_hub_is_down(tmp_path: Path, hub: tuple[TestClient, Database]) -> None:
+    from openvigie.collector.state import StateStore
+    from openvigie.hub.store.usage import UsageStore
+
+    collector, _, transport, clock = make_collector(tmp_path, hub)
+    collector.store = StateStore(tmp_path / "state" / "collector.db")
+    transport.down = True
+    collector.tick()
+    assert collector.store.load_cursors("claude-code") == {}  # nothing read, nothing lost
+    transport.down = False
+    clock.t += 120
+    assert collector.tick()
+    assert len(UsageStore(hub[1]).records()) == 9
+
+
+def test_spooled_usage_is_flushed_first(tmp_path: Path, hub: tuple[TestClient, Database]) -> None:
+    from openvigie.collector.state import StateStore
+    from openvigie.hub.store.usage import UsageStore
+
+    collector, _, _, _ = make_collector(tmp_path, hub)
+    collector.store = StateStore(tmp_path / "state" / "collector.db")
+    collector.tick()  # agents and their usage reach the hub
+    record = UsageStore(hub[1]).records()[0]
+    UsageStore(hub[1]).db.conn.execute("DELETE FROM usage_records")
+    collector.store.spool_put(collector.usage_payload([to_dict(record)], []))
+    collector.last_slow = float("-inf")
+    collector.tick()
+    assert [r.record_id for r in UsageStore(hub[1]).records()] == [record.record_id]
+    assert collector.store.spool_stats()[0] == 0

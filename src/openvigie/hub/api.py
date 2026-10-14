@@ -13,13 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from openvigie.hub.store.credentials import Credentials
+from openvigie.hub.store.usage import UsageStore
 from openvigie.model import (
     SCHEMA_VERSION,
     AdapterHealth,
     AgentInstance,
     CodecError,
     Host,
+    Session,
     StatusEvent,
+    UsageRecord,
     from_dict,
 )
 
@@ -115,8 +118,14 @@ async def enrol(request: Request, body: JsonBody) -> JSONResponse:
     return JSONResponse({"host_id": host.host_id, "token": token}, status_code=201)
 
 
-INGEST_LIMITS = {"agents": 500, "status_events": 5000, "adapter_health": 64}
-KNOWN_SECTIONS = {"schema_version", "host", "sent_at", *INGEST_LIMITS}
+INGEST_LIMITS = {
+    "agents": 500,
+    "status_events": 5000,
+    "adapter_health": 64,
+    "usage": 5000,
+    "sessions": 1000,
+}
+KNOWN_SECTIONS = {"schema_version", "host", "sent_at", "collector", *INGEST_LIMITS}
 NEXT_PUSH_S = 5
 
 
@@ -151,6 +160,10 @@ async def ingest(
     agents = _section(body, "agents", AgentInstance)
     events = _section(body, "status_events", StatusEvent)
     health = _section(body, "adapter_health", AdapterHealth)
+    usage = _section(body, "usage", UsageRecord)
+    sessions = _section(body, "sessions", Session)
+    collector = body.get("collector", {})
+    dropped = collector.get("spool_dropped") if isinstance(collector, dict) else None
     if any(a.host_id != host_id for a in agents):
         raise HTTPException(403, "agents must belong to the authenticated host")
 
@@ -164,6 +177,11 @@ async def ingest(
         "adapter_health": len(health),
     }
     inventory.set_adapter_health(host_id, health, now)
+    usage_store = UsageStore(request.app.state.db)
+    accepted["usage"] = usage_store.add_records(usage, host_id)
+    accepted["sessions"] = usage_store.add_sessions(sessions, host_id)
+    if isinstance(dropped, int) and not isinstance(dropped, bool) and 0 <= dropped < 2**31:
+        usage_store.set_spool_dropped(host_id, dropped)
     ignored = sorted(set(body) - KNOWN_SECTIONS)
     return {
         "schema_version": SCHEMA_VERSION,

@@ -1,9 +1,13 @@
-"""The collector loop: detect agents, track status, push changes to the hub (FR-1, FR-2).
+"""The collector loop: detect agents, track status, push changes to the hub (FR-1, FR-2, FR-3).
 
 One thread, one loop. Every fast tick (default 5 s) refreshes the process snapshot, runs each
 adapter's ``detect``, updates status and pushes what changed, so status reaches the UI within
 the 10 s freshness budget. A full snapshot is re-sent every heartbeat. When the hub is
 unreachable the loop keeps running: status events wait in a bounded queue and pushes back off.
+
+Every slow tick (default 30 s) runs each adapter's ``collect`` and pushes usage. If the hub
+can't take it, the payload goes to the durable spool. Cursors are committed only once the data
+is acknowledged or spooled (at-least-once; the hub deduplicates).
 """
 
 from __future__ import annotations
@@ -17,12 +21,13 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from openvigie.adapters.base import HostContext
-from openvigie.adapters.registry import Discovery, run_detect
+from openvigie.adapters.base import Adapter, AdapterState, HostContext
+from openvigie.adapters.registry import Discovery, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
+from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
 from openvigie.config import CollectorSettings
 from openvigie.model import SCHEMA_VERSION, AdapterHealth, AgentInstance, StatusEvent, to_dict
@@ -32,6 +37,8 @@ log = logging.getLogger(__name__)
 
 HEARTBEAT_S = 60.0
 MAX_PENDING_EVENTS = 10_000
+USAGE_CHUNK = 2000
+SPOOL_FLUSH_PER_TICK = 20
 MAX_BACKOFF_S = 60.0
 UNAUTHORIZED_RETRY_S = 300.0
 
@@ -62,6 +69,7 @@ class Collector:
         discovery: Discovery,
         client: HubClient,
         *,
+        store: StateStore | None = None,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.settings = settings
@@ -75,6 +83,10 @@ class Collector:
         )
         self.state = PushState()
         self.ticks = 0
+        self.store = store
+        self.agents: list[AgentInstance] = []
+        self.last_slow = float("-inf")
+        self.adapter_states: dict[str, AdapterState] = {}
 
     # --- one tick ---------------------------------------------------------------------------
 
@@ -88,6 +100,7 @@ class Collector:
             health.append(adapter_health)
         agents, events = self.tracker.observe(agents, self.ctx.now())
         self.state.pending_events.extend(events)
+        self.agents = agents
         return agents, health
 
     def build_payload(
@@ -112,10 +125,25 @@ class Collector:
         }
 
     def tick(self) -> bool:
-        """Observe and push. Returns True if the hub accepted the push (or nothing was due)."""
+        """Observe and push; then, when due, collect and push usage.
+
+        Inventory goes first so the hub knows every agent before it receives its usage.
+        Returns True if the hub accepted the inventory push.
+        """
         self.ticks += 1
         agents, health = self.observe()
         now = self.monotonic()
+        pushed = self._push_inventory(agents, health, now)
+        if pushed and now - self.last_slow >= self.settings.slow_tick_s:
+            self.last_slow = now
+            self.slow_tick(now)
+        if self.ticks % 60 == 1:
+            log.debug("tick %d: %d agents, peak RSS %.1f MiB", self.ticks, len(agents), rss_mib())
+        return pushed
+
+    def _push_inventory(
+        self, agents: list[AgentInstance], health: list[AdapterHealth], now: float
+    ) -> bool:
         if now < self.state.retry_at:
             return False
         full = now - self.state.last_full_push >= HEARTBEAT_S
@@ -126,9 +154,89 @@ class Collector:
             self._failed(exc, now)
             return False
         self._succeeded(payload, full, now)
-        if self.ticks % 60 == 1:
-            log.debug("tick %d: %d agents, peak RSS %.1f MiB", self.ticks, len(agents), rss_mib())
         return True
+
+    # --- usage (slow tick) --------------------------------------------------------------------
+
+    def adapter_state(self, adapter: Adapter) -> AdapterState:
+        if adapter.agent_type not in self.adapter_states:
+            since = datetime.now(UTC) - timedelta(days=self.settings.backfill_days)
+            self.adapter_states[adapter.agent_type] = (
+                self.store.adapter_state(adapter.agent_type, since)
+                if self.store
+                else AdapterState(backfill_since=since)
+            )
+        return self.adapter_states[adapter.agent_type]
+
+    def usage_payload(self, usage: list[Any], sessions: list[Any]) -> dict[str, Any]:
+        payload = {
+            "schema_version": SCHEMA_VERSION,
+            "host": to_dict(self.ctx.host),
+            "sent_at": self.ctx.now().isoformat(),
+            "usage": usage,
+            "sessions": sessions,
+        }
+        if self.store:
+            payload["collector"] = {"spool_dropped": self.store.dropped()}
+        return payload
+
+    def slow_tick(self, now: float) -> None:
+        by_type = {a.agent_type: a for a in self.discovery.adapters}
+        usage: list[dict[str, Any]] = []
+        sessions: list[dict[str, Any]] = []
+        touched: list[AdapterState] = []
+        for agent in self.agents:
+            adapter = by_type.get(agent.agent_type)
+            if adapter is None:
+                continue
+            state = self.adapter_state(adapter)
+            batch, _ = run_collect(adapter, self.ctx, agent, state)
+            if batch is None:
+                continue
+            usage += [to_dict(r) for r in batch.usage]
+            sessions += [to_dict(s) for s in batch.sessions]
+            touched.append(state)
+        if not touched:
+            return
+        payloads = [
+            self.usage_payload(usage[i : i + USAGE_CHUNK], sessions if i == 0 else [])
+            for i in range(0, max(len(usage), 1), USAGE_CHUNK)
+        ]
+        if not usage and not sessions:
+            payloads = []
+        delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
+        if not delivered:
+            if self.store is None:
+                for state in touched:
+                    state.rollback()
+                return
+            for p in payloads:
+                self.store.spool_put(redact_obj(p))
+        for state in touched:
+            state.commit()  # data is now with the hub or in the durable spool
+
+    def _send_usage(self, payload: dict[str, Any], now: float) -> bool:
+        if now < self.state.retry_at:
+            return False
+        try:
+            reply = self.client.post("/api/v1/ingest", redact_obj(payload))
+        except HubError as exc:
+            self._failed(exc, now)
+            return False
+        if "usage" in reply.get("ignored", []):
+            log.warning("the hub ignored usage data; upgrade the hub. Keeping it in the spool.")
+            return False
+        return True
+
+    def _flush_spool(self, now: float) -> bool:
+        """Send spooled payloads oldest first; True when the spool is empty."""
+        if self.store is None:
+            return True
+        for row_id, payload in self.store.spool_peek(SPOOL_FLUSH_PER_TICK):
+            if not self._send_usage(payload, now):
+                return False
+            self.store.spool_ack(row_id)
+        return self.store.spool_stats()[0] == 0
 
     def _succeeded(self, payload: dict[str, Any], full: bool, now: float) -> None:
         for item in payload["agents"]:

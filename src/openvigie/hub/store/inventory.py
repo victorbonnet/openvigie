@@ -25,6 +25,7 @@ class HostRow:
     last_seen: datetime
     clock_skew_s: float | None
     revoked_at: datetime | None
+    spool_dropped: int = 0
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,7 @@ def _host_row(row: sqlite3.Row) -> HostRow:
         last_seen=_dt(row["last_seen"]),
         clock_skew_s=row["clock_skew_s"],
         revoked_at=parse_ts(row["revoked_at"]),
+        spool_dropped=row["spool_dropped"],
     )  # fmt: skip
 
 
