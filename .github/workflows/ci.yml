@@ -1,9 +1,12 @@
 name: ci
 
+# Automatic triggers paused: Actions budget exhausted. Run manually from the Actions tab.
+# Re-enable by restoring:
+#   pull_request:
+#   push:
+#     branches: [main]
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
