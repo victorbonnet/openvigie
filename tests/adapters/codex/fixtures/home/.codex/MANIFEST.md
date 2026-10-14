@@ -19,6 +19,10 @@ when one is available, and keep the expected values below in sync.
 - Usage: `event_msg` → `payload.type == "token_count"` → `info.total_token_usage` (cumulative)
   and `info.last_token_usage`. `cached_input_tokens` is a subset of `input_tokens`;
   `reasoning_output_tokens` is a subset of `output_tokens`.
+- Tool calls: `response_item` → `function_call` (`name`, `call_id`, `arguments`) then
+  `function_call_output` (`call_id`, `output`). Shell outputs are a JSON string with
+  `metadata.exit_code`; some versions write plain text starting `Exit code: N`. Both are parsed
+  for the span status; anything else leaves the status unset.
 
 ## Expected totals
 

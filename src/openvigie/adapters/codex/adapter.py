@@ -9,6 +9,7 @@ Records are the *deltas* between successive totals, so repeated events never dou
 ``cached_input_tokens`` is a subset of ``input_tokens`` and ``reasoning_output_tokens`` a
 subset of ``output_tokens``; they are stored as such and pricing (#47) accounts for it.
 ``token_count`` events with ``info: null`` precede the first call and carry no usage.
+When traces are enabled the same pass builds GenAI spans (``spans.py``, FR-6).
 """
 
 from __future__ import annotations
@@ -18,13 +19,20 @@ from pathlib import Path, PurePath
 from typing import Any
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
+from openvigie.adapters.codex.spans import RolloutSpans
 from openvigie.adapters.common import (
     attribute_processes,
     candidate_roots,
     display_path,
     newest_mtime,
 )
-from openvigie.adapters.usage import TailBudget, int_or_none, parse_time, tail_files
+from openvigie.adapters.usage import (
+    TailBudget,
+    before_backfill,
+    int_or_none,
+    parse_time,
+    tail_files,
+)
 from openvigie.model import (
     AgentInstance,
     SandboxState,
@@ -129,6 +137,7 @@ class CodexAdapter(Adapter):
         provider = self.providers.get(agent.agent_id, "openai")
         contexts: dict[str, dict[str, Any]] = {}
         sessions: dict[str, Session] = {}
+        tracers: dict[str, RolloutSpans] = {}
         for key, entry in tail_files(
             root, root / "sessions", ROLLOUT_GLOB, state, batch, TailBudget()
         ):
@@ -137,11 +146,19 @@ class CodexAdapter(Adapter):
             record = self._entry(agent, provider, entry, contexts[key], state)
             if record is not None:
                 batch.usage.append(record)
+            if ctx.traces.enabled and not before_backfill(entry, state):
+                if key not in tracers:
+                    tracers[key] = RolloutSpans(
+                        agent, key, state, provider=provider,
+                        export_content=ctx.traces.export_content,
+                    )  # fmt: skip
+                tracers[key].add(entry, contexts[key].get("session"), record)
             session = _session(agent.agent_id, entry, contexts[key], sessions)
             if session is not None:
                 sessions[session.session_id] = session
         for key, file_ctx in contexts.items():
             state.stage("ctx:" + key, file_ctx)
+        batch.spans = [span for tracer in tracers.values() for span in tracer.finish()]
         batch.sessions = list(sessions.values())
         if batch.usage:
             batch.last_activity_at = max(r.timestamp for r in batch.usage)
