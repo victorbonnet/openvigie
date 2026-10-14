@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+{% set h = view.row.host %}
+<p class="muted"><a href="/hosts">Hosts</a> / {{ h.hostname }}</p>
+<h1>{{ h.hostname }}</h1>
+<dl class="meta">
+  <dt>Platform</dt><dd>{{ h.os }}/{{ h.arch }}</dd>
+  <dt>Collector</dt><dd>{{ h.collector_version }}</dd>
+  <dt>Last report</dt><dd>{{ view.row.last_seen | ago }}
+    {% if view.row.revoked_at %}<span class="badge error">revoked</span>{% elif view.stale %}<span class="badge stale">stale</span>{% endif %}</dd>
+  <dt>Clock</dt><dd>{% if view.row.clock_skew_s is none %}unknown{% elif view.skewed %}<span class="badge degraded">{{ view.row.clock_skew_s }}s off</span>{% else %}in sync{% endif %}</dd>
+  <dt>First seen</dt><dd>{{ view.row.first_seen | ago }}</dd>
+</dl>
+
+<h2>Agents</h2>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th>Sandboxed</th><th>Last activity</th></tr>
+  </thead>
+  {% include "_agent_rows.html" %}
+</table>
+
+<h2>Adapters</h2>
+{% if health %}
+<table>
+  <thead><tr><th>Adapter</th><th>State</th><th>Reason</th><th class="num">Parse errors</th><th class="num">Skipped</th><th>Updated</th></tr></thead>
+  <tbody>
+  {% for row in health %}
+    <tr>
+      <td>{{ row.health.adapter }}</td>
+      <td><span class="badge {{ row.health.state.value }}">{{ row.health.state.value }}</span></td>
+      <td>{{ row.health.reason or "" }}</td>
+      <td class="num">{{ row.health.parse_errors }}</td>
+      <td class="num">{{ row.health.skipped }}</td>
+      <td>{{ row.updated_at | ago }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No adapter reports yet.</p>
+{% endif %}
+{% endblock %}
