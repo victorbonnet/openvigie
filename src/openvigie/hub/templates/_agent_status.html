@@ -1,0 +1,7 @@
+{% set a = row.agent %}
+<div id="agent-status" class="panel" hx-get="/agents/{{ a.agent_id }}/status" hx-trigger="every 5s" hx-swap="outerHTML">
+  <span class="badge {{ a.status.value }}">{{ a.status.value }}</span>
+  <span class="badge {{ a.sandboxed.value }}">sandboxed: {{ a.sandboxed.value }}{% if a.sandbox_kind %} · {{ a.sandbox_kind }}{% endif %}</span>
+  <span class="muted">· process {% if a.process_running is none %}unknown{% elif a.process_running %}running{% else %}not running{% endif %}
+  · last activity {{ a.last_activity_at | ago }}</span>
+</div>

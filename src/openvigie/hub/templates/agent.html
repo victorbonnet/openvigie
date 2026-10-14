@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+{% set a = row.agent %}
+<p class="muted"><a href="/">Agents</a> / {{ a.agent_type }}</p>
+<h1>{{ a.name }}</h1>
+
+{% include "_agent_status.html" %}
+
+<h2>Details</h2>
+<dl class="meta">
+  <dt>Type</dt><dd>{{ a.agent_type }}</dd>
+  <dt>Host</dt><dd><a href="/hosts/{{ a.host_id }}">{{ row.hostname }}</a></dd>
+  <dt>Version</dt><dd>{{ a.version or "unknown" }}</dd>
+  <dt>Config</dt><dd>{% if a.config_root %}<code>{{ a.config_root }}</code>{% else %}unknown{% endif %}</dd>
+  <dt>First seen</dt><dd>{{ row.first_seen | ago }}</dd>
+  <dt>Last report</dt><dd>{{ row.last_seen | ago }}</dd>
+  <dt>Adapter</dt><dd>
+    {% if health %}<span class="badge {{ health.health.state.value }}">{{ health.health.state.value }}</span>
+      {% if health.health.reason %} <span class="muted">{{ health.health.reason }}</span>{% endif %}
+    {% else %}<span class="badge unknown">unknown</span>{% endif %}
+  </dd>
+</dl>
+
+<h2>Status history</h2>
+{% if history %}
+<table>
+  <thead><tr><th>When</th><th>From</th><th>To</th></tr></thead>
+  <tbody>
+  {% for e in history %}
+    <tr>
+      <td title="{{ e.at.isoformat() }}">{{ e.at | ago }}</td>
+      <td><span class="badge {{ e.old.value }}">{{ e.old.value }}</span></td>
+      <td><span class="badge {{ e.new.value }}">{{ e.new.value }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No status changes recorded yet.</p>
+{% endif %}
+{% endblock %}
