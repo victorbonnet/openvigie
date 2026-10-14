@@ -97,6 +97,18 @@ def cmd_hub_enrol_code(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hub_audit(args: argparse.Namespace) -> int:
+    from openvigie.config import ConfigError, load_hub_settings
+    from openvigie.hub.audit_cli import run
+
+    try:
+        settings = load_hub_settings()
+    except ConfigError as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    return run(settings, args.audit_command)
+
+
 def cmd_hub_hosts(args: argparse.Namespace) -> int:
     from openvigie.config import ConfigError, load_hub_settings
     from openvigie.hub.hosts_cli import run
@@ -229,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rotate.add_argument("host", help="host id, id prefix or hostname")
     hosts.set_defaults(func=cmd_hub_hosts, ttl=timedelta(minutes=15))
+    audit = hub_sub.add_parser("audit", help="check or export the audit log of admin actions")
+    audit_sub = audit.add_subparsers(dest="audit_command", required=True)
+    audit_sub.add_parser("verify", parents=[common], help="check the hash chain")
+    audit_sub.add_parser("export", parents=[common], help="print every entry as JSON lines")
+    audit.set_defaults(func=cmd_hub_audit)
 
     enrol = sub.add_parser("enrol", parents=[common], help="enrol this host with a hub")
     enrol.add_argument("hub_url", help="e.g. http://127.0.0.1:7878 or https://hub.tailnet.ts.net")

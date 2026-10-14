@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">Every admin action: who, what, when, before and after, and the result. Entries are
+  hash-chained; check the chain with <code>openvigie hub audit verify</code> on the hub.</p>
+{% if entries %}
+<table>
+  <thead><tr><th>#</th><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Result</th><th>Change</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td class="num">{{ e.seq }}</td>
+      <td title="{{ e.at }}">{{ e.when | ago }}</td>
+      <td>{{ e.actor }} <span class="muted">({{ e.role }})</span></td>
+      <td><code>{{ e.action }}</code></td>
+      <td>{{ e.target }}</td>
+      <td><span class="badge {{ 'ok' if e.result in ('succeeded', 'confirmed') else ('error' if e.result in ('failed', 'refused') else 'unknown') }}">{{ e.result }}</span></td>
+      <td>{% if e.before != "null" or e.after != "null" %}<details><summary>details</summary>
+        <p class="muted">Before</p><pre>{{ e.before }}</pre><p class="muted">After</p><pre>{{ e.after }}</pre></details>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if next_before %}<p><a href="/audit?before={{ next_before }}">Older entries</a></p>{% endif %}
+{% else %}
+<p class="muted">No admin actions yet. openvigie has been read-only so far.</p>
+{% endif %}
+{% endblock %}

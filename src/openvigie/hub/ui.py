@@ -20,6 +20,7 @@ from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, mo
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
 from openvigie.hub.reports import UsageRow, usage_report
 from openvigie.hub.riskview import AgentRisk, agent_risks
+from openvigie.hub.store.audit import AuditLog
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
 from openvigie.hub.store.sandboxes import SandboxStore
@@ -411,6 +412,15 @@ def usage_page(
         money=money,
         compact=compact,
     )
+
+
+@router.get("/audit", response_class=HTMLResponse)
+def audit_page(request: Request, before: Annotated[int | None, Query(ge=1)] = None) -> HTMLResponse:
+    """Every admin action, newest first (FR-17)."""
+    entries = AuditLog(request.app.state.db).entries(limit=100, before_seq=before)
+    more = len(entries) == 100 and entries[-1].seq > 1
+    return render(request, "audit.html", title="Audit log", entries=entries,
+                  next_before=entries[-1].seq if more else None)  # fmt: skip
 
 
 @router.get("/settings", response_class=HTMLResponse)

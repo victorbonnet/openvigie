@@ -136,6 +136,28 @@ class SandboxesResponse(ApiModel):
     sandboxes: list[OpenShellSandbox]
 
 
+class AuditEntryOut(ApiModel):
+    seq: int
+    at: str
+    actor: str
+    role: str
+    action: str
+    target: str
+    before: str  # canonical JSON, redacted
+    after: str
+    result: str
+    request_id: str
+    prev_hash: str
+    hash: str
+
+
+class AuditResponse(ApiModel):
+    """``GET /api/v1/audit``: newest first; pass ``before=<seq>`` for the next page (FR-17)."""
+
+    entries: list[AuditEntryOut]
+    next_before: int | None
+
+
 class AgentsResponse(ApiModel):
     agents: list[AgentOut]
     rule_problems: list[str]  # e.g. a broken risk.toml override
