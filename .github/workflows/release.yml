@@ -62,8 +62,11 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install pipx
       - run: python -m pipx install dist/*.whl
-      - run: ~/.local/bin/openvigie --version
-      - run: ~/.local/bin/openvigie scan --json
+      - name: openvigie --version && openvigie scan --json
+        run: |
+          bin="$(python -m pipx environment --value PIPX_BIN_DIR)"
+          "$bin/openvigie" --version
+          "$bin/openvigie" scan --json
 
   publish-testpypi:
     if: github.event_name == 'workflow_dispatch'
