@@ -8,6 +8,9 @@ on:
     paths:
       - .github/workflows/openshell-fixtures.yml
       - scripts/record_openshell.sh
+      - scripts/check_starter_policies.sh
+      - src/openvigie/openshell/starter.*
+      - tests/openshell/starter/**
 
 permissions:
   contents: read
@@ -32,7 +35,10 @@ jobs:
         run: |
           curl -fsSL "https://raw.githubusercontent.com/NVIDIA/OpenShell/${OPENSHELL_VERSION}/install.sh" -o install.sh
           sh install.sh
-      - name: Record
+      - name: OpenShell accepts the starter policies (FR-11)
+        run: scripts/check_starter_policies.sh
+      - name: Record (stops the gateway at the end)
+        if: always()
         run: scripts/record_openshell.sh
       - name: Gateway logs on failure
         if: failure()
