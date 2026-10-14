@@ -94,6 +94,16 @@ class HubSettings:
 
 
 @dataclass(frozen=True)
+class OtlpSettings:
+    """``[otlp]`` in collector.toml: a local OTLP/HTTP JSON receiver (#64). Off by default."""
+
+    enabled: bool = False
+    port: int = 4318  # always on 127.0.0.1
+    token_file: Path | None = None  # if set, agents must send "Authorization: Bearer <token>"
+    usage_source: str = "auto"  # "auto" | "logs" | "otlp"
+
+
+@dataclass(frozen=True)
 class CollectorSettings:
     hub_url: str | None = None
     token_file: Path | None = None  # default: state_dir()/token
@@ -107,6 +117,7 @@ class CollectorSettings:
     spool_limit_mb: int = 50
     # allow prompts/outputs/tool I/O in spans when the hub also asks for them (FR-6, #62)
     export_content: bool = False
+    otlp: OtlpSettings = field(default_factory=OtlpSettings)
 
     def resolved_token_file(self) -> Path:
         return self.token_file or state_dir() / "token"
@@ -163,6 +174,10 @@ def validate_collector(settings: CollectorSettings) -> CollectorSettings:
         raise ConfigError("collector tick intervals must be positive")
     if settings.backfill_days < 0 or settings.spool_limit_mb <= 0:
         raise ConfigError("collector.backfill_days must be >= 0 and spool_limit_mb > 0")
+    if settings.otlp.usage_source not in ("auto", "logs", "otlp"):
+        raise ConfigError('otlp.usage_source must be "auto", "logs" or "otlp"')
+    if not 0 < settings.otlp.port < 65536:
+        raise ConfigError("otlp.port must be between 1 and 65535")
     return settings
 
 

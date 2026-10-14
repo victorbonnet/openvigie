@@ -1,0 +1,923 @@
+{
+ "resourceLogs": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "claude-code"
+      }
+     },
+     {
+      "key": "service.version",
+      "value": {
+       "stringValue": "2.1.299"
+      }
+     }
+    ]
+   },
+   "scopeLogs": [
+    {
+     "scope": {
+      "name": "com.anthropic.claude_code.events",
+      "version": "2.1.299"
+     },
+     "logRecords": [
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:43:30.696Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "0"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "338"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "43784"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "23225"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2JmKbFPjYXodTqjs69G"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:43:34.857Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "1"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "284"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "67009"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "3892"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2JmhhGuZnYqcBBH2mun"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:43:56.650Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "2019"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "70901"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "5295"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2Jn559zYihNJ9RTVXvU"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:49:17.810Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "3"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "19429"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "76196"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "2252"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2JwDoGYvpsGGpeSs6j9"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:49:24.266Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "4"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "1835"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "78448"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "20120"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2KDL1XbySJLfRyQennV"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:58:11.613Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "5"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "87"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "0"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "48740"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2KtPUyKG6duFLQR8rNT"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:58:21.366Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "6"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "6"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "48740"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "2361"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2KtdGwGGzxpBr3h6kGQ"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:58:38.580Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "7"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "8"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "51101"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "42051"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2Kunkice3Z2VDhbf6wj"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "observedTimeUnixNano": "0",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T14:58:48.835Z"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "stringValue": "8"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-opus-5-5"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "stringValue": "0.0"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "stringValue": "2"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "stringValue": "3"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "stringValue": "93152"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "stringValue": "42352"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_011Cg2KvsnsPBF6sJiKn3pq7"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "main"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

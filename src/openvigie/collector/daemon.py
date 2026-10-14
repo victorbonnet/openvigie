@@ -32,6 +32,7 @@ from typing import Any
 from openvigie.adapters.base import Adapter, AdapterState, HostContext, TraceOptions
 from openvigie.adapters.registry import Discovery, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
+from openvigie.collector.otlp import Arbiter, OtlpReceiver, OtlpUsage
 from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
 from openvigie.config import CollectorSettings
@@ -78,6 +79,7 @@ class Collector:
         *,
         store: StateStore | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        otlp: OtlpReceiver | None = None,
     ) -> None:
         self.settings = settings
         self.ctx = ctx
@@ -94,6 +96,8 @@ class Collector:
         self.agents: list[AgentInstance] = []
         self.last_slow = float("-inf")
         self.adapter_states: dict[str, AdapterState] = {}
+        self.otlp = otlp
+        self.arbiter = Arbiter(settings.otlp.usage_source)
 
     # --- one tick ---------------------------------------------------------------------------
 
@@ -210,15 +214,20 @@ class Collector:
         sessions: list[dict[str, Any]] = []
         spans: list[dict[str, Any]] = []
         touched: list[AdapterState] = []
+        reported = self._otlp_by_agent()
         for agent in self.agents:
             adapter = by_type.get(agent.agent_type)
             if adapter is None:
                 continue
             state = self.adapter_state(adapter)
+            from_otlp = self.arbiter.otlp(agent, reported.get(agent.agent_id, []), state)
+            usage += [to_dict(r) for r in from_otlp]
             batch, _ = run_collect(adapter, self.ctx, agent, state)
             if batch is None:
+                if from_otlp:
+                    touched.append(state)
                 continue
-            usage += [to_dict(r) for r in batch.usage]
+            usage += [to_dict(r) for r in self.arbiter.logs(agent, batch.usage, state)]
             sessions += [to_dict(s) for s in batch.sessions]
             spans += [to_dict(s) for s in batch.spans]
             touched.append(state)
@@ -241,6 +250,26 @@ class Collector:
                 self.store.spool_put(redact_obj(p))
         for state in touched:
             state.commit()  # data is now with the hub or in the durable spool
+
+    def _otlp_by_agent(self) -> dict[str, list[OtlpUsage]]:
+        """OTLP usage received since the last slow tick, given to the first agent of its type."""
+        if self.otlp is None:
+            return {}
+        grouped: dict[str, list[OtlpUsage]] = {}
+        owners: dict[str, str] = {}
+        for agent in sorted(self.agents, key=lambda a: a.config_root or ""):
+            owners.setdefault(agent.agent_type, agent.agent_id)
+        orphans = 0
+        for item in self.otlp.drain():
+            owner = owners.get(item.agent_type)
+            if owner is None:
+                orphans += 1
+                continue
+            grouped.setdefault(owner, []).append(item)
+        if orphans:
+            log.warning("OTLP: %d usage events from agents not detected on this host dropped",
+                        orphans)  # fmt: skip
+        return grouped
 
     def _send_usage(self, payload: dict[str, Any], now: float) -> bool:
         if now < self.state.retry_at:
