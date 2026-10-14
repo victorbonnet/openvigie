@@ -91,6 +91,9 @@ ul.flags .facts { font-size: 13px; }
   padding: 16px;
 }
 
+section.panel + section.panel { margin-top: 12px; }
+.panel > h3:first-child { margin-top: 0; }
+
 .filters { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .filters select, .filters button { font: inherit; padding: 4px 8px; }
 dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }

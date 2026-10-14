@@ -28,6 +28,13 @@ runs only read-only commands: `openshell sandbox list`, `sandbox get` and `polic
   OpenShell installer does for the user who runs it.
   - If the collector runs as its own user, register the gateway for that user too, for example
     `sudo -u openvigie openshell gateway add …`.
+- Each host page lists its sandboxes, and each agent page shows its own: the phase, the policy
+  revision, the network rules, and what changed recently. An endpoint without
+  `enforcement: enforce` is marked **audit only**: OpenShell logs violations there but lets
+  them through.
+
+  ![A sandbox on an agent's page](img/sandbox.png)
+
 - The host's health list shows an `openshell` row:
   - OK;
   - degraded with the reason: an unsupported version or an unreachable gateway;

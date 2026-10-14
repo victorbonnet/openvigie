@@ -1,0 +1,42 @@
+{# OpenShell sandboxes (FR-10). sandbox_badge: the agent's sandbox in one badge.
+   sandbox_card: one sandbox with its network rules and recent policy changes. #}
+
+{% macro sandbox_badge(a, sandboxes, prefix="") %}
+{% set sb = (sandboxes or {}).get(a.agent_id) %}
+<span class="badge {{ a.sandboxed.value }}">{{ prefix }}{% if sb %}OpenShell: {{ sb.name }}{% if sb.policy_version %} · policy r{{ sb.policy_version }}{% endif %}{% else %}{{ a.sandboxed.value }}{% if a.sandbox_kind %} · {{ a.sandbox_kind }}{% endif %}{% endif %}</span>
+{% endmacro %}
+
+{% macro sandbox_card(box, changes, agent_names) %}
+<section class="panel" id="sandbox-{{ box.sandbox_id }}">
+<h3>{{ box.name }} <span class="badge {{ 'ok' if box.phase == 'Ready' else 'degraded' }}">{{ box.phase or "unknown" }}</span></h3>
+<dl class="meta">
+  <dt>Workspace</dt><dd>{{ box.workspace }}</dd>
+  <dt>Policy</dt><dd>{% if box.policy_version %}revision {{ box.policy_version }}{% else %}unknown{% endif %}{% if box.policy_hash %} <span class="muted"><code>{{ box.policy_hash[:12] }}</code></span>{% endif %}</dd>
+  <dt>Agents</dt><dd>{% for id in box.agent_ids %}<a href="/agents/{{ id }}">{{ agent_names.get(id, id) }}</a>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">none detected{% if box.agent_type %}; labelled <code>{{ box.agent_type }}</code>{% endif %}</span>{% endfor %}</dd>
+  <dt>Checked</dt><dd>{{ box.observed_at | ago }}</dd>
+</dl>
+<h4>Network rules</h4>
+{% if box.network_rules is none %}
+<p class="muted">Unknown: the collector couldn't read this sandbox's policy from OpenShell.</p>
+{% elif not box.network_rules %}
+<p>No network access: OpenShell denies every connection that no rule allows.</p>
+{% else %}
+<table>
+  <thead><tr><th>Rule</th><th>Allows</th><th>For</th></tr></thead>
+  <tbody>
+  {% for r in box.network_rules %}
+    <tr><td>{{ r.name }}</td>
+      <td>{% for e in r.endpoints %}<div><code>{{ e.host or "allowed IPs" }}{% if e.ports %}:{{ e.ports | join("/") }}{% endif %}{{ e.path or "" }}</code>{% if e.protocol %} {{ e.protocol }}{% endif %}{% if e.access %} · {{ e.access }}{% endif %}{% if e.enforcement != "enforce" and (e.access or e.protocol in ("rest", "websocket", "graphql", "mcp", "json-rpc")) %} <span class="badge degraded">audit only</span>{% endif %}</div>{% else %}<span class="muted">no endpoints</span>{% endfor %}</td>
+      <td>{% for b in r.binaries %}<code>{{ b }}</code>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">no binaries: allows nothing</span>{% endfor %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% if changes %}
+<h4>Recent changes</h4>
+<ul class="changes">
+{% for c in changes %}<li><span class="muted">{{ c.at | ago }}</span> {{ c.change }}{% if c.detail %}: {{ c.detail }}{% endif %}</li>{% endfor %}
+</ul>
+{% endif %}
+</section>
+{% endmacro %}
