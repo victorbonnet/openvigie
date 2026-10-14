@@ -145,12 +145,9 @@ def test_cli_runner_runs_the_binary_with_a_minimal_environment(
     run = cli_runner(str(fake_binary))
     assert run is not None and run(["--version"]).strip() == "openshell 0.1.4"
     names = set(run(["env"]).split())
-    assert "ANTHROPIC_API_KEY" not in names and names <= {
-        *cli.ENV_KEEP,
-        "NO_COLOR",
-        "PWD",
-        "LC_CTYPE",
-    }
+    added_by_os = {n for n in names if n.startswith(("__CF_", "LC_"))} | {"PWD"}  # macOS, libc
+    assert "ANTHROPIC_API_KEY" not in names
+    assert names - added_by_os <= {*cli.ENV_KEEP, "NO_COLOR"}
 
 
 def test_cli_runner_failures_are_bounded_errors(fake_binary: Path) -> None:
