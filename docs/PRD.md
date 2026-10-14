@@ -53,7 +53,7 @@ The MVP is a read-only monitoring dashboard. Write actions such as policies, sta
 **After the MVP**
 
 - Capability detection and risk scoring.
-- OpenShell sandbox inventory and policy editor, with dry-run and rollback.
+- OpenShell sandbox inventory, the network requests each sandbox blocked, and a policy editor with dry-run and rollback.
 - Admin actions: start, stop and kill agents; edit agent config and skills; rotate secrets.
 - Alerts (Telegram, email, webhook) on budgets, errors and risky changes.
 - More adapters through a plugin interface.
@@ -75,12 +75,13 @@ Requirements are numbered so issues and PRs can reference them. P0 is the MVP, P
 | FR-9 | Flag each agent's risks from its capabilities and sandbox state, with a severity and the reason for each flag (D10) | P1 |
 | FR-10 | List OpenShell sandboxes, which agent runs in each, and the active policy | P1 |
 | FR-11 | Generate a starter OpenShell policy from an agent's observed capabilities | P1 |
-| FR-12 | Edit and apply sandbox policies, with diff, dry-run and one-click rollback | P1 |
+| FR-12 | Edit and apply sandbox policies, with diff, dry-run and one-click rollback. This includes allowing a destination the sandbox blocked (FR-18), scoped by default to the program that was blocked | P1 |
 | FR-13 | Start, stop and kill agents from the UI | P1 |
 | FR-14 | Budgets and alerts per agent: tokens, cost, error rate | P1 |
 | FR-15 | Edit agent config and skills from the UI, with versioning | P2 |
 | FR-16 | Rotate an agent's API keys and secrets | P2 |
 | FR-17 | Audit log of every admin action: who, what, when, before and after | P1, required before any write action ships |
+| FR-18 | Show the network requests each sandbox blocked, per agent: destination host and port, the program that made the request, how many times and when last. Read-only; allowing one is a policy change under FR-12 | P1 |
 
 ## Architecture
 
