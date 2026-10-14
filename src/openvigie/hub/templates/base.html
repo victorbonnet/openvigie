@@ -17,6 +17,7 @@
       <a href="/usage">Usage</a>
       <a href="/prices">Prices</a>
       <a href="/hosts">Hosts{% set alerts = adapter_alerts(request) %}{% if alerts %} <span class="badge degraded" title="adapters needing attention">{{ alerts }}</span>{% endif %}</a>
+      <a href="/budgets">Budgets{% set alerts_24h = recent_alerts(request) %}{% if alerts_24h %} <span class="badge degraded" title="alerts in the last 24 hours">{{ alerts_24h }}</span>{% endif %}</a>
       <a href="/actions">Actions</a>
       <a href="/audit">Audit</a>
       {% endblock %}

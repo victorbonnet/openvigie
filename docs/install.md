@@ -72,9 +72,11 @@ can't impersonate. On macOS it runs as a LaunchAgent.
 
 | File | Default location | What |
 | --- | --- | --- |
-| `collector.toml` | `~/.config/openvigie/` | hub URL, homes to scan, adapters, OTLP receiver |
-| `hub.toml` | `~/.config/openvigie/` | bind, port, allowed hosts, retention, Langfuse |
+| `collector.toml` | `~/.config/openvigie/` | hub URL, homes to scan, adapters, OTLP receiver, allowed actions |
+| `hub.toml` | `~/.config/openvigie/` | bind, port, allowed hosts, retention, Langfuse, admins |
 | `prices.toml` | `~/.config/openvigie/` | optional price overrides |
+| `budgets.toml` | `~/.config/openvigie/` | optional cost and token budgets ([alerts](alerts.md)) |
+| `risk.toml` | `~/.config/openvigie/` | optional risk rule overrides |
 | `token` | `~/.local/state/openvigie/` | the collector's hub token (`0600`) |
 | `collector.db` | `~/.local/state/openvigie/` | read positions and the offline spool |
 | `hub.db` | `~/.local/share/openvigie/` | the hub's SQLite store |

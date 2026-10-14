@@ -16,10 +16,12 @@ from markupsafe import Markup
 
 from openvigie.adapters.spans import trace_id
 from openvigie.hub.api import DateParam, date_range
+from openvigie.hub.budgets import evaluate, load_budgets, used
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
 from openvigie.hub.reports import UsageRow, usage_report
 from openvigie.hub.riskview import AgentRisk, agent_risks
+from openvigie.hub.store.alerts import AlertStore
 from openvigie.hub.store.audit import AuditLog
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
@@ -421,6 +423,16 @@ def audit_page(request: Request, before: Annotated[int | None, Query(ge=1)] = No
     more = len(entries) == 100 and entries[-1].seq > 1
     return render(request, "audit.html", title="Audit log", entries=entries,
                   next_before=entries[-1].seq if more else None)  # fmt: skip
+
+
+@router.get("/budgets", response_class=HTMLResponse)
+def budgets_page(request: Request) -> HTMLResponse:
+    """Each budget's use in its current period, and recent alerts (FR-14)."""
+    budgets = load_budgets()
+    statuses = evaluate(request.app.state.db, request.app.state.prices, budgets.budgets,
+                        request.app.state.tz, datetime.now(UTC))  # fmt: skip
+    return render(request, "budgets.html", title="Budgets", statuses=statuses, budgets=budgets,
+                  alerts=AlertStore(request.app.state.db).recent(), used=used)  # fmt: skip
 
 
 @router.get("/settings", response_class=HTMLResponse)

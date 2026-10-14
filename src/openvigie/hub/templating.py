@@ -25,6 +25,7 @@ def templates_env() -> jinja2.Environment:
     env.filters["ago"] = ago
     env.globals["adapter_alerts"] = adapter_alerts
     env.globals["whoami"] = identity
+    env.globals["recent_alerts"] = recent_alerts
     env.globals["csrf_token"] = csrf_token
     return env
 
@@ -35,6 +36,15 @@ def adapter_alerts(request: Request) -> int:
 
     health = request.app.state.inventory.adapter_health()
     return sum(h.health.state is not HealthState.OK for h in health)
+
+
+def recent_alerts(request: Request) -> int:
+    """Alerts raised in the last 24 hours (nav badge)."""
+    from datetime import UTC, datetime, timedelta
+
+    from openvigie.hub.store.alerts import AlertStore
+
+    return AlertStore(request.app.state.db).count_since(datetime.now(UTC) - timedelta(days=1))
 
 
 def render(request: Request, template: str, **context: Any) -> HTMLResponse:
