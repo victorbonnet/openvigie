@@ -137,3 +137,16 @@ def test_one_mebibyte_is_fast() -> None:
     redact(text)
     elapsed = time.perf_counter() - start
     assert elapsed < 1.0, f"redact(1 MiB) took {elapsed:.3f}s"
+
+
+@pytest.mark.parametrize("kind", sorted(SECRETS))
+def test_redact_is_idempotent(kind: str) -> None:
+    samples = [
+        SECRETS[kind],
+        f'{{"api_key": "{SECRETS[kind]}"}}',
+        f"OPENAI_API_KEY={SECRETS[kind]}",
+        f"Authorization: Bearer {SECRETS[kind]}",
+    ]
+    for text in samples:
+        once = redact(text)
+        assert redact(once) == once
