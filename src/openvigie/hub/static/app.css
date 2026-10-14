@@ -100,6 +100,7 @@ dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; 
 dl.meta dt { color: var(--muted); }
 dl.meta dd { margin: 0; }
 code { font-size: 13px; }
+pre { overflow-x: auto; font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
 
 /* --- charts: validated categorical palette (dataviz reference instance) --- */
 :root {

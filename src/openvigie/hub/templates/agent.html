@@ -31,6 +31,25 @@
 
 {% include "_capabilities.html" %}
 
+{% if host and host.host.os == "darwin" %}{# D11: the risk section already says how to sandbox it #}
+{% elif starter %}
+<section id="starter">
+<h2>Starter OpenShell policy</h2>
+<p class="muted">A least-privilege starting point from what openvigie observed, with a comment on each rule.
+  Review it, then use it with <code>openshell sandbox create --policy starter.yaml -- &lt;agent&gt;</code>,
+  or <code>openshell policy set</code> for an existing sandbox. openvigie doesn't apply it.</p>
+{% if starter.missing or starter.extra %}
+<p class="notice">Compared with its sandbox now:
+  {% if starter.missing %}the starter allows {% for h in starter.missing %}<code>{{ h }}</code>{% if not loop.last %}, {% endif %}{% endfor %}, which the sandbox doesn't{% endif %}{% if starter.missing and starter.extra %}; {% endif %}
+  {% if starter.extra %}the sandbox also allows {% for h in starter.extra %}<code>{{ h }}</code>{% if not loop.last %}, {% endif %}{% endfor %}, which the starter doesn't need{% endif %}.</p>
+{% endif %}
+<p><button type="button" data-copy="starter-policy">Copy</button>
+  <a href="/agents/{{ row.agent.agent_id }}/starter-policy.yaml" download>Download</a></p>
+<pre class="panel" id="starter-policy">{{ starter.policy.yaml }}</pre>
+</section>
+<script src="/static/copy.js" defer></script>
+{% endif %}
+
 {% set t = usage.total %}
 <h2>Usage · last 30 days</h2>
 {% if t.records %}
