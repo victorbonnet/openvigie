@@ -16,6 +16,7 @@ in its ingest reply). Content goes into them only if both the hub and this colle
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import random
@@ -231,6 +232,7 @@ class Collector:
             sessions += [to_dict(s) for s in batch.sessions]
             spans += [to_dict(s) for s in batch.spans]
             touched.append(state)
+        spans += self._otlp_spans()
         if not touched:
             return
         payloads = [
@@ -251,14 +253,30 @@ class Collector:
         for state in touched:
             state.commit()  # data is now with the hub or in the durable spool
 
+    def _otlp_spans(self) -> list[dict[str, Any]]:
+        """Agent-emitted spans, credited like OTLP usage; dropped unless the hub wants traces."""
+        if self.otlp is None:
+            return []
+        received = self.otlp.drain_spans()
+        if not self.ctx.traces.enabled:
+            return []
+        owners = self._owners()
+        return [to_dict(dataclasses.replace(span, agent_id=owners[agent_type]))
+                for agent_type, span in received if agent_type in owners]  # fmt: skip
+
+    def _owners(self) -> dict[str, str]:
+        """Agent type → the agent credited with its OTLP data (first by config folder)."""
+        owners: dict[str, str] = {}
+        for agent in sorted(self.agents, key=lambda a: a.config_root or ""):
+            owners.setdefault(agent.agent_type, agent.agent_id)
+        return owners
+
     def _otlp_by_agent(self) -> dict[str, list[OtlpUsage]]:
         """OTLP usage received since the last slow tick, given to the first agent of its type."""
         if self.otlp is None:
             return {}
         grouped: dict[str, list[OtlpUsage]] = {}
-        owners: dict[str, str] = {}
-        for agent in sorted(self.agents, key=lambda a: a.config_root or ""):
-            owners.setdefault(agent.agent_type, agent.agent_id)
+        owners = self._owners()
         orphans = 0
         for item in self.otlp.drain():
             owner = owners.get(item.agent_type)

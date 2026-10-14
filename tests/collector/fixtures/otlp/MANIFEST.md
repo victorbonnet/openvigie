@@ -12,3 +12,10 @@ the documented event shapes; replace them with real captures when available, e.g
   `model`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`,
   `request_id`, sent as strings.
 - Totals: 9 calls, 24009 output tokens (same as the transcript fixture).
+- `codex_logs.json`: `codex.sse_event` log events with `event.kind = response.completed`, one per
+  model call of the Codex rollout fixture (`tests/adapters/codex/fixtures`, itself synthetic),
+  plus events that must be ignored: another `event.kind`, a failed completion
+  (`error.message`) and `codex.api_request`. Attribute keys follow `codex-rs/otel/src/events`
+  (`input_token_count`, `output_token_count`, `cached_token_count`, `reasoning_token_count`,
+  and the common `event.timestamp`, `conversation.id`, `model`). Totals: 3 calls; input 15000,
+  cached 4800, output 770, reasoning 128 (the two sessions of the rollout fixture).

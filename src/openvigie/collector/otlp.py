@@ -7,8 +7,17 @@ Everything received is untrusted: body size and item caps, strict decoding, and 
 that never echo the input. An optional shared token (``Authorization: Bearer …``) keeps other
 local processes from injecting fake usage.
 
-Mapped today: Claude Code's ``claude_code.api_request`` log events (one per API call, see
-https://code.claude.com/docs/en/monitoring-usage). Metrics and traces are accepted and ignored.
+Mapped today (log events, one per model call):
+
+- Claude Code: ``claude_code.api_request``
+  (https://code.claude.com/docs/en/monitoring-usage);
+- Codex: ``codex.sse_event`` with ``event.kind = response.completed``
+  (``codex-rs/otel/src/events``). As in rollouts, cached input is part of the input count and
+  reasoning is part of the output count.
+
+Traces (``/v1/traces``) are passed on to the hub as spans while it exports traces (FR-6), with
+an allowlist of attributes: GenAI names that carry no content, ``session.id``, ``error.type``.
+Metrics are accepted and ignored.
 
 Source arbitration (``usage_source``), per agent, so nothing is counted twice:
 
@@ -31,9 +40,10 @@ from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from openvigie import semconv
 from openvigie.adapters.base import AdapterState
 from openvigie.adapters.usage import int_or_none, parse_time
-from openvigie.model import AgentInstance, UsageQuality, UsageRecord, stable_id
+from openvigie.model import AgentInstance, Span, SpanStatus, UsageQuality, UsageRecord, stable_id
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +54,12 @@ MAX_RECORDS = 5000  # log records per request
 MAX_ATTRIBUTES = 128
 MAX_QUEUE = 20_000
 MAX_STR = 256
+MAX_SPANS = 5000  # per request, and queued
+SPAN_KEEP = {"session.id", "error.type", "conversation.id"}
+SPAN_DROP_WORDS = ("prompt", "completion", "message", "argument", "result", "content", "input.",
+                   "output.")  # fmt: skip
+STATUS = {0: SpanStatus.UNSET, 1: SpanStatus.OK, 2: SpanStatus.ERROR}
+HEX = frozenset("0123456789abcdef")
 
 Scalar = str | int | float | bool
 
@@ -98,8 +114,12 @@ def _int(value: Any) -> int | None:
 
 
 def _nanos(value: Any) -> datetime | None:
-    n = _int(value)
-    return datetime.fromtimestamp(n / 1e9, UTC) if n else None
+    """Unix nanoseconds (a string in OTLP JSON; above 2**53, so not a token count)."""
+    if isinstance(value, str) and value.isdigit() and len(value) <= 19:
+        value = int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value < 2**63:
+        return None
+    return datetime.fromtimestamp(value // 1000 / 1e6, UTC)
 
 
 def _string(value: Scalar | None) -> str | None:
@@ -132,7 +152,30 @@ def claude_code_event(attrs: dict[str, Scalar], record: dict[str, Any]) -> OtlpU
     )
 
 
+def codex_event(attrs: dict[str, Scalar], record: dict[str, Any]) -> OtlpUsage | None:
+    if attrs.get("event.name") != "codex.sse_event":
+        return None
+    if attrs.get("event.kind") != "response.completed" or "error.message" in attrs:
+        return None
+    when = parse_time(attrs.get("event.timestamp")) or _nanos(record.get("timeUnixNano"))
+    if when is None:
+        return None
+    return OtlpUsage(
+        agent_type="codex",
+        timestamp=when,
+        provider="openai",
+        session_id=_string(attrs.get("conversation.id")),
+        model=_string(attrs.get("model")),
+        input_tokens=_int(attrs.get("input_token_count")),
+        output_tokens=_int(attrs.get("output_token_count")),
+        cache_read_input_tokens=_int(attrs.get("cached_token_count")),
+        reasoning_tokens=_int(attrs.get("reasoning_token_count")),
+    )
+
+
 Mapper = Callable[[dict[str, Scalar], dict[str, Any]], OtlpUsage | None]
+# by service.name; Codex's varies by front end (codex_cli_rs, codex_exec, …), so events whose
+# name starts with "codex." are recognised whatever the service
 LOG_MAPPERS: dict[str, Mapper] = {"claude-code": claude_code_event}
 
 
@@ -154,11 +197,83 @@ def parse_logs(payload: Any) -> list[OtlpUsage]:
                 seen += 1
                 if seen > MAX_RECORDS:
                     raise ValueError("too many log records")
-                if mapper is None or not isinstance(record, dict):
+                if not isinstance(record, dict):
                     continue
-                usage = mapper(attributes(record.get("attributes")), record)
+                attrs = attributes(record.get("attributes"))
+                event = attrs.get("event.name")
+                chosen = (
+                    codex_event if isinstance(event, str) and event.startswith("codex.") else mapper
+                )
+                if chosen is None:
+                    continue
+                usage = chosen(attrs, record)
                 if usage is not None:
                     found.append(usage)
+    return found
+
+
+def _agent_type(service: Scalar | None) -> str | None:
+    if service == "claude-code":
+        return "claude-code"
+    if isinstance(service, str) and service.startswith("codex"):
+        return "codex"
+    return None
+
+
+def _hex(value: Any, length: int) -> str | None:
+    if isinstance(value, str) and len(value) == length and set(value.lower()) <= HEX:
+        return value.lower()
+    return None
+
+
+def _span_attributes(attrs: dict[str, Scalar]) -> dict[str, Scalar]:
+    """Only attributes that can't hold content: agents may put prompts in their own spans."""
+    return {
+        k: v
+        for k, v in attrs.items()
+        if k in SPAN_KEEP
+        or (k.startswith("gen_ai.") and k not in semconv.CONTENT_ATTRIBUTES
+            and not any(word in k for word in SPAN_DROP_WORDS))
+    }  # fmt: skip
+
+
+def parse_traces(payload: Any) -> list[tuple[str, Span]]:
+    """(agent type, span) pairs from an ``ExportTraceServiceRequest`` of a known agent."""
+    found: list[tuple[str, Span]] = []
+    seen = 0
+    resources = payload.get("resourceSpans") if isinstance(payload, dict) else None
+    for resource in resources if isinstance(resources, list) else []:
+        if not isinstance(resource, dict):
+            continue
+        res = resource.get("resource")
+        agent_type = _agent_type(
+            attributes(res.get("attributes") if isinstance(res, dict) else None).get("service.name")
+        )
+        scopes = resource.get("scopeSpans")
+        for scope in scopes if isinstance(scopes, list) else []:
+            spans = scope.get("spans") if isinstance(scope, dict) else None
+            for raw in spans if isinstance(spans, list) else []:
+                seen += 1
+                if seen > MAX_SPANS:
+                    raise ValueError("too many spans")
+                if agent_type is None or not isinstance(raw, dict):
+                    continue
+                trace, span = _hex(raw.get("traceId"), 32), _hex(raw.get("spanId"), 16)
+                start, name = _nanos(raw.get("startTimeUnixNano")), raw.get("name")
+                if not trace or not span or not start or not isinstance(name, str):
+                    continue
+                status = raw.get("status")
+                code = _int(status.get("code")) if isinstance(status, dict) else None
+                found.append((agent_type, Span(
+                    trace_id=trace,
+                    span_id=span,
+                    name=name[:MAX_STR],
+                    start_time=start,
+                    end_time=_nanos(raw.get("endTimeUnixNano")),
+                    parent_span_id=_hex(raw.get("parentSpanId"), 16),
+                    status=STATUS.get(code or 0, SpanStatus.UNSET),
+                    attributes=_span_attributes(attributes(raw.get("attributes"))),
+                )))  # fmt: skip
     return found
 
 
@@ -170,6 +285,7 @@ class OtlpReceiver:
         self.port = port
         self._token = token
         self._queue: deque[OtlpUsage] = deque(maxlen=MAX_QUEUE)
+        self._spans: deque[tuple[str, Span]] = deque(maxlen=MAX_SPANS)
         self._lock = threading.Lock()
         self.dropped = 0
         self.received = 0
@@ -194,9 +310,11 @@ class OtlpReceiver:
         try:
             payload = json.loads(body)
             usage = parse_logs(payload) if path == "/v1/logs" else []
+            spans = parse_traces(payload) if path == "/v1/traces" else []
         except ValueError:
             return 400, b'{"message": "invalid OTLP JSON"}'
         with self._lock:
+            self._spans.extend(spans)
             if len(self._queue) + len(usage) > MAX_QUEUE:
                 self.dropped += len(self._queue) + len(usage) - MAX_QUEUE
             self._queue.extend(usage)
@@ -207,6 +325,12 @@ class OtlpReceiver:
         with self._lock:
             items = list(self._queue)
             self._queue.clear()
+        return items
+
+    def drain_spans(self) -> list[tuple[str, Span]]:
+        with self._lock:
+            items = list(self._spans)
+            self._spans.clear()
         return items
 
     def start(self) -> None:

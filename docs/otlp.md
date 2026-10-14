@@ -41,6 +41,31 @@ them anyway: only token counts, model, session and request ids are kept.
 OTLP usage is credited to the Claude Code install the collector detects (the first one, if
 there are several config folders).
 
+## Codex
+
+Codex reports each model response as a `codex.sse_event` log event with
+`event.kind = response.completed` and token counts (`input_token_count`, `cached_token_count`,
+`output_token_count`, `reasoning_token_count`). In `~/.codex/config.toml`:
+
+```toml
+[otel]
+exporter = { otlp-http = { endpoint = "http://127.0.0.1:4318/v1/logs", protocol = "json" } }
+log_user_prompt = false
+# only with token_file:
+# exporter = { otlp-http = { endpoint = "…", protocol = "json", headers = { "Authorization" = "Bearer <token>" } } }
+```
+
+Check the exact keys against your Codex version's configuration reference; they have moved
+between releases. OTLP usage from Codex is priced as OpenAI. If Codex uses another provider,
+keep `usage_source = "logs"`, which reads the provider from `config.toml`.
+
+## Traces
+
+Spans that agents send to `/v1/traces` are passed on to the hub while it exports traces to
+Langfuse ([traces.md](traces.md)), and dropped otherwise. Only attributes that can't carry
+content are kept: GenAI names such as models and token counts, `session.id` and
+`error.type`. Agents may put prompts in their own spans, so anything else is removed.
+
 ## Which source wins
 
 - `auto` (default): logs until OTLP usage first arrives for an agent, then OTLP. The switch
