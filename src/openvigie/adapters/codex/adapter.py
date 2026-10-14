@@ -19,6 +19,7 @@ from pathlib import Path, PurePath
 from typing import Any
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
+from openvigie.adapters.codex.capabilities import read_capabilities
 from openvigie.adapters.codex.spans import RolloutSpans
 from openvigie.adapters.common import (
     attribute_processes,
@@ -35,6 +36,7 @@ from openvigie.adapters.usage import (
 )
 from openvigie.model import (
     AgentInstance,
+    Capabilities,
     SandboxState,
     Session,
     UsageQuality,
@@ -67,6 +69,7 @@ class CodexAdapter(Adapter):
         super().__init__()
         self.roots: dict[str, Path] = {}
         self.providers: dict[str, str] = {}
+        self.procs: dict[str, list[ProcessInfo]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         roots = [
@@ -81,6 +84,7 @@ class CodexAdapter(Adapter):
             self.roots[agent_id] = root
             self.providers[agent_id] = self._check_config(root)
             procs = attribute_processes(codex_procs, root, roots)
+            self.procs[agent_id] = procs
             newest = newest_mtime(root / "sessions", ROLLOUT_GLOB)
             sandboxed, kind = SandboxState.UNKNOWN, None
             if procs:
@@ -100,6 +104,13 @@ class CodexAdapter(Adapter):
                 )
             )
         return found
+
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        root = self.roots.get(agent.agent_id)
+        if root is None:
+            return None
+        return read_capabilities(agent, root, ctx.homes, self.procs.get(agent.agent_id, []),
+                                 ctx.now())  # fmt: skip
 
     def _check_config(self, root: Path) -> str:
         """Validate config.toml and return the model provider (default ``openai``)."""
