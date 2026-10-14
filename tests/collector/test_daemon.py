@@ -246,3 +246,14 @@ def test_spooled_usage_is_flushed_first(tmp_path: Path, hub: tuple[TestClient, D
     collector.tick()
     assert [r.record_id for r in UsageStore(hub[1]).records()] == [record.record_id]
     assert collector.store.spool_stats()[0] == 0
+
+
+def test_span_chunks_respect_count_and_size() -> None:
+    from openvigie.collector import daemon
+
+    small = [{"n": i} for i in range(daemon.SPAN_CHUNK + 5)]
+    assert [len(c) for c in daemon._span_chunks(small)] == [daemon.SPAN_CHUNK, 5]
+    big = [{"text": "x" * (daemon.SPAN_CHUNK_BYTES // 3)} for _ in range(7)]
+    chunks = daemon._span_chunks(big)
+    assert sum(len(c) for c in chunks) == 7 and all(len(c) <= 2 for c in chunks)
+    assert daemon._span_chunks([]) == []

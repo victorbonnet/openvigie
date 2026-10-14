@@ -139,7 +139,7 @@ class CodexAdapter(Adapter):
         sessions: dict[str, Session] = {}
         tracers: dict[str, RolloutSpans] = {}
         for key, entry in tail_files(
-            root, root / "sessions", ROLLOUT_GLOB, state, batch, TailBudget()
+            root, root / "sessions", ROLLOUT_GLOB, state, batch, TailBudget.for_context(ctx)
         ):
             if key not in contexts:
                 contexts[key] = dict(state.get("ctx:" + key) or {})

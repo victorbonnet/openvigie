@@ -8,10 +8,15 @@ unreachable the loop keeps running: status events wait in a bounded queue and pu
 Every slow tick (default 30 s) runs each adapter's ``collect`` and pushes usage. If the hub
 can't take it, the payload goes to the durable spool. Cursors are committed only once the data
 is acknowledged or spooled (at-least-once; the hub deduplicates).
+
+Spans (FR-6) are built and sent only while the hub says it exports traces (``traces.wanted``
+in its ingest reply). Content goes into them only if both the hub and this collector's
+``export_content`` allow it.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import resource
@@ -24,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from openvigie.adapters.base import Adapter, AdapterState, HostContext
+from openvigie.adapters.base import Adapter, AdapterState, HostContext, TraceOptions
 from openvigie.adapters.registry import Discovery, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
 from openvigie.collector.state import StateStore
@@ -38,6 +43,8 @@ log = logging.getLogger(__name__)
 HEARTBEAT_S = 60.0
 MAX_PENDING_EVENTS = 10_000
 USAGE_CHUNK = 2000
+SPAN_CHUNK = 1000
+SPAN_CHUNK_BYTES = 1024 * 1024  # the hub refuses request bodies over 2 MiB
 SPOOL_FLUSH_PER_TICK = 20
 MAX_BACKOFF_S = 60.0
 UNAUTHORIZED_RETRY_S = 300.0
@@ -149,12 +156,25 @@ class Collector:
         full = now - self.state.last_full_push >= HEARTBEAT_S
         payload = self.build_payload(agents, health, full)
         try:
-            self.client.post("/api/v1/ingest", redact_obj(payload))
+            reply = self.client.post("/api/v1/ingest", redact_obj(payload))
         except HubError as exc:
             self._failed(exc, now)
             return False
         self._succeeded(payload, full, now)
+        self._apply_traces(reply)
         return True
+
+    def _apply_traces(self, reply: dict[str, Any]) -> None:
+        """Follow the hub's wish for spans; content needs this collector's consent too."""
+        traces = reply.get("traces")
+        traces = traces if isinstance(traces, dict) else {}
+        wanted = traces.get("wanted") is True
+        content = wanted and traces.get("export_content") is True and self.settings.export_content
+        options = TraceOptions(enabled=wanted, export_content=content)
+        if options != self.ctx.traces:
+            log.info("trace export %s%s", "on" if wanted else "off",
+                     " (with content)" if content else "")  # fmt: skip
+            self.ctx.traces = options
 
     # --- usage (slow tick) --------------------------------------------------------------------
 
@@ -168,7 +188,9 @@ class Collector:
             )
         return self.adapter_states[adapter.agent_type]
 
-    def usage_payload(self, usage: list[Any], sessions: list[Any]) -> dict[str, Any]:
+    def usage_payload(
+        self, usage: list[Any], sessions: list[Any], spans: list[Any] | None = None
+    ) -> dict[str, Any]:
         payload = {
             "schema_version": SCHEMA_VERSION,
             "host": to_dict(self.ctx.host),
@@ -176,6 +198,8 @@ class Collector:
             "usage": usage,
             "sessions": sessions,
         }
+        if spans:
+            payload["spans"] = spans
         if self.store:
             payload["collector"] = {"spool_dropped": self.store.dropped()}
         return payload
@@ -184,6 +208,7 @@ class Collector:
         by_type = {a.agent_type: a for a in self.discovery.adapters}
         usage: list[dict[str, Any]] = []
         sessions: list[dict[str, Any]] = []
+        spans: list[dict[str, Any]] = []
         touched: list[AdapterState] = []
         for agent in self.agents:
             adapter = by_type.get(agent.agent_type)
@@ -195,6 +220,7 @@ class Collector:
                 continue
             usage += [to_dict(r) for r in batch.usage]
             sessions += [to_dict(s) for s in batch.sessions]
+            spans += [to_dict(s) for s in batch.spans]
             touched.append(state)
         if not touched:
             return
@@ -204,6 +230,7 @@ class Collector:
         ]
         if not usage and not sessions:
             payloads = []
+        payloads += [self.usage_payload([], [], chunk) for chunk in _span_chunks(spans)]
         delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
         if not delivered:
             if self.store is None:
@@ -276,3 +303,17 @@ class Collector:
             except Exception:  # never die on a bad tick
                 log.exception("collector tick failed")
             stop.wait(max(0.0, interval - (self.monotonic() - started)))
+
+
+def _span_chunks(spans: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Split spans so each push stays well under the hub's body limit."""
+    chunks: list[list[dict[str, Any]]] = []
+    size = 0
+    for span in spans:
+        cost = len(json.dumps(span))
+        if not chunks or len(chunks[-1]) >= SPAN_CHUNK or size + cost > SPAN_CHUNK_BYTES:
+            chunks.append([])
+            size = 0
+        chunks[-1].append(span)
+        size += cost
+    return chunks

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from openvigie.adapters.base import ActivityBatch, AdapterState
+from openvigie.adapters.base import ActivityBatch, AdapterState, HostContext
 from openvigie.safeio import FileCursor, UnsafeFileError, tail_jsonl, walk_bounded
 
 MiB = 1024 * 1024
@@ -20,6 +20,11 @@ class TailBudget:
 
     remaining: int = 16 * MiB
     per_file: int = 4 * MiB
+
+    @classmethod
+    def for_context(cls, ctx: HostContext) -> TailBudget:
+        """Spans cost far more memory per line than usage: read less per tick when tracing."""
+        return cls(remaining=4 * MiB, per_file=2 * MiB) if ctx.traces.enabled else cls()
 
 
 def int_or_none(value: Any) -> int | None:

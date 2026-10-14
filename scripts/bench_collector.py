@@ -2,12 +2,13 @@
 """Collector footprint benchmark (NFR: < 100 MB RSS, < 2% CPU idle on a Pi 5).
 
     uv run scripts/bench_collector.py generate <dir> [--sessions N] [--lines N]
-    uv run scripts/bench_collector.py run <dir> [--max-rss-mb 100] [--idle-ticks 10]
+    uv run scripts/bench_collector.py run <dir> [--max-rss-mb 100] [--idle-ticks 10] [--traces]
 
 ``generate`` writes a synthetic home with Claude Code transcripts and Codex rollouts.
 ``run`` (a separate process, so RSS is the collector's alone) backfills all of it through the
 real adapters and collector loop against a stub hub, then measures idle ticks. It prints a JSON
-report and exits 1 if peak RSS exceeds the budget.
+report and exits 1 if peak RSS exceeds the budget. ``--traces`` makes the stub hub ask for spans
+(trace export on), the most memory-hungry mode.
 """
 
 from __future__ import annotations
@@ -137,13 +138,15 @@ def cpu_s() -> float:
     return usage.ru_utime + usage.ru_stime
 
 
-def run(root: Path, max_rss_mb: float, idle_ticks: int) -> int:
-    pushed = {"usage": 0}
+def run(root: Path, max_rss_mb: float, idle_ticks: int, traces: bool = False) -> int:
+    pushed = {"usage": 0, "spans": 0}
+    reply = json.dumps({"ignored": [], "traces": {"wanted": traces}}).encode()
 
     def stub_hub(method: str, url: str, body: bytes | None, headers: Any, timeout: float) -> Any:
         payload = json.loads(body or b"{}")
         pushed["usage"] += len(payload.get("usage", []))
-        return 200, b'{"ignored": []}'
+        pushed["spans"] += len(payload.get("spans", []))
+        return 200, reply
 
     settings = CollectorSettings(homes=(root,), slow_tick_s=0.0, backfill_days=3650)
     collector = Collector(
@@ -156,10 +159,10 @@ def run(root: Path, max_rss_mb: float, idle_ticks: int) -> int:
     started, cpu0 = time.perf_counter(), cpu_s()
     backfill_ticks = 0
     while True:
-        before = pushed["usage"]
+        before = pushed["usage"] + pushed["spans"]
         collector.tick()
         backfill_ticks += 1
-        if pushed["usage"] == before and backfill_ticks > 1:
+        if pushed["usage"] + pushed["spans"] == before and backfill_ticks > 1:
             break
     backfill_s, backfill_cpu = time.perf_counter() - started, cpu_s() - cpu0
     idle_cpu0 = cpu_s()
@@ -168,6 +171,7 @@ def run(root: Path, max_rss_mb: float, idle_ticks: int) -> int:
     per_tick = (cpu_s() - idle_cpu0) / idle_ticks
     report = {
         "usage_records": pushed["usage"],
+        "spans": pushed["spans"],
         "backfill_ticks": backfill_ticks,
         "backfill_wall_s": round(backfill_s, 2),
         "backfill_cpu_s": round(backfill_cpu, 2),
@@ -194,11 +198,12 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("dir", type=Path)
     bench.add_argument("--max-rss-mb", type=float, default=100.0)
     bench.add_argument("--idle-ticks", type=int, default=10)
+    bench.add_argument("--traces", action="store_true", help="hub asks for spans")
     args = parser.parse_args(argv)
     if args.cmd == "generate":
         generate(args.dir, args.sessions, args.lines)
         return 0
-    return run(args.dir, args.max_rss_mb, args.idle_ticks)
+    return run(args.dir, args.max_rss_mb, args.idle_ticks, args.traces)
 
 
 if __name__ == "__main__":

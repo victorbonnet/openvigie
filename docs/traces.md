@@ -18,6 +18,10 @@ invoke_agent claude-code          session.id, provider
 Trace and span ids are deterministic, so re-sent spans update the same trace instead of
 duplicating it.
 
+Collectors learn from the hub's replies that traces are wanted and only then build spans, so
+trace export costs nothing when it is off. Spans cover what the collector reads after that
+point: sessions already read before export was turned on are not sent again.
+
 ## Setup
 
 1. In Langfuse, create a project and an API key pair.
@@ -49,7 +53,7 @@ The **Settings** page shows the queue (waiting, exported, dropped) and the last 
 - **No content by default.** Prompts, model outputs, tool arguments and tool results are
   left out. Shell commands can contain secrets, so they are not exported either.
 - Content is exported only when **both** the hub (`export_content = true` here) and the
-  collector on that machine allow it.
+  collector on that machine (`export_content = true` in its `collector.toml`) allow it.
 - Every attribute passes the redactor twice: on the collector, and again on the hub before
   it leaves your network.
 - Spans are not stored by the hub: they sit in a short export queue and are then deleted.

@@ -108,7 +108,9 @@ class ClaudeCodeAdapter(Adapter):
         records: dict[str, UsageRecord] = {}
         sessions: dict[str, Session] = {}
         tracers: dict[str, TranscriptSpans] = {}
-        files = tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget())
+        files = tail_files(
+            root, root / "projects", "*.jsonl", state, batch, TailBudget.for_context(ctx)
+        )
         for key, entry in files:
             record = self._usage(agent, entry, state)
             if ctx.traces.enabled and not before_backfill(entry, state):

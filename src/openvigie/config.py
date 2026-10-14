@@ -104,6 +104,8 @@ class CollectorSettings:
     slow_tick_s: float = 30.0
     backfill_days: int = 30  # history read on first run; older usage is skipped
     spool_limit_mb: int = 50
+    # allow prompts/outputs/tool I/O in spans when the hub also asks for them (FR-6, #62)
+    export_content: bool = False
 
     def resolved_token_file(self) -> Path:
         return self.token_file or state_dir() / "token"

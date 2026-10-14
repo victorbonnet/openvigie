@@ -33,9 +33,9 @@ ADAPTERS = Path(__file__).parents[1] / "adapters"
 
 
 class Hub:
-    def __init__(self, tmp_path: Path) -> None:
+    def __init__(self, tmp_path: Path, settings: HubSettings | None = None) -> None:
         self.db = Database(tmp_path / "hub" / "hub.db")
-        app = create_app(HubSettings(), self.db)
+        self.app = app = create_app(settings or HubSettings(), self.db)
         config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
         self.server = uvicorn.Server(config)
         self.thread = threading.Thread(target=self.server.run, daemon=True)

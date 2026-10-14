@@ -47,3 +47,5 @@ jobs:
       - run: uv sync --locked
       - run: uv run scripts/bench_collector.py generate "$RUNNER_TEMP/bench" --sessions 100 --lines 1000
       - run: uv run scripts/bench_collector.py run "$RUNNER_TEMP/bench" --max-rss-mb 100
+      - run: rm -rf "$RUNNER_TEMP/bench/state"
+      - run: uv run scripts/bench_collector.py run "$RUNNER_TEMP/bench" --max-rss-mb 100 --traces
