@@ -43,7 +43,7 @@ flowchart LR
 
 | Module | Owns | Public interface |
 |---|---|---|
-| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`; `to_dict` / `from_dict`; `stable_id` |
+| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `OpenShellSandbox`; `to_dict` / `from_dict`; `stable_id` |
 | `config` | Settings files and private files | `HubSettings`, `CollectorSettings` (and sections); `load_hub_settings`, `load_collector_settings`; `config_dir` / `state_dir` / `data_dir`; `read_private_file`, `write_private_file` |
 | `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `FileCursor`, `ReadStats` |
 | `redact` | Removing secrets from anything that leaves the process | `redact`, `redact_obj` |
@@ -60,9 +60,9 @@ flowchart LR
 | `collector/state` | Cursors and the outbound spool | `StateStore` |
 | `collector/otlp` | Local OTLP receiver (optional) | `OtlpReceiver`, `Arbiter` |
 | `hub/app` | The FastAPI app and its hardening (hosts, body limit, headers) | `create_app` |
-| `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `UsageResponse` |
+| `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `SandboxesResponse`, `UsageResponse` |
 | `hub/ui` | The web UI (GET only) | routes, templates in `hub/templates` |
-| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SpanQueue`, `Credentials` |
+| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials` |
 | `hub/reports` | Usage and cost aggregation | `usage_report` |
 | `hub/riskview` | Risk of known agents | `agent_risks` |
 | `hub/langfuse` | Trace export (FR-6, opt-in) | `LangfuseExporter`, `trace_link` |

@@ -18,6 +18,7 @@ from openvigie.model import (
     Capabilities,
     Host,
     Id,
+    OpenShellSandbox,
     Session,
     Span,
     StatusEvent,
@@ -71,6 +72,8 @@ class IngestRequest(ApiModel):
     sessions: Annotated[list[Session], Field(max_length=1000)] = []
     spans: Annotated[list[Span], Field(max_length=2000)] = []
     capabilities: Annotated[list[Capabilities], Field(max_length=500)] = []
+    # the host's full set of OpenShell sandboxes; absent: not reported, []: none any more
+    sandboxes: Annotated[list[OpenShellSandbox], Field(max_length=500)] | None = None
 
 
 class Accepted(ApiModel):
@@ -82,6 +85,7 @@ class Accepted(ApiModel):
     usage: int
     sessions: int
     capabilities: int
+    sandboxes: int = 0
     spans: int
 
 
@@ -124,6 +128,12 @@ class AgentOut(ApiModel):
     agent: AgentInstance
     hostname: str
     risk: RiskOut
+
+
+class SandboxesResponse(ApiModel):
+    """``GET /api/v1/sandboxes``: every OpenShell sandbox the hub knows, by host (FR-10)."""
+
+    sandboxes: list[OpenShellSandbox]
 
 
 class AgentsResponse(ApiModel):

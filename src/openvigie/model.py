@@ -282,6 +282,43 @@ class AdapterHealth:
     skipped: Count = 0
 
 
+@wire_type
+class SandboxEndpoint:
+    """A destination a sandbox's network rule allows (OpenShell ``network_policies``)."""
+
+    host: Id | None = None  # None when the rule only lists allowed IPs
+    ports: Items[Count] = ()
+    path: Text | None = None
+    protocol: Id | None = None  # rest | websocket | graphql | mcp | json-rpc | tcp
+    access: Id | None = None  # read-only | read-write | full
+    enforcement: Id | None = None  # enforce | audit; None means OpenShell's default (audit)
+
+
+@wire_type
+class SandboxRule:
+    name: Id
+    endpoints: Items[SandboxEndpoint] = ()
+    binaries: Items[Text] = ()  # executables allowed to use the endpoints
+
+
+@wire_type
+class OpenShellSandbox:
+    """One OpenShell sandbox on a host and its active policy's network rules (FR-10)."""
+
+    sandbox_id: Id
+    host_id: Id
+    name: Id
+    observed_at: Timestamp = EPOCH
+    workspace: Id = "default"
+    phase: Id = ""
+    labels: Annotated[dict[Id, Text], Field(max_length=MAX_ITEMS)] = field(default_factory=dict)
+    agent_type: Id | None = None  # from the label openvigie.agent=<type>
+    agent_ids: Items[Id] = ()  # detected agents running in it
+    policy_version: Count | None = None
+    policy_hash: Id | None = None
+    network_rules: Items[SandboxRule] | None = None  # None: the policy couldn't be read
+
+
 # --- codec -------------------------------------------------------------------------------------
 
 

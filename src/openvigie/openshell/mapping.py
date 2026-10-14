@@ -10,10 +10,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Sequence
+from datetime import datetime
+
+from pydantic import ValidationError
 
 from openvigie.adapters.base import ProcessInfo
-from openvigie.model import SandboxState
+from openvigie.model import (
+    AgentInstance,
+    OpenShellSandbox,
+    SandboxEndpoint,
+    SandboxRule,
+    SandboxState,
+)
 from openvigie.openshell.cli import Inventory, SandboxView
+from openvigie.openshell.models import NetworkRule
 
 AGENT_LABEL = "openvigie.agent"
 MATCH_WINDOW_S = 1.0
@@ -55,6 +65,60 @@ def labelled_agent_type(view: SandboxView) -> str | None:
 def kind(view: SandboxView) -> str:
     """``AgentInstance.sandbox_kind`` for an agent in this sandbox."""
     return f"openshell:{view.sandbox.name}"
+
+
+def records(
+    inventory: Inventory, host_id: str, agents: Sequence[AgentInstance], now: datetime
+) -> list[OpenShellSandbox]:
+    """The wire records of this host's sandboxes, with the detected agents running in each."""
+    out = []
+    for view in inventory.sandboxes:
+        inside = tuple(a.agent_id for a in agents if a.sandbox_kind == kind(view))
+        try:
+            out.append(_record(view, host_id, inside, now))
+        except ValidationError:
+            continue  # a value outside the wire bounds: leave this sandbox out, keep the rest
+    return out
+
+
+def _record(
+    view: SandboxView, host_id: str, agent_ids: tuple[str, ...], now: datetime
+) -> OpenShellSandbox:
+    sandbox, policy = view.sandbox, view.policy
+    admission = sandbox.configuration_admission
+    policy_hash = (policy.hash if policy else "") or (admission.policy_hash if admission else "")
+    rules = None
+    if policy is not None:
+        rules = tuple(_rule(key, rule) for key, rule in policy.policy.network_policies.items())
+    return OpenShellSandbox(
+        sandbox_id=sandbox.id,
+        host_id=host_id,
+        name=sandbox.name,
+        observed_at=now,
+        workspace=sandbox.workspace,
+        phase=sandbox.phase,
+        labels=dict(sandbox.labels),
+        agent_type=labelled_agent_type(view),
+        agent_ids=agent_ids,
+        policy_version=policy.version if policy else sandbox.current_policy_version,
+        policy_hash=policy_hash or None,
+        network_rules=rules,
+    )
+
+
+def _rule(key: str, rule: NetworkRule) -> SandboxRule:
+    endpoints = tuple(
+        SandboxEndpoint(
+            host=e.host,
+            ports=tuple(e.ports) or ((e.port,) if e.port else ()),
+            path=e.path,
+            protocol=e.protocol,
+            access=e.access,
+            enforcement=e.enforcement,
+        )
+        for e in rule.endpoints
+    )
+    return SandboxRule(rule.name or key, endpoints, tuple(b.path for b in rule.binaries))
 
 
 class OpenShellProbe:
