@@ -14,22 +14,16 @@ for cmd in "sandbox create" "sandbox list" "sandbox get" "policy get" "policy li
   # shellcheck disable=SC2086
   run "help-${cmd// /-}.txt" openshell $cmd --help
 done
-# create may stay attached to its command: run it in the background and wait for the sandbox
-section create.json
-( timeout 300 openshell sandbox create --name "$NAME" --label openvigie.agent=claude-code \
-    --output json -- sleep 3600 > /tmp/ov-create.out 2>&1; echo "--- exit $? ---" >> /tmp/ov-create.out ) &
-for _ in $(seq 60); do
-  openshell sandbox get "$NAME" --output json > /dev/null 2>&1 && break
-  if grep -q -- '--- exit [1-9]' /tmp/ov-create.out 2>/dev/null; then
-    cat /tmp/ov-create.out; section create-nolabel.json
-    ( timeout 300 openshell sandbox create --name "$NAME" --output json -- sleep 3600 \
-        > /tmp/ov-create.out 2>&1; echo "--- exit $? ---" >> /tmp/ov-create.out ) &
-  fi
+# --detach: structured output can't be combined with an attached command
+run create.json openshell sandbox create --name "$NAME" --label openvigie.agent=claude-code \
+  --detach --output json -- sleep 3600
+for _ in $(seq 60); do  # wait until Ready (image pull, policy load)
+  openshell sandbox get "$NAME" --output json 2>/dev/null | grep -q '"Ready"' && break
   sleep 5
 done
-sleep 20 # let the policy load
-cat /tmp/ov-create.out
+sleep 10
 run sandbox-list.json openshell sandbox list -o json
+run sandbox-list-all.json openshell sandbox list --all-workspaces -o json
 run sandbox-get.json openshell sandbox get "$NAME" --output json
 run policy-base.json openshell policy get "$NAME" --base --output json
 run policy-full.json openshell policy get "$NAME" --full --output json
@@ -41,6 +35,7 @@ run sandbox-get-missing.json openshell sandbox get no-such-sandbox --output json
 
 # Host side, for mapping agents to sandboxes (#149)
 run docker-ps.json docker ps --no-trunc --format json
+for id in $(docker ps -q); do run "docker-inspect-$id.json" docker inspect "$id"; done
 run ps.txt ps -eo pid,ppid,user,comm,args --forest
 main=$(pgrep -f 'sleep 3600' | head -1)
 if [ -n "$main" ]; then
