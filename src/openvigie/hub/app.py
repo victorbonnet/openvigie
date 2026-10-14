@@ -11,20 +11,19 @@ Defences that apply to every route:
 from __future__ import annotations
 
 from importlib import resources
-from typing import Any
 
-import jinja2
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from openvigie import __version__
 from openvigie.config import HubSettings
-from openvigie.hub import api
+from openvigie.hub import api, ui
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
+from openvigie.hub.templating import templates_env
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 CSP = (
@@ -101,21 +100,6 @@ async def _too_large(scope: Scope, receive: Receive, send: Send) -> None:
     await response(scope, receive, send)
 
 
-def templates_env() -> jinja2.Environment:
-    env = jinja2.Environment(
-        loader=jinja2.PackageLoader("openvigie.hub", "templates"),
-        autoescape=True,
-        undefined=jinja2.StrictUndefined,
-    )
-    env.globals["version"] = __version__
-    return env
-
-
-def render(request: Request, template: str, **context: Any) -> HTMLResponse:
-    env: jinja2.Environment = request.app.state.templates
-    return HTMLResponse(env.get_template(template).render(request=request, **context))
-
-
 def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> FastAPI:
     app = FastAPI(
         title="openvigie hub",
@@ -135,15 +119,12 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.add_middleware(SecurityHeaders)
 
     app.include_router(api.router)
+    app.include_router(ui.router)
     static = resources.files("openvigie.hub") / "static"
     app.mount("/static", StaticFiles(directory=str(static)), name="static")
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
-
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def index(request: Request) -> HTMLResponse:
-        return render(request, "index.html", title="Agents")
 
     return app

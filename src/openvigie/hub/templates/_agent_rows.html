@@ -1,0 +1,16 @@
+<tbody id="agent-rows" hx-get="/agents/rows{% if query %}?{{ query }}{% endif %}" hx-trigger="every 5s" hx-swap="outerHTML">
+  {% for row in rows %}
+  {% set a = row.agent %}
+  <tr>
+    <td><a href="/agents/{{ a.agent_id }}">{{ a.name }}</a>{% if a.config_root %} <span class="muted">{{ a.config_root }}</span>{% endif %}</td>
+    <td>{{ a.agent_type }}</td>
+    <td><a href="/hosts/{{ a.host_id }}">{{ row.hostname }}</a></td>
+    <td>{{ a.version or "unknown" }}</td>
+    <td><span class="badge {{ a.status.value }}">{{ a.status.value }}</span></td>
+    <td><span class="badge {{ a.sandboxed.value }}">{{ a.sandboxed.value }}{% if a.sandbox_kind %} · {{ a.sandbox_kind }}{% endif %}</span></td>
+    <td>{{ a.last_activity_at | ago }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">No agents match these filters.</td></tr>
+  {% endfor %}
+</tbody>

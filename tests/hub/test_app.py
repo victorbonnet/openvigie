@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 
 from openvigie import cli
 from openvigie.config import HubSettings
-from openvigie.hub.app import MAX_BODY_BYTES, create_app, templates_env
+from openvigie.hub.app import MAX_BODY_BYTES, create_app
 from openvigie.hub.store.db import MEMORY, Database
+from openvigie.hub.templating import templates_env
 
 
 @pytest.fixture

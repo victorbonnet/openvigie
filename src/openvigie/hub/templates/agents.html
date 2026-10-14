@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Agents</h1>
+{% if not any_agents %}
+<div class="panel">
+  <p><strong>No agents yet.</strong> The hub shows agents once a collector reports in.</p>
+  <ol>
+    <li>Check what openvigie sees on a machine: <code>openvigie scan</code></li>
+    <li>On the hub, create a one-time code: <code>openvigie hub enrol-code</code></li>
+    <li>On each machine: <code>openvigie enrol &lt;hub-url&gt; &lt;code&gt;</code>, then <code>openvigie collect</code></li>
+  </ol>
+</div>
+{% else %}
+<form class="filters" method="get" action="/">
+  <label>Type
+    <select name="type">
+      <option value="">all</option>
+      {% for t in types %}<option value="{{ t }}" {% if filters.get('type') == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Host
+    <select name="host">
+      <option value="">all</option>
+      {% for host_id, hostname in hosts %}<option value="{{ host_id }}" {% if filters.get('host') == host_id %}selected{% endif %}>{{ hostname }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="">all</option>
+      {% for s in statuses %}<option value="{{ s }}" {% if filters.get('status') == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th>Sandboxed</th><th>Last activity</th></tr>
+  </thead>
+  {% include "_agent_rows.html" %}
+</table>
+{% endif %}
+{% endblock %}
