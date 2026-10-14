@@ -60,6 +60,15 @@ def _no_sandbox_info(pid: int) -> tuple[SandboxState, str | None]:
     return SandboxState.UNKNOWN, None
 
 
+@dataclass(frozen=True)
+class TraceOptions:
+    """Whether ``collect`` builds GenAI spans (FR-6). Off by default: spans cost memory and CPU."""
+
+    enabled: bool = False
+    # prompts, outputs and tool arguments/results; always redacted and truncated when on
+    export_content: bool = False
+
+
 @dataclass
 class HostContext:
     """Everything an adapter may know about the host. Snapshots are cached per tick."""
@@ -71,6 +80,7 @@ class HostContext:
     port_source: Callable[[], Sequence[ListeningPort] | None] = lambda: None
     sandbox_probe: Callable[[int], tuple[SandboxState, str | None]] = _no_sandbox_info
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    traces: TraceOptions = field(default_factory=TraceOptions)
     _processes: Sequence[ProcessInfo] | None = field(default=None, init=False, repr=False)
     _ports: Sequence[ListeningPort] | None = field(default=None, init=False, repr=False)
     _ports_loaded: bool = field(default=False, init=False, repr=False)

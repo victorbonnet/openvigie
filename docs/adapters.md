@@ -51,6 +51,11 @@ class MyAgentAdapter(Adapter):
 - Unknown is not zero: leave token counts as `None` when you can't read them.
 - Store read positions with `state.stage(key, cursor.to_dict())`. The collector commits them
   only after the hub has stored the data.
+- Spans (FR-6) are optional: build them only when `ctx.traces.enabled`. Use the ids from
+  `openvigie.adapters.spans` (one trace per session, deterministic span ids) and the GenAI names
+  in `openvigie.semconv`. Content attributes only when `ctx.traces.export_content`, and only
+  through `spans.content()`, which redacts and truncates. Claude Code is the reference
+  (`adapters/claude_code/spans.py`).
 - Raising is safe but costly: the collector catches it and marks the adapter `error`.
 
 ## Registering
