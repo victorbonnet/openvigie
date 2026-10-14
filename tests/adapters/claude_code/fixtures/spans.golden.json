@@ -1,0 +1,644 @@
+[
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.agent.name": "claude-code",
+   "gen_ai.conversation.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4",
+   "gen_ai.operation.name": "invoke_agent",
+   "gen_ai.provider.name": "anthropic",
+   "openvigie.agent.id": "agent-claude-fixture",
+   "openvigie.agent.type": "claude-code",
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:49:24.266000+00:00",
+  "name": "invoke_agent claude-code",
+  "parent_span_id": null,
+  "span_id": "85a3333d1530c0bf",
+  "start_time": "2026-10-14T14:42:47.022000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2JmKuMDvtB4KJAFcgdc",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 23225,
+   "gen_ai.usage.cache_read.input_tokens": 43784,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 338,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 27,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:43:30.696000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "b19d249147e2cec4",
+  "start_time": "2026-10-14T14:43:25.612000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01W3mMJjeiFqmB8rtRzVWW3G",
+   "gen_ai.tool.name": "Bash"
+  },
+  "end_time": "2026-10-14T14:43:30.879000+00:00",
+  "name": "execute_tool Bash",
+  "parent_span_id": "b19d249147e2cec4",
+  "span_id": "86757c8c90e2779f",
+  "start_time": "2026-10-14T14:43:29.537000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01QA61piHBHgefA9QXnS7eqm",
+   "gen_ai.tool.name": "ToolSearch"
+  },
+  "end_time": "2026-10-14T14:43:30.715000+00:00",
+  "name": "execute_tool ToolSearch",
+  "parent_span_id": "b19d249147e2cec4",
+  "span_id": "0b4ad00bfd19014f",
+  "start_time": "2026-10-14T14:43:30.696000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2JmhytXxQTTFxnvmpoo",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 3892,
+   "gen_ai.usage.cache_read.input_tokens": 67009,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 284,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 0,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:43:34.857000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "652396ef1d51b093",
+  "start_time": "2026-10-14T14:43:34.552000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_017x9pkbjMhaWmsDAEMY1DM9",
+   "gen_ai.tool.name": "Bash"
+  },
+  "end_time": "2026-10-14T14:43:35.337000+00:00",
+  "name": "execute_tool Bash",
+  "parent_span_id": "652396ef1d51b093",
+  "span_id": "efe55add6e32b9f5",
+  "start_time": "2026-10-14T14:43:34.552000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_019SYeX23BCcWewY74CpqnBx",
+   "gen_ai.tool.name": "mcp__github__list_issues"
+  },
+  "end_time": "2026-10-14T14:43:35.916000+00:00",
+  "name": "execute_tool mcp__github__list_issues",
+  "parent_span_id": "652396ef1d51b093",
+  "span_id": "41ba44d7e4145e10",
+  "start_time": "2026-10-14T14:43:34.857000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2Jn5Qzm9oMHkn7Kkso8",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 5295,
+   "gen_ai.usage.cache_read.input_tokens": 70901,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 2019,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 1027,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:43:56.650000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "73c5c1e897e7a907",
+  "start_time": "2026-10-14T14:43:49.921000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01DCFnaqDLDNnPs3V8VZzawy",
+   "gen_ai.tool.name": "AskUserQuestion"
+  },
+  "end_time": "2026-10-14T14:45:40.019000+00:00",
+  "name": "execute_tool AskUserQuestion",
+  "parent_span_id": "73c5c1e897e7a907",
+  "span_id": "7090f449558a14e2",
+  "start_time": "2026-10-14T14:43:56.650000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2JwEUCt66VLUiAixSZC",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 2252,
+   "gen_ai.usage.cache_read.input_tokens": 76196,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 19429,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 19314,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:49:17.810000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "8cc3a38711fdf513",
+  "start_time": "2026-10-14T14:45:40.033000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_015oRnqwiEVGHVu47Uc6W23G",
+   "gen_ai.tool.name": "mcp__github__get_me"
+  },
+  "end_time": "2026-10-14T14:49:18.175000+00:00",
+  "name": "execute_tool mcp__github__get_me",
+  "parent_span_id": "8cc3a38711fdf513",
+  "span_id": "eccbfeef66bc9730",
+  "start_time": "2026-10-14T14:49:17.786000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01Q4ekhr6ytqVuvG6noUC18k",
+   "gen_ai.tool.name": "mcp__github__list_issue_types"
+  },
+  "end_time": "2026-10-14T14:49:18.531000+00:00",
+  "name": "execute_tool mcp__github__list_issue_types",
+  "parent_span_id": "8cc3a38711fdf513",
+  "span_id": "14a0cc2349a4a911",
+  "start_time": "2026-10-14T14:49:17.810000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2KDLeECm4XC5CyVJ7y6",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 20120,
+   "gen_ai.usage.cache_read.input_tokens": 78448,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 1835,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 185,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:49:24.266000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "ed397ee821a9df8c",
+  "start_time": "2026-10-14T14:49:18.539000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.agent.id": "a188efd020d55ef9d",
+   "gen_ai.agent.name": "subagent",
+   "gen_ai.conversation.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4",
+   "gen_ai.operation.name": "invoke_agent",
+   "gen_ai.provider.name": "anthropic",
+   "openvigie.agent.id": "agent-claude-fixture",
+   "openvigie.agent.type": "claude-code",
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:58:49.078000+00:00",
+  "name": "invoke_agent subagent",
+  "parent_span_id": "85a3333d1530c0bf",
+  "span_id": "4bb65ee09c0e604b",
+  "start_time": "2026-10-14T14:58:08.389000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2KtPnZxDqiF3x9Q8k7U",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 48740,
+   "gen_ai.usage.cache_read.input_tokens": 0,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 87,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 0,
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:58:11.613000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "4bb65ee09c0e604b",
+  "span_id": "4fa4d5e38f797be0",
+  "start_time": "2026-10-14T14:58:08.451000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01FSfHCeptdmTwgdGzXHw1DV",
+   "gen_ai.tool.name": "ToolSearch"
+  },
+  "end_time": "2026-10-14T14:58:11.635000+00:00",
+  "name": "execute_tool ToolSearch",
+  "parent_span_id": "4fa4d5e38f797be0",
+  "span_id": "cc4030056313377c",
+  "start_time": "2026-10-14T14:58:11.613000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2KtdbY4fKiXN3ve1ypr",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 2361,
+   "gen_ai.usage.cache_read.input_tokens": 48740,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 6,
+   "openvigie.usage.quality": "exact",
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:58:21.366000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "4bb65ee09c0e604b",
+  "span_id": "c67fe3714a57ce05",
+  "start_time": "2026-10-14T14:58:13.800000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_012ZomSMCwc2n61BtNPbDWRw",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:16.145000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "4890af9f4939dca5",
+  "start_time": "2026-10-14T14:58:14.525000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_019etiKbY5NPGhzaLxfn9C5r",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:17.894000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "dadf4b61be17f0b3",
+  "start_time": "2026-10-14T14:58:15.527000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01XSKXpXG6mQgeanqbQWa9Xe",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:19.147000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "c5be05cbf4f31b9d",
+  "start_time": "2026-10-14T14:58:16.570000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01DEdQYexYVVCyfHEJLFcbKH",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:20.383000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "70f61b268cdebb2e",
+  "start_time": "2026-10-14T14:58:17.528000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_018XzS25XWEEvkT6KrfQPqjv",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:23.082000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "9decfbc2765a20bf",
+  "start_time": "2026-10-14T14:58:18.528000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01YPuaQSmTPtMD1BiSYzGMhw",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:24.242000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "6020f5d2326417ef",
+  "start_time": "2026-10-14T14:58:19.529000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01Rja1goJN2se4dVyRqkqCxE",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:25.680000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "549c91a8b5784879",
+  "start_time": "2026-10-14T14:58:20.532000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_017ZgDfd57fg6pExqw1z9vLE",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:27.450000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "c67fe3714a57ce05",
+  "span_id": "46e908a273a63676",
+  "start_time": "2026-10-14T14:58:21.366000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2Kuo2LowfgPCpWFt4t3",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 42051,
+   "gen_ai.usage.cache_read.input_tokens": 51101,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 8,
+   "openvigie.usage.quality": "exact",
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:58:38.580000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "4bb65ee09c0e604b",
+  "span_id": "7e1b94464581f64b",
+  "start_time": "2026-10-14T14:58:27.458000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01YGQKxreES6GfT3koH9ztX9",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:32.968000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "70c1668c68140ca1",
+  "start_time": "2026-10-14T14:58:31.729000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01S6rzfFPXLvZi5kBfHbusJc",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:34.543000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "642c9c324aceb76c",
+  "start_time": "2026-10-14T14:58:32.728000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01XM7YumPiRpzk545JNAEfNP",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:35.450000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "6ae820cbb1b8fc22",
+  "start_time": "2026-10-14T14:58:33.730000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_013DPvKo57UgX1FK4ERsfHsY",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:37.020000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "701fbeb449ca6440",
+  "start_time": "2026-10-14T14:58:34.731000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_0184gXiKxgHycKk6Sht7pCZ7",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:38.658000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "58e0dbb0e8807ee0",
+  "start_time": "2026-10-14T14:58:35.731000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01X6NbCxVLuW7oDrGVb3hXgN",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:39.608000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "fc02253dd25c8e91",
+  "start_time": "2026-10-14T14:58:36.735000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01NBM1xujZpWC3Yk5YSxzw8z",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:40.632000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "a84cff616ddd8849",
+  "start_time": "2026-10-14T14:58:37.731000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01PohvBa8uJQ7jZANSmNg6bh",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:42.189000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "7e1b94464581f64b",
+  "span_id": "decbdb9b3eb7b63f",
+  "start_time": "2026-10-14T14:58:38.580000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "anthropic",
+   "gen_ai.request.model": "claude-opus-5-5",
+   "gen_ai.response.id": "msg_011Cg2KvtRZuEkdeKetMHfHf",
+   "gen_ai.response.model": "claude-opus-5-5",
+   "gen_ai.usage.cache_creation.input_tokens": 42352,
+   "gen_ai.usage.cache_read.input_tokens": 93152,
+   "gen_ai.usage.input_tokens": 2,
+   "gen_ai.usage.output_tokens": 3,
+   "openvigie.usage.quality": "exact",
+   "session.id": "2fd0caa4-c2cd-5ae1-bd48-3f6035730ed4"
+  },
+  "end_time": "2026-10-14T14:58:48.835000+00:00",
+  "name": "chat claude-opus-5-5",
+  "parent_span_id": "4bb65ee09c0e604b",
+  "span_id": "081b54d849a54488",
+  "start_time": "2026-10-14T14:58:42.198000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01FE3H1ifCj5jeTvcbappR7b",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": "2026-10-14T14:58:49.078000+00:00",
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "081b54d849a54488",
+  "span_id": "a5c064832fb1c4b3",
+  "start_time": "2026-10-14T14:58:47.774000+00:00",
+  "status": "ok",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ },
+ {
+  "agent_id": "agent-claude-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "toolu_01S5dG9TkSWC3QvyXreqHQx6",
+   "gen_ai.tool.name": "mcp__github__sub_issue_write"
+  },
+  "end_time": null,
+  "name": "execute_tool mcp__github__sub_issue_write",
+  "parent_span_id": "081b54d849a54488",
+  "span_id": "3cdfd075608737dd",
+  "start_time": "2026-10-14T14:58:48.835000+00:00",
+  "status": "unset",
+  "trace_id": "85d82e4d2755e59fdc0ca1ab87f74022"
+ }
+]

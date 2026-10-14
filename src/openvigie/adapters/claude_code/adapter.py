@@ -3,6 +3,8 @@
 One agent per config root: ``~/.claude`` for each configured home, plus ``$CLAUDE_CONFIG_DIR``.
 Version, activity and usage come from session transcripts (``projects/**/*.jsonl``), read
 incrementally. Only ids, timestamps, models and usage numbers are kept, never message content.
+When traces are enabled the same pass builds GenAI spans (``spans.py``, FR-6); content goes
+into them only with ``export_content``, redacted.
 The ``claude`` binary is never executed and credential files are never opened.
 """
 
@@ -12,6 +14,7 @@ import dataclasses
 from pathlib import Path, PurePath
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
+from openvigie.adapters.claude_code.spans import TranscriptSpans
 from openvigie.adapters.common import (
     attribute_processes,
     candidate_roots,
@@ -98,8 +101,16 @@ class ClaudeCodeAdapter(Adapter):
             return batch
         records: dict[str, UsageRecord] = {}
         sessions: dict[str, Session] = {}
-        for _, entry in tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget()):
+        tracers: dict[str, TranscriptSpans] = {}
+        files = tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget())
+        for key, entry in files:
             record = self._usage(agent, entry, state)
+            if ctx.traces.enabled and not self._before_backfill(entry, state):
+                if key not in tracers:
+                    tracers[key] = TranscriptSpans(
+                        agent, key, state, export_content=ctx.traces.export_content
+                    )
+                tracers[key].add(entry, record)
             if record is None:
                 continue
             records[record.record_id] = record  # one API response spans several lines
@@ -107,11 +118,17 @@ class ClaudeCodeAdapter(Adapter):
                 sessions[record.session_id] = _merge_session(
                     sessions.get(record.session_id), agent.agent_id, record
                 )
+        batch.spans = [span for tracer in tracers.values() for span in tracer.finish()]
         batch.usage = list(records.values())
         batch.sessions = list(sessions.values())
         if batch.usage:
             batch.last_activity_at = max(r.timestamp for r in batch.usage)
         return batch
+
+    @staticmethod
+    def _before_backfill(entry: object, state: AdapterState) -> bool:
+        when = parse_time(entry.get("timestamp")) if isinstance(entry, dict) else None
+        return bool(state.backfill_since and when and when < state.backfill_since)
 
     def _usage(
         self, agent: AgentInstance, entry: object, state: AdapterState
