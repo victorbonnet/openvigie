@@ -118,6 +118,7 @@ def test_status_events_for_other_hosts_agents_are_dropped(client: TestClient, db
     [
         {"schema_version": 99},
         {"sent_at": "yesterday"},
+        {"sent_at": "2026-10-14T12:00:00"},  # no timezone
         {"agents": "nope"},
         {"agents": [{"agent_id": "a1"}]},
         {"agents": [dict(to_dict(agent()), status="exploded")]},

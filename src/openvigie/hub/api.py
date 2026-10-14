@@ -5,7 +5,6 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from datetime import time as day_time
 from typing import Annotated, Any
@@ -29,17 +28,19 @@ from openvigie.model import (
     Session,
     Span,
     StatusEvent,
+    Timestamp,
     UsageRecord,
     from_dict,
     to_dict,
+    wire_type,
 )
 
 router = APIRouter(prefix="/api/v1")
 
 
-@dataclass(frozen=True)
+@wire_type
 class _SentAt:
-    at: datetime
+    at: Timestamp
 
 
 FAILURE_WINDOW_S = 60.0
