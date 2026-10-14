@@ -15,7 +15,7 @@
   <dt>Agents</dt><dd>{% for id in box.agent_ids %}<a href="/agents/{{ id }}">{{ agent_names.get(id, id) }}</a>{% if not loop.last %}, {% endif %}{% else %}<span class="muted">none detected{% if box.agent_type %}; labelled <code>{{ box.agent_type }}</code>{% endif %}</span>{% endfor %}</dd>
   <dt>Checked</dt><dd>{{ box.observed_at | ago }}</dd>
 </dl>
-<h4>Network rules</h4>
+<h4>Network rules <a class="muted small" href="/sandboxes/{{ box.sandbox_id }}/rules">as YAML, to review or change</a></h4>
 {% if box.network_rules is none %}
 <p class="muted">Unknown: the collector couldn't read this sandbox's policy from OpenShell.</p>
 {% elif not box.network_rules %}

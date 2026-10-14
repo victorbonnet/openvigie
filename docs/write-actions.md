@@ -39,6 +39,29 @@ allow_actions = ["noop"]
 `noop` does nothing; it checks the whole path. On a host's page, an admin sees *Send a test
 command…*. When the result reads *succeeded*, the channel works.
 
+## Sandbox network rules
+
+On a host page, each OpenShell sandbox's *Network rules* heading links to its rules as YAML.
+Admins can edit them there, starting from the current rules or from the agent's starter policy.
+
+![Editing a sandbox's network rules](img/policy-editor.png)
+
+- **Network rules only.** Only `network_policies` is applied. OpenShell reloads network rules on a
+  running sandbox. Filesystem, process and landlock sections apply only to a new sandbox, so the
+  editor ignores them.
+- **Checked before review.** The hub checks the YAML against the rules it understands and shows
+  the change rule by rule, then as text. That check is the dry-run. Text it can't read goes back
+  to the editor with the line or field to fix.
+- **Applied on the host.** The host must allow the action:
+  `allow_actions = ["sandbox.policy.set"]`. The collector refuses if the policy changed since
+  you reviewed it. Then it applies the policy with `openshell policy set --wait` and checks the
+  new revision is loaded. If OpenShell refuses the policy or doesn't load it, the collector
+  restores the previous rules and says so in the result.
+- **Rollback.** *Propose a rollback* on a confirmed change proposes the rules from before it,
+  exactly as they were.
+
+![Reviewing a change to network rules](img/policy-review.png)
+
 ## Safety
 
 - **Two keys.** The hub decides what to ask, and each host decides what it accepts. A

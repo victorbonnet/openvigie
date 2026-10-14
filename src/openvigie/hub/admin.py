@@ -1,4 +1,5 @@
-"""Write-action routes (FR-17, D14): propose, review the diff, confirm, cancel, roll back.
+"""Write-action routes (FR-17, D14): propose, review the diff, confirm, cancel, roll back,
+and the network-rules editor of a sandbox (FR-12, D15).
 
 Offers ``router`` and ``csrf_token`` (a template global for forms). Pages are readable by every
 role; each POST needs the admin role, a same-origin request and a CSRF token bound to the
@@ -13,10 +14,10 @@ import difflib
 import hashlib
 import hmac
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import parse_qsl, urlsplit
 
-from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -33,11 +34,17 @@ from openvigie.hub.actions import (
 )
 from openvigie.hub.roles import Admin, identity, refuse
 from openvigie.hub.store.commands import CommandQueue
+from openvigie.hub.store.inventory import AgentRow, Inventory
+from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.hub.templating import render
+from openvigie.hub.ui import starter_view
+from openvigie.model import OpenShellSandbox
+from openvigie.openshell import policy
+from openvigie.openshell.policy import MAX_TEXT
 
 router = APIRouter(include_in_schema=False)
 
-MAX_FORM_BYTES = 16 * 1024
+MAX_FORM_BYTES = 4 * MAX_TEXT  # a policy text, URL-encoded
 ActionId = Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]
 Short = Annotated[str, Field(max_length=256)]
 
@@ -50,7 +57,11 @@ class Form(BaseModel):
 
 class ProposeForm(Form):
     kind: Annotated[str, Field(max_length=64)]
-    host_id: Short = ""  # the parameters kinds take; more come with new kinds
+    # the parameters kinds take
+    host_id: Short = ""
+    workspace: Short = ""
+    sandbox: Short = ""
+    text: Annotated[str, Field(max_length=MAX_TEXT)] = ""
 
 
 class ConfirmForm(Form):
@@ -132,22 +143,72 @@ def action_page(request: Request, action_id: ActionId, error: str | None = None)
     page = render(request, "action.html", title=action.plan.summary, action=action,
                   status=action.current_status(datetime.now(UTC)), command=command,
                   diff=diff_lines(action.plan.before, action.plan.after), can_undo=can_undo,
-                  error=error)  # fmt: skip
+                  review=kind.review(action.plan) if kind else [], error=error)  # fmt: skip
     if error:
         page.status_code = 400
     return page
 
 
-@router.post("/actions/new")
-async def new_action(request: Request, who: Admin) -> RedirectResponse:
+@router.post("/actions/new", response_model=None)
+async def new_action(request: Request, who: Admin) -> RedirectResponse | HTMLResponse:
     form = await _form(request, ProposeForm, "propose")
     params = form.model_dump(exclude={"csrf", "kind"})
     try:
         action = propose(request.app.state.db, _kinds(request), form.kind, params, who,
                          datetime.now(UTC))  # fmt: skip
     except ActionError as exc:
+        box = _box(request, form.host_id, form.workspace, form.sandbox)
+        if form.kind == "sandbox.policy" and box is not None:  # back to the editor, text kept
+            return _editor(request, box, form.text, str(exc))
         raise HTTPException(400, str(exc)) from None
     return _see(action)
+
+
+def _box(request: Request, host_id: str, workspace: str, name: str) -> OpenShellSandbox | None:
+    boxes = SandboxStore(request.app.state.db).all(host_id) if host_id else []
+    return next((b for b in boxes if (b.workspace, b.name) == (workspace, name)), None)
+
+
+@router.get("/sandboxes/{sandbox_id}/rules", response_class=HTMLResponse)
+def rules_page(
+    request: Request,
+    sandbox_id: Annotated[str, Path(max_length=256)],
+    start: Annotated[Literal["current", "starter"], Query(alias="from")] = "current",
+) -> HTMLResponse:
+    """A sandbox's network rules as YAML; admins can edit them and propose the change."""
+    box = SandboxStore(request.app.state.db).get(sandbox_id)
+    if box is None:
+        raise HTTPException(404, "sandbox not found")
+    text = None
+    if start == "starter" and (row := _agent_of(request, box)) is not None:
+        rules = policy.parse_yaml(starter_view(request, row, box).policy.yaml).rules
+        text = policy.to_yaml(rules)
+    return _editor(request, box, text)
+
+
+def _agent_of(request: Request, box: OpenShellSandbox) -> AgentRow | None:
+    rows = Inventory(request.app.state.db).agents(host_id=box.host_id)
+    return next((r for r in rows if r.agent.agent_id in box.agent_ids), None)
+
+
+def _editor(request: Request, box: OpenShellSandbox, text: str | None = None,
+            error: str | None = None) -> HTMLResponse:  # fmt: skip
+    problem = None
+    if text is None:
+        if box.network_policy is None:
+            problem = "The collector couldn't read this sandbox's rules from OpenShell."
+        else:
+            try:
+                text = policy.to_yaml(policy.from_json(box.network_policy))
+            except policy.PolicyError:
+                problem = ("These rules use fields openvigie's editor doesn't support yet; "
+                           "change them with `openshell policy set`.")  # fmt: skip
+    page = render(request, "rules.html", title=f"Network rules of {box.name}", box=box,
+                  text=text, problem=problem, error=error,
+                  agent=_agent_of(request, box))  # fmt: skip
+    if error:
+        page.status_code = 400
+    return page
 
 
 @router.post("/actions/{action_id}/confirm", response_model=None)

@@ -106,6 +106,8 @@ pre.diff span { display: block; }
 pre.diff .add { color: var(--ok); }
 pre.diff .del { color: var(--bad); }
 pre.diff .hunk { color: var(--muted); }
+form.editor textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 13px; }
+.small { font-size: 13px; font-weight: normal; }
 form.inline { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
 .error-box { border: 1px solid var(--bad); color: var(--bad); padding: 8px 12px; border-radius: 6px; }
 
