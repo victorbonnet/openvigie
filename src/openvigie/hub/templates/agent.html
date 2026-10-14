@@ -43,8 +43,10 @@
   </tbody>
 </table>
 <h2>Sessions</h2>
+{% set traces = usage.sessions | selectattr("trace") | list %}
+{% if usage.langfuse_project %}<p class="muted"><a href="{{ usage.langfuse_project }}/traces" target="_blank" rel="noopener noreferrer">All traces in Langfuse ↗</a></p>{% endif %}
 <table>
-  <thead><tr><th>Session</th><th>Started</th><th>Duration</th><th>Models</th><th class="num">Tokens</th><th class="num">Cost</th><th>Quality</th></tr></thead>
+  <thead><tr><th>Session</th><th>Started</th><th>Duration</th><th>Models</th><th class="num">Tokens</th><th class="num">Cost</th><th>Quality</th>{% if traces %}<th>Trace</th>{% endif %}</tr></thead>
   <tbody>
   {% for v in usage.sessions %}
     {% set s = v.session %}
@@ -56,6 +58,7 @@
       <td class="num">{{ compact(v.usage.tokens) }}</td>
       <td class="num">{% if not v.usage.cost_complete %}≥ {% endif %}{{ money(v.usage.cost) }}</td>
       <td>{% if v.usage.unknown %}<span class="badge unknown">partly unknown</span>{% elif v.usage.estimated %}<span class="badge idle">estimated</span>{% else %}<span class="badge ok">exact</span>{% endif %}</td>
+      {% if traces %}<td>{% if v.trace and v.trace.url %}<a href="{{ v.trace.url }}" target="_blank" rel="noopener noreferrer">View trace ↗</a>{% elif v.trace %}<span class="muted">{{ v.trace.reason }}</span>{% endif %}</td>{% endif %}
     </tr>
   {% endfor %}
   </tbody>

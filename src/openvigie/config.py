@@ -11,6 +11,7 @@ import dataclasses
 import ipaddress
 import logging
 import os
+import re
 import stat
 import tomllib
 import types
@@ -150,6 +151,9 @@ def validate_langfuse(langfuse: LangfuseSettings) -> None:
         raise ConfigError("langfuse.host must use https unless Langfuse runs on this machine")
     if not langfuse.public_key.startswith("pk-") or len(langfuse.public_key) > 256:
         raise ConfigError("langfuse.public_key must be a Langfuse public key (pk-…)")
+    if langfuse.project_id is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}",
+                                                            langfuse.project_id):  # fmt: skip
+        raise ConfigError("langfuse.project_id: letters, digits, '-' and '_' only")
 
 
 def validate_collector(settings: CollectorSettings) -> CollectorSettings:

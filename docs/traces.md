@@ -41,12 +41,17 @@ point: sessions already read before export was turned on are not sent again.
    public_key = "pk-lf-…"
    secret_key_file = "~/.config/openvigie/langfuse-secret"
    export_content = false
+   project_id = "cm…"      # optional: from the project URL in Langfuse, enables trace links
 
    [retention]
    span_queue_hours = 24    # unexported spans older than this are dropped
    ```
 
 The **Settings** page shows the queue (waiting, exported, dropped) and the last error.
+
+With `project_id` set, each session on an agent's page links to its trace in Langfuse
+(`<host>/project/<project_id>/traces/<trace_id>`). Sessions whose spans were never exported
+say so instead.
 
 ## Privacy
 
