@@ -13,6 +13,9 @@ dependencies = [
 [project.scripts]
 openvigie = "openvigie.cli:main"
 
+[project.entry-points."openvigie.adapters"]
+claude-code = "openvigie.adapters.claude_code:ClaudeCodeAdapter"
+
 [dependency-groups]
 dev = [
     "mypy>=1.11",

@@ -50,6 +50,7 @@ DENY = [
     "*.keychain*",
     "*cookie*",
 ]
+# Every string below one of these keys is free text: replaced, except STRUCTURAL_KEYS.
 CONTENT_KEYS = {
     "text",
     "content",
@@ -64,7 +65,19 @@ CONTENT_KEYS = {
     "summary",
     "body",
     "cwd",
+    "message",
+    "toolUseResult",
+    "attachment",
+    "rendered",
+    "lastPrompt",
+    "aiTitle",
+    "title",
+    "hookAdditionalContext",
+    "hookInfos",
+    "wireToolInputs",
+    "gitBranch",
 }
+STRUCTURAL_KEYS = {"type", "id", "name", "role", "model", "tool_use_id", "stop_reason"}
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -100,17 +113,20 @@ class Scrubber:
         bucket = next((b for b in (16, 128, 1024, 8192) if n <= b), 65536)
         return f"[scrubbed text <= {bucket} chars]"
 
-    def value(self, value: Any, key: str | None = None) -> Any:
+    def value(self, value: Any, key: str | None = None, in_content: bool = False) -> Any:
+        in_content = in_content or key in CONTENT_KEYS
         if isinstance(value, str):
             if key and is_sensitive_key(key) and value:
                 return "[REDACTED:key]"
-            if key in CONTENT_KEYS or len(value) > LONG_TEXT:
+            if in_content and key not in STRUCTURAL_KEYS:
                 return self.placeholder(value) if value else value
+            if len(value) > LONG_TEXT:
+                return self.placeholder(value)
             return self.text(value)
         if isinstance(value, dict):
-            return {k: self.value(v, k) for k, v in value.items()}
+            return {k: self.value(v, k, in_content) for k, v in value.items()}
         if isinstance(value, list):
-            return [self.value(v, key) for v in value]
+            return [self.value(v, key, in_content) for v in value]
         return value
 
 
