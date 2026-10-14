@@ -12,6 +12,7 @@ from openvigie import __version__
 
 
 def templates_env() -> jinja2.Environment:
+    from openvigie.hub.admin import csrf_token
     from openvigie.hub.roles import identity
     from openvigie.hub.ui import ago
 
@@ -24,6 +25,7 @@ def templates_env() -> jinja2.Environment:
     env.filters["ago"] = ago
     env.globals["adapter_alerts"] = adapter_alerts
     env.globals["whoami"] = identity
+    env.globals["csrf_token"] = csrf_token
     return env
 
 

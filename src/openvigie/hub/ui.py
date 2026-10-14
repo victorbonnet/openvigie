@@ -1,4 +1,4 @@
-"""Server-rendered web UI (FastAPI + Jinja2 + HTMX). GET-only in the read-only MVP."""
+"""Server-rendered web UI (FastAPI + Jinja2 + HTMX). GET only: write actions are in ``admin``."""
 
 from __future__ import annotations
 

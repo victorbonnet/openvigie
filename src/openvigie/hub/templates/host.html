@@ -12,6 +12,15 @@
   <dt>First seen</dt><dd>{{ view.row.first_seen | ago }}</dd>
   {% if view.row.spool_dropped %}<dt>Data loss</dt><dd><span class="badge degraded">{{ view.row.spool_dropped }} payloads dropped</span> <span class="muted">the collector's offline spool overflowed while the hub was unreachable</span></dd>{% endif %}
 </dl>
+{% if whoami(request).role == "admin" %}
+<form method="post" action="/actions/new" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'propose') }}">
+  <input type="hidden" name="kind" value="noop">
+  <input type="hidden" name="host_id" value="{{ h.host_id }}">
+  <button type="submit">Send a test command…</button>
+  <span class="muted">checks the command channel; the collector needs <code>allow_actions = ["noop"]</code></span>
+</form>
+{% endif %}
 
 <h2>Agents</h2>
 <table>

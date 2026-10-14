@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+{% set admin = whoami(request).role == "admin" %}
+<p class="muted"><a href="/actions">Actions</a> / {{ action.action_id[:8] }}</p>
+<h1>{{ action.plan.summary }}</h1>
+{% if error %}<p class="error-box">{{ error }}</p>{% endif %}
+<dl class="meta">
+  <dt>Status</dt><dd><span class="badge {{ 'ok' if status == 'confirmed' else ('unknown' if status == 'proposed' else 'stopped') }}">{{ status }}</span>
+    {% if status == "proposed" %}<span class="muted">until {{ action.expires_at.strftime("%H:%M UTC") }}</span>{% endif %}</dd>
+  <dt>Proposed</dt><dd>{{ action.proposed_at | ago }} by {{ action.proposed_by }}</dd>
+  {% if action.decided_by %}<dt>Decided</dt><dd>{{ action.decided_at | ago }} by {{ action.decided_by }}</dd>{% endif %}
+  {% if action.rollback_of %}<dt>Undoes</dt><dd><a href="/actions/{{ action.rollback_of }}">an earlier action</a></dd>{% endif %}
+  {% if command %}<dt>On the host</dt><dd><span class="badge {{ 'ok' if command.status == 'succeeded' else ('error' if command.status in ('failed', 'refused', 'expired') else 'unknown') }}">{{ command.status }}</span>
+    {% if command.detail %}<span class="muted">{{ command.detail }}</span>{% endif %}
+    {% if command.status == "delivered" %}<span class="muted">waiting for the collector's report</span>{% endif %}</dd>{% endif %}
+</dl>
+
+<h2>Change</h2>
+{% if diff %}
+<pre class="diff">{% for cls, line in diff %}<span class="{{ cls }}">{{ line }}</span>{% endfor %}</pre>
+{% else %}
+<p class="muted">No change in state.</p>
+{% endif %}
+
+{% if admin and status == "proposed" %}
+<h2>Confirm</h2>
+<form method="post" action="/actions/{{ action.action_id }}/confirm" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'decide:' ~ action.action_id) }}">
+  <label>Type <code>{{ action.plan.confirm_name }}</code> to confirm
+    <input name="typed" autocomplete="off" required></label>
+  <button type="submit">Confirm</button>
+</form>
+<form method="post" action="/actions/{{ action.action_id }}/cancel" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'decide:' ~ action.action_id) }}">
+  <button type="submit">Cancel</button>
+</form>
+{% endif %}
+{% if admin and can_undo %}
+<form method="post" action="/actions/{{ action.action_id }}/rollback" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'rollback:' ~ action.action_id) }}">
+  <button type="submit">Propose a rollback…</button>
+</form>
+{% endif %}
+{% endblock %}

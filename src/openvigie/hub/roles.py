@@ -1,7 +1,8 @@
 """Who makes a request and what they may do (FR-17, PRD D14).
 
 Offers ``IdentityMiddleware`` (installed by ``create_app``), ``identity(request)``, and
-``Admin``: annotate a write route's parameter with it to require the admin role.
+``Admin``: annotate a write route's parameter with it to require the admin role. ``refuse``
+answers 403 and audits why.
 
 Everyone is a ``viewer``. An ``admin`` is a login listed in ``hub.toml`` ``admins``, read from
 the ``Tailscale-User-Login`` header that ``tailscale serve`` adds, and only when
@@ -20,7 +21,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NoReturn
 
 from fastapi import Depends, HTTPException, Request
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -108,22 +109,28 @@ class RefusalBudget:
         return self.used <= self.per_minute
 
 
-def require_admin(request: Request) -> Identity:
-    """FastAPI dependency for write routes: admins pass, anyone else gets a 403 (audited)."""
+def refuse(request: Request, why: str) -> NoReturn:
+    """Answer 403 and audit the refusal (at most ``REFUSALS_PER_MINUTE`` entries a minute)."""
     who = identity(request)
-    if who.role == "admin":
-        return who
     budget: RefusalBudget = request.app.state.refusals
     if budget.take(time.monotonic()):
         AuditLog(request.app.state.db).record(
             at=datetime.now(UTC), actor=who.actor, role=who.role,
             action=f"{request.method} {request.url.path}", target=request.url.path,
-            result="refused", request_id=uuid.uuid4().hex,
+            result="refused", request_id=uuid.uuid4().hex, after={"reason": why},
         )  # fmt: skip
     else:
         log.warning("refused %s %s for %s (not audited: too many refusals this minute)",
                     request.method, request.url.path, who.actor)  # fmt: skip
-    raise HTTPException(403, "admin role required")
+    raise HTTPException(403, why)
+
+
+def require_admin(request: Request) -> Identity:
+    """FastAPI dependency for write routes: admins pass, anyone else gets a 403 (audited)."""
+    who = identity(request)
+    if who.role != "admin":
+        refuse(request, "admin role required")
+    return who
 
 
 Admin = Annotated[Identity, Depends(require_admin)]
