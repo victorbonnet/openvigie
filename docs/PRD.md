@@ -71,8 +71,8 @@ Requirements are numbered so issues and PRs can reference them. P0 is the MVP, P
 | FR-5 | Web UI: agent list, agent detail page, usage and cost charts, host view | P0 |
 | FR-6 | Send traces to Langfuse when configured, and link each agent and session to its traces. The hub exports; metadata only by default (D5) | P0 |
 | FR-7 | Adapter plugin interface in Python so contributors can add new agent types | P0 |
-| FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets | P1 |
-| FR-9 | Flag each agent's risks from its capabilities and sandbox state, with a severity and the reason for each flag (D10) | P1 |
+| FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets, and the messaging channels it answers on (for example Telegram, Discord, WhatsApp, Slack) with who can reach it there: direct messages from allowlisted people, group chats, or anyone | P1 |
+| FR-9 | Flag each agent's risks from its capabilities and sandbox state, with a severity and the reason for each flag (D10). An agent that people other than its owner can instruct (group chats, several allowlisted users, open direct messages) is flagged, and is high risk when it also has broad access: shell with unrestricted network, files outside its workspace, or no approvals, outside a sandbox. The UI shows how many people can reach it | P1 |
 | FR-10 | List OpenShell sandboxes, which agent runs in each, and the active policy | P1 |
 | FR-11 | Generate a starter OpenShell policy from an agent's observed capabilities | P1 |
 | FR-12 | Edit and apply sandbox policies, with diff, dry-run and one-click rollback. This includes allowing a destination the sandbox blocked (FR-18), scoped by default to the program that was blocked | P1 |
@@ -103,6 +103,7 @@ openvigie can stop agents, change their sandboxes and rotate their secrets, so t
 
 - An agent on the same host reads the collector's token or calls the hub to loosen its own sandbox.
 - A prompt-injected agent edits its own config or skills to gain access.
+- Anyone who can message an agent through a shared channel (a group chat, an open bot) can instruct it, so the agent's access is effectively theirs.
 - Secrets and personal data leak through traces sent to Langfuse.
 - A bad policy locks an agent out, or a loose one silently opens it up.
 

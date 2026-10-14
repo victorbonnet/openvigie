@@ -184,6 +184,7 @@ main { padding-block: 24px 112px; display: block; }
 .agents li:first-child { border-top: 0; }
 .arow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 14px 16px; color: inherit; }
 .arow:hover { text-decoration: none; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.arow .who { display: grid; gap: 1px; min-width: 0; }
 .arow .name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .arow .name b { font-weight: 600; }
 .arow .where { font-size: 0.82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -197,7 +198,6 @@ main { padding-block: 24px 112px; display: block; }
   .thead .r, .arow .cost { text-align: right; }
   .arow .meta { display: contents; }
   .arow .when { margin: 0; }
-  .arow .who { display: grid; gap: 1px; min-width: 0; }
   .arow .cost { order: 6; }
 }
 
@@ -244,7 +244,7 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .host .note { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.82rem; color: var(--muted); }
 
 /* Sandbox (OpenShell): blocked requests, allowed network, policy history */
-#sandbox { scroll-margin-top: 72px; }
+#sandbox, #channels { scroll-margin-top: 72px; }
 .after { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .policy-head { padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; justify-content: space-between; }
 .sub { margin: 0; padding: 10px 16px; font-size: 0.75rem; font-weight: 600; color: var(--muted); border-top: 1px solid var(--line); }
@@ -264,6 +264,22 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
 .hist .v { font-family: var(--font-mono); color: var(--muted); }
 .hist .w { grid-column: 2; font-size: 0.8rem; color: var(--muted); }
 .callout .btn { margin-top: 10px; }
+
+/* Messaging channels: who can give the agent instructions */
+.exposure { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; padding: 14px 16px; border-radius: var(--r); background: color-mix(in srgb, var(--bad) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.exposure .big { grid-row: span 2; font-size: 1.9rem; font-weight: 650; letter-spacing: -0.03em; line-height: 1; color: var(--bad); font-variant-numeric: tabular-nums; align-self: center; }
+.exposure b { color: var(--bad); }
+.exposure span { font-size: 0.88rem; }
+.exposure.mid { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
+.exposure.mid .big, .exposure.mid b { color: var(--warn); }
+.channels { list-style: none; margin: 0; padding: 0; }
+.channels li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.channels li:first-child { border-top: 0; }
+.channels .app { font-weight: 600; }
+.channels .where, .channels .note { font-size: 0.84rem; color: var(--muted); }
+.channels .who { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; }
+.reach { font-size: 0.8rem; color: var(--muted); }
+.reach.open { color: var(--bad); font-weight: 550; }
 
 .btn { font: inherit; font-size: 0.85rem; font-weight: 550; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap; }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -372,6 +388,10 @@ const FLAG = {
   secrets: ["medium", "Secrets reachable by tools",
     "These credentials are passed to the agent or its tools: GITHUB_TOKEN, LINEAR_API_KEY."],
   macos: ["low", "Can't be sandboxed on macOS", "OpenShell needs Linux. Run this agent in a Linux VM (Lima, OrbStack) to sandbox it."],
+  groupFull: ["high", "Open to group chats, with full access",
+    "About 220 people in a Discord server and a Telegram group can give it instructions, in Discord without even mentioning it. It can run shell commands with unrestricted network access outside a sandbox: one message from any of them can take over this machine.", true],
+  multiUser: ["medium", "Takes instructions from other people",
+    "Two Telegram users can give it instructions, not only you. It is sandboxed, so they can only reach what its policy allows.", true],
   hooks: ["low", "Hooks run commands", "A hook runs a shell command on every tool call: ./scripts/notify.sh."],
 };
 
@@ -392,13 +412,21 @@ const AGENTS = [
     base: 0.9, models: "gpt-5.2-codex" },
   { id: "a3", type: "hermes", host: "pi5", version: "0.9.3", status: "active", last: "12 s ago",
     config: "~/.hermes", sandbox: "yes", kind: "openshell", adapter: "ok", quality: "estimated",
-    flags: ["hooks"],
+    flags: ["multiUser", "hooks"],
+    channels: [
+      { app: "Telegram", where: "direct messages", who: "2 allowlisted users", people: 2, open: false },
+    ],
     caps: { approvals: ["asks before edits and commands", "ask"], files: "project folders only", network: "allowlisted hosts only: api.anthropic.com, api.telegram.org",
       shell: "yes", skills: "home-assistant, daily-brief", secrets: "TELEGRAM_BOT_TOKEN (env)", mcp: [] },
     base: 0.55, models: "claude-haiku-5-5" },
   { id: "a4", type: "openclaw", host: "pi5", version: "2026.9.2", status: "idle", last: "18 min ago",
     config: "~/.openclaw", sandbox: "no", adapter: "ok", quality: "exact",
-    flags: ["shellNet"],
+    flags: ["groupFull", "shellNet"],
+    channels: [
+      { app: "Discord", where: "server homelab-fr · #general, #bots", who: "anyone there", people: 214, open: true, note: "Answers every message, no mention needed" },
+      { app: "Telegram", where: "group Famille", who: "every member", people: 6, open: true, note: "Answers when mentioned" },
+      { app: "WhatsApp", where: "direct messages", who: "you only", people: 1, open: false, note: "Allowlist of one number" },
+    ],
     caps: { approvals: ["edits without asking, asks for some commands", "auto"], files: "project folders only", network: "unrestricted",
       shell: "yes", skills: "browser, calendar", secrets: "none found", mcp: [] },
     base: 0.35, models: "gpt-5" },
@@ -456,6 +484,11 @@ const blockedCount = (a) => sum((SANDBOX[a.id]?.blocked || []).map((b) => b.coun
 const base = (p) => p.split("/").pop();
 
 const SEV_ORDER = { high: 3, blocked: 2.5, medium: 2, low: 1, none: 0, unknown: -1 };
+// People who can give the agent instructions through chat channels (yourself included).
+const reachOf = (a) => sum((a.channels || []).map((c) => c.people));
+const openChannels = (a) => (a.channels || []).filter((c) => c.open);
+const appsOf = (a) => (a.channels || []).map((c) => c.app);
+const listJoin = (xs) => (xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]);
 const SEV_ICON = { high: "▲", blocked: "⊘", medium: "◆", low: "●", none: "✓", unknown: "?" };
 const hostOf = (a) => HOSTS.find((h) => h.id === a.host);
 const flagsOf = (a) => (a.flags || []).map((k) => FLAG[k]);
@@ -576,12 +609,12 @@ function screenAgents() {
   });
   const attention = AGENTS.flatMap((a) => flagsOf(a).filter((f) => f[0] !== "low").map((f) => ({ a, f })))
     .concat(blockedItems)
-    .sort((p, q) => SEV_ORDER[q.f[0]] - SEV_ORDER[p.f[0]]);
+    .sort((p, q) => SEV_ORDER[q.f[0]] - SEV_ORDER[p.f[0]] || (q.f[3] ? 1 : 0) - (p.f[3] ? 1 : 0));
 
   const counts = { all: AGENTS.length };
   ["active", "idle", "stopped"].forEach((s) => (counts[s] = AGENTS.filter((a) => a.status === s).length));
   const shown = AGENTS.filter((a) => state.filter === "all" || a.status === state.filter)
-    .sort((p, q) => SEV_ORDER[riskOf(q)] - SEV_ORDER[riskOf(p)]);
+    .sort((p, q) => SEV_ORDER[riskOf(q)] - SEV_ORDER[riskOf(p)] || openChannels(q).length - openChannels(p).length);
 
   return `
   <div class="screen">
@@ -604,7 +637,7 @@ function screenAgents() {
           <li>
             <span class="ic sev-${f[0]}" aria-label="${f[0]}">${SEV_ICON[f[0]]}</span>
             <span class="t">${esc(f[1])}</span>
-            <span class="r"><a class="who" href="#${a.id}${f[0] === "blocked" ? "-sandbox" : ""}">${esc(a.type)} · ${esc(hostOf(a).name)}</a> — ${esc(f[2])}</span>
+            <span class="r"><a class="who" href="#${a.id}${f[0] === "blocked" ? "-sandbox" : f[3] ? "-channels" : ""}">${esc(a.type)} · ${esc(hostOf(a).name)}</a> — ${esc(f[2])}</span>
           </li>`).join("")}
       </ul>
     </section>
@@ -622,6 +655,7 @@ function screenAgents() {
             <span class="who">
               <span class="name"><b>${esc(a.type)}</b></span>
               <span class="where">${esc(hostOf(a).name)} · <span class="mono">${esc(a.config)}</span> · v${esc(a.version)}</span>
+              ${a.channels ? `<span class="reach${openChannels(a).length ? " open" : ""}">${openChannels(a).length ? "▲ " : ""}${reachOf(a)} people can message it · ${esc(appsOf(a).join(", "))}</span>` : ""}
             </span>
             <span class="cost">${costLabel(a, sum(lastN(a.daily, 7)))}</span>
             <span class="meta">
@@ -664,6 +698,8 @@ function screenAgent(a) {
       <div class="stat"><span class="k">Usage data</span><span class="v" style="font-size:1rem;padding-block:7px">${qualityTag(a.quality)}</span><span class="s">${a.quality === "estimated" ? "token counts estimated from logs" : a.quality === "exact" ? "read from session logs" : "some calls had no token counts"}</span></div>
       <div class="stat"><span class="k">Sandbox</span><span class="v" style="font-size:1rem;padding-block:7px">${sandboxTag(a)}</span><span class="s">${a.sandbox === "yes" ? "OpenShell policy active" : h.platform.startsWith("darwin") ? "macOS: needs a Linux VM" : "can be sandboxed"}</span></div>
     </div>
+
+    ${channelsSection(a)}
 
     <section class="section panel" aria-label="Daily cost" style="gap:4px">
       <div class="chart" style="padding-bottom:4px">${sparkBars(d30, "var(--s1)")}</div>
@@ -727,6 +763,32 @@ function screenAgent(a) {
       </div>
     </section>
   </div>`;
+}
+
+function channelsSection(a) {
+  if (!a.channels) return "";
+  const open = openChannels(a);
+  const broad = a.sandbox !== "yes" && a.caps && (a.caps.network === "unrestricted" || a.caps.files === "full access");
+  const others = reachOf(a) - 1;
+  const banner = open.length && broad
+    ? `<div class="exposure"><span class="big">${others}</span><span><b>other people can give this agent instructions</b> through ${esc(listJoin(open.map((c) => c.app)))}.</span>
+        <span>It runs shell commands with unrestricted network access, outside a sandbox. Treat every message in these chats as code that runs on ${esc(hostOf(a).name)}.</span></div>`
+    : others > 0
+    ? `<div class="exposure mid"><span class="big">${others}</span><span><b>other ${others === 1 ? "person" : "people"} can give this agent instructions.</b></span>
+        <span>${a.sandbox === "yes" ? "It is sandboxed, so they reach only what its policy allows." : "Limit who can message it, or sandbox it."}</span></div>`
+    : "";
+  return `
+    <section class="section" id="channels" aria-labelledby="chn">
+      <header><h2 id="chn">Who can talk to it</h2><span class="muted" style="font-size:.82rem">from <code>${esc(a.config)}</code> · checked 1 min ago</span></header>
+      ${banner}
+      <ul class="channels panel">${a.channels.map((c) => `
+        <li>
+          <span class="app">${esc(c.app)} <span class="muted" style="font-weight:400">· ${esc(c.where)}</span></span>
+          <span class="note">${c.open ? `<span class="sev sev-high">▲ group</span> · ` : ""}${esc(c.note || (c.open ? "Anyone in the chat" : "Allowlisted people only"))}</span>
+          <span class="who"><span class="${c.open ? "sev sev-high" : "muted"}" style="font-size:.88rem">${esc(c.who)}</span><br><span class="muted num" style="font-size:.8rem">${c.people} ${c.people === 1 ? "person" : "people"}</span></span>
+        </li>`).join("")}
+      </ul>
+    </section>`;
 }
 
 function sandboxSection(a) {
