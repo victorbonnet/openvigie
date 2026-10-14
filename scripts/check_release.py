@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # files the hub and collector need at run time; a wheel without them installs but breaks
 REQUIRED = (
     "openvigie/prices.toml",
+    "openvigie/risk.toml",
     "openvigie/hub/static/app.css",
     "openvigie/hub/static/vendor/htmx-2.0.4.min.js",
     "openvigie/hub/static/vendor/htmx-LICENSE.txt",

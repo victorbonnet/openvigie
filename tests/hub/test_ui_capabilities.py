@@ -21,7 +21,7 @@ from openvigie.model import (
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 PI = Host("h-pi", "pi5", "linux", "aarch64", "0.0.1")
-FULL = Capabilities(  # noqa: S604 - a capability field, not a subprocess
+FULL = Capabilities(
     "a1", NOW - timedelta(hours=2), ApprovalLevel.ASK, "default", FsAccess.WORKSPACE,
     writable_roots=("~/shared",), network=NetAccess.ALLOWLIST, network_allowlist=("github.com",),
     shell=True, tools_allowed=("Bash(npm test:*)",), tools_denied=("WebFetch",),
