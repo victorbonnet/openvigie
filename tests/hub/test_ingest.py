@@ -75,8 +75,10 @@ def test_happy_path_and_idempotent_replay(client: TestClient, db: Database) -> N
         "adapter_health": 1,
         "usage": 0,
         "sessions": 0,
+        "spans": 0,
     }
     assert first.json()["next_push_s"] == 5
+    assert first.json()["traces"] == {"wanted": False, "export_content": False}
     second = push(client, token, body)
     assert second.json()["accepted"]["status_events"] == 0
     inventory = Inventory(db)
@@ -134,9 +136,9 @@ def test_too_many_items(client: TestClient, db: Database) -> None:
 
 
 def test_unknown_sections_ignored_and_reported(client: TestClient, db: Database) -> None:
-    response = push(client, token_for(db, PI), payload(future=[], spans=[]))
+    response = push(client, token_for(db, PI), payload(future=[], later=[]))
     assert response.status_code == 200
-    assert response.json()["ignored"] == ["future", "spans"]
+    assert response.json()["ignored"] == ["future", "later"]
 
 
 def test_clock_skew_recorded(client: TestClient, db: Database) -> None:
