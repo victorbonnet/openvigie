@@ -45,14 +45,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
 def cmd_hub_serve(args: argparse.Namespace) -> int:
     import dataclasses
 
-    from openvigie.config import ConfigError, load_hub_settings, validate_hub
+    from pydantic import ValidationError
+
+    from openvigie.config import ConfigError, describe, load_hub_settings
 
     try:
         settings = load_hub_settings()
         overrides = {k: v for k, v in (("bind", args.bind), ("port", args.port)) if v is not None}
-        settings = validate_hub(dataclasses.replace(settings, **overrides))
+        settings = dataclasses.replace(settings, **overrides)  # validates again
     except ConfigError as exc:
         print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    except ValidationError as exc:
+        print(f"openvigie: {describe(exc, 'hub')}", file=sys.stderr)
         return 2
     from openvigie.hub.server import serve
 

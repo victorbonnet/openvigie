@@ -1,24 +1,36 @@
 """Settings for the collector and the hub, loaded from TOML, with safe defaults.
 
 Files live in ``$OPENVIGIE_CONFIG_DIR`` (default ``$XDG_CONFIG_HOME/openvigie``, else
-``~/.config/openvigie``) on Linux and macOS alike. Unknown keys are errors, so typos fail loudly.
-The hub binds loopback unless ``allow_non_loopback = true`` is set explicitly.
+``~/.config/openvigie``) on Linux and macOS alike. Each section is a Pydantic dataclass (PRD D12):
+building one validates it, unknown keys are errors so typos fail loudly, and errors name the key
+but never quote its value. The hub binds loopback unless ``allow_non_loopback = true`` is set.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import ipaddress
 import logging
 import os
 import re
 import stat
 import tomllib
-import types
-from dataclasses import dataclass, field
+from dataclasses import field
 from pathlib import Path
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Annotated, Any, Literal, Self, cast, dataclass_transform
 from urllib.parse import urlsplit
+
+from pydantic import (
+    AfterValidator,
+    ConfigDict,
+    Field,
+    Strict,
+    StrictBool,
+    StrictStr,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
+from pydantic.dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
@@ -48,26 +60,54 @@ def data_dir() -> Path:
     return _xdg("OPENVIGIE_DATA_DIR", "XDG_DATA_HOME", ".local/share")
 
 
-@dataclass(frozen=True)
+Port = Annotated[int, Strict(), Field(ge=1, le=65535)]
+Days = Annotated[int, Strict(), Field(ge=0)]  # 0 keeps data forever
+Seconds = Annotated[float, Strict(), Field(gt=0)]
+UserPath = Annotated[Path, AfterValidator(Path.expanduser)]
+UsageSource = Literal["auto", "logs", "otlp"]
+SETTINGS = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
+@dataclass_transform(frozen_default=True, field_specifiers=(field, Field))
+def settings_type[C](cls: type[C]) -> type[C]:
+    """Decorator for a settings section: a frozen Pydantic dataclass that rejects unknown keys."""
+    return cast(type[C], dataclass(frozen=True, config=SETTINGS)(cls))
+
+
+@settings_type
 class Retention:
     """Days to keep data; 0 keeps it forever (the default until a retention policy is chosen)."""
 
-    usage_days: int = 0
-    status_events_days: int = 0
+    usage_days: Days = 0
+    status_events_days: Days = 0
     # spans are only queued for export, never kept: unexported ones older than this are dropped
-    span_queue_hours: int = 24
+    span_queue_hours: Annotated[int, Strict(), Field(ge=1)] = 24
 
 
-@dataclass(frozen=True)
+@settings_type
 class LangfuseSettings:
     """``[langfuse]`` in hub.toml. Absent: no trace export and no outbound connection at all."""
 
-    host: str = ""  # e.g. "https://cloud.langfuse.com" or a self-hosted URL
-    public_key: str = ""
+    host: StrictStr = ""  # e.g. "https://cloud.langfuse.com" or a self-hosted URL
+    public_key: StrictStr = ""
     # 0600 file holding the secret key; LANGFUSE_SECRET_KEY in the hub's environment also works
-    secret_key_file: Path | None = None
-    export_content: bool = False  # prompts/outputs/tool I/O; collectors must opt in too
-    project_id: str | None = None  # for trace links (#63)
+    secret_key_file: UserPath | None = None
+    export_content: StrictBool = False  # prompts/outputs/tool I/O; collectors must opt in too
+    project_id: StrictStr | None = None  # for trace links (#63)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        parts = urlsplit(self.host)
+        if parts.scheme not in ("http", "https") or not parts.hostname or parts.username:
+            raise ValueError("langfuse.host must be an http(s) URL without credentials")
+        if parts.scheme == "http" and not is_loopback(parts.hostname):
+            raise ValueError("langfuse.host must use https unless Langfuse runs on this machine")
+        if not self.public_key.startswith("pk-") or len(self.public_key) > 256:
+            raise ValueError("langfuse.public_key must be a Langfuse public key (pk-…)")
+        if self.project_id is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}",
+                                                            self.project_id):  # fmt: skip
+            raise ValueError("langfuse.project_id: letters, digits, '-' and '_' only")
+        return self
 
     def secret_key(self) -> str:
         """The secret key; never log or display it."""
@@ -78,45 +118,59 @@ class LangfuseSettings:
         return read_private_file(self.secret_key_file)
 
 
-@dataclass(frozen=True)
+@settings_type
 class HubSettings:
-    bind: str = "127.0.0.1"
-    port: int = 7878
-    allow_non_loopback: bool = False
-    allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
-    db_path: Path | None = None  # default: data_dir()/hub.db
-    display_timezone: str | None = None  # default: hub local time
+    bind: StrictStr = "127.0.0.1"
+    port: Port = 7878
+    allow_non_loopback: StrictBool = False
+    allowed_hosts: tuple[StrictStr, ...] = ("127.0.0.1", "localhost")
+    db_path: UserPath | None = None  # default: data_dir()/hub.db
+    display_timezone: StrictStr | None = None  # default: hub local time
     retention: Retention = field(default_factory=Retention)
     langfuse: LangfuseSettings | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if not is_loopback(self.bind):
+            if not self.allow_non_loopback:
+                raise ValueError(
+                    f"hub.bind = {self.bind!r} is not a loopback address. Use `tailscale serve` "
+                    "for remote access, or set allow_non_loopback = true if you really mean it."
+                )
+            log.warning(
+                "hub is binding %s: it is reachable from the network, not just this host",
+                self.bind,
+            )
+        return self
 
     def resolved_db_path(self) -> Path:
         return self.db_path or data_dir() / "hub.db"
 
 
-@dataclass(frozen=True)
+@settings_type
 class OtlpSettings:
     """``[otlp]`` in collector.toml: a local OTLP/HTTP JSON receiver (#64). Off by default."""
 
-    enabled: bool = False
-    port: int = 4318  # always on 127.0.0.1
-    token_file: Path | None = None  # if set, agents must send "Authorization: Bearer <token>"
-    usage_source: str = "auto"  # "auto" | "logs" | "otlp"
+    enabled: StrictBool = False
+    port: Port = 4318  # always on 127.0.0.1
+    token_file: UserPath | None = None  # if set, agents must send "Authorization: Bearer <token>"
+    usage_source: UsageSource = "auto"
 
 
-@dataclass(frozen=True)
+@settings_type
 class CollectorSettings:
-    hub_url: str | None = None
-    token_file: Path | None = None  # default: state_dir()/token
-    homes: tuple[Path, ...] = field(default_factory=lambda: (Path.home(),))
-    disable_adapters: tuple[str, ...] = ()  # built-in adapters to turn off
-    enable_plugins: tuple[str, ...] = ()  # third-party adapters to load (off by default)
-    active_window_s: int = 300
-    fast_tick_s: float = 5.0
-    slow_tick_s: float = 30.0
-    backfill_days: int = 30  # history read on first run; older usage is skipped
-    spool_limit_mb: int = 50
+    hub_url: StrictStr | None = None
+    token_file: UserPath | None = None  # default: state_dir()/token
+    homes: tuple[UserPath, ...] = field(default_factory=lambda: (Path.home(),))
+    disable_adapters: tuple[StrictStr, ...] = ()  # built-in adapters to turn off
+    enable_plugins: tuple[StrictStr, ...] = ()  # third-party adapters to load (off by default)
+    active_window_s: Annotated[int, Strict(), Field(gt=0)] = 300
+    fast_tick_s: Seconds = 5.0
+    slow_tick_s: Annotated[float, Strict(), Field(ge=0)] = 30.0  # 0: on every tick
+    backfill_days: Days = 30  # history read on first run; older usage is skipped
+    spool_limit_mb: Annotated[int, Strict(), Field(gt=0)] = 50
     # allow prompts/outputs/tool I/O in spans when the hub also asks for them (FR-6, #62)
-    export_content: bool = False
+    export_content: StrictBool = False
     otlp: OtlpSettings = field(default_factory=OtlpSettings)
 
     def resolved_token_file(self) -> Path:
@@ -132,63 +186,32 @@ def is_loopback(host: str) -> bool:
         return False
 
 
-def validate_hub(settings: HubSettings) -> HubSettings:
-    if not 0 < settings.port < 65536:
-        raise ConfigError("hub.port must be between 1 and 65535")
-    if settings.retention.usage_days < 0 or settings.retention.status_events_days < 0:
-        raise ConfigError("retention days must be 0 (keep forever) or positive")
-    if settings.retention.span_queue_hours < 1:
-        raise ConfigError("retention.span_queue_hours must be at least 1")
-    if settings.langfuse is not None:
-        validate_langfuse(settings.langfuse)
-    if not is_loopback(settings.bind):
-        if not settings.allow_non_loopback:
-            raise ConfigError(
-                f"hub.bind = {settings.bind!r} is not a loopback address. Use `tailscale serve` "
-                "for remote access, or set allow_non_loopback = true if you really mean it."
-            )
-        log.warning(
-            "hub is binding %s: it is reachable from the network, not just this host",
-            settings.bind,
-        )
-    return settings
-
-
-def validate_langfuse(langfuse: LangfuseSettings) -> None:
-    parts = urlsplit(langfuse.host)
-    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username:
-        raise ConfigError("langfuse.host must be an http(s) URL without credentials")
-    if parts.scheme == "http" and not is_loopback(parts.hostname):
-        raise ConfigError("langfuse.host must use https unless Langfuse runs on this machine")
-    if not langfuse.public_key.startswith("pk-") or len(langfuse.public_key) > 256:
-        raise ConfigError("langfuse.public_key must be a Langfuse public key (pk-…)")
-    if langfuse.project_id is not None and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}",
-                                                            langfuse.project_id):  # fmt: skip
-        raise ConfigError("langfuse.project_id: letters, digits, '-' and '_' only")
-
-
-def validate_collector(settings: CollectorSettings) -> CollectorSettings:
-    if settings.active_window_s <= 0:
-        raise ConfigError("collector.active_window_s must be positive")
-    if settings.fast_tick_s <= 0 or settings.slow_tick_s <= 0:
-        raise ConfigError("collector tick intervals must be positive")
-    if settings.backfill_days < 0 or settings.spool_limit_mb <= 0:
-        raise ConfigError("collector.backfill_days must be >= 0 and spool_limit_mb > 0")
-    if settings.otlp.usage_source not in ("auto", "logs", "otlp"):
-        raise ConfigError('otlp.usage_source must be "auto", "logs" or "otlp"')
-    if not 0 < settings.otlp.port < 65536:
-        raise ConfigError("otlp.port must be between 1 and 65535")
-    return settings
-
-
 def load_hub_settings(path: Path | None = None) -> HubSettings:
-    data = _read_toml(path or config_dir() / "hub.toml")
-    return validate_hub(_build(HubSettings, data, "hub"))
+    return _load(HubSettings, path or config_dir() / "hub.toml", "hub")
 
 
 def load_collector_settings(path: Path | None = None) -> CollectorSettings:
-    data = _read_toml(path or config_dir() / "collector.toml")
-    return validate_collector(_build(CollectorSettings, data, "collector"))
+    return _load(CollectorSettings, path or config_dir() / "collector.toml", "collector")
+
+
+def _load[T](cls: type[T], path: Path, where: str) -> T:
+    try:
+        settings: T = TypeAdapter(cls).validate_python(_read_toml(path))
+    except ValidationError as exc:
+        raise ConfigError(f"{path}: {describe(exc, where)}") from None
+    return settings
+
+
+def describe(exc: ValidationError, where: str) -> str:
+    """The first problem, located as ``section.key``, without the offending value."""
+    first = exc.errors(include_url=False, include_context=False, include_input=False)[0]
+    key = ".".join([where, *(str(p) for p in first["loc"])])
+    if first["type"] == "unexpected_keyword_argument":
+        return f"{key}: unknown key"
+    if first["type"] == "tuple_type":
+        return f"{key}: expected a list"
+    message = first["msg"].removeprefix("Value error, ")
+    return message if first["type"] == "value_error" else f"{key}: {message}"
 
 
 def _read_toml(path: Path) -> dict[str, Any]:
@@ -202,42 +225,6 @@ def _read_toml(path: Path) -> dict[str, Any]:
         return tomllib.loads(path.read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         raise ConfigError(f"{path}: invalid TOML ({exc})") from None
-
-
-def _build[T](cls: type[T], data: dict[str, Any], where: str) -> T:
-    hints = get_type_hints(cls)
-    names = {f.name for f in dataclasses.fields(cls)}  # type: ignore[arg-type]
-    unknown = sorted(set(data) - names)
-    if unknown:
-        raise ConfigError(f"{where}: unknown key(s) {', '.join(unknown)}")
-    return cls(**{k: _coerce(hints[k], v, f"{where}.{k}") for k, v in data.items()})
-
-
-def _coerce(tp: Any, value: Any, where: str) -> Any:
-    origin = get_origin(tp)
-    if origin in (Union, types.UnionType):
-        non_none = [t for t in get_args(tp) if t is not type(None)]
-        return _coerce(non_none[0], value, where)
-    if origin is tuple:
-        if not isinstance(value, list):
-            raise ConfigError(f"{where}: expected a list")
-        item_tp = get_args(tp)[0]
-        return tuple(_coerce(item_tp, v, where) for v in value)
-    if dataclasses.is_dataclass(tp) and isinstance(tp, type):
-        if not isinstance(value, dict):
-            raise ConfigError(f"{where}: expected a table")
-        return _build(tp, value, where)
-    if tp is Path:
-        if not isinstance(value, str):
-            raise ConfigError(f"{where}: expected a path string")
-        return Path(value).expanduser()
-    if tp is float and isinstance(value, int) and not isinstance(value, bool):
-        return float(value)
-    if tp is int and isinstance(value, bool):
-        raise ConfigError(f"{where}: expected int")
-    if not isinstance(value, tp):
-        raise ConfigError(f"{where}: expected {tp.__name__}")
-    return value
 
 
 # --- private files -----------------------------------------------------------------------------

@@ -2,9 +2,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from openvigie.collector.state import StateStore
-from openvigie.config import CollectorSettings, ConfigError, validate_collector
+from openvigie.config import CollectorSettings
 from openvigie.safeio import FileCursor
 
 
@@ -75,7 +76,7 @@ def test_spool_survives_restart(tmp_path: Path) -> None:
 
 def test_settings_validation() -> None:
     assert CollectorSettings().backfill_days == 30
-    with pytest.raises(ConfigError):
-        validate_collector(CollectorSettings(backfill_days=-1))
-    with pytest.raises(ConfigError):
-        validate_collector(CollectorSettings(spool_limit_mb=0))
+    with pytest.raises(ValidationError):
+        CollectorSettings(backfill_days=-1)
+    with pytest.raises(ValidationError):
+        CollectorSettings(spool_limit_mb=0)

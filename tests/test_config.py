@@ -85,6 +85,29 @@ def test_collector_values_parsed(tmp_path: Path) -> None:
     assert settings.enable_plugins == ("acme",)
 
 
+@pytest.mark.parametrize(
+    ("text", "key"),
+    [
+        (
+            '[langfuse]\nhost = "https://cloud.langfuse.com"\npublic_key = "sk-lf-SECRET"\n',
+            "langfuse.public_key",
+        ),
+        (
+            '[langfuse]\nhost = "https://cloud.langfuse.com"\npublic_key = "pk-lf-1"\n'
+            'secret_key = "sk-lf-SECRET"\n',
+            "hub.langfuse.secret_key: unknown key",
+        ),
+        ('port = "sk-lf-SECRET"\n', "hub.port: "),
+    ],
+)
+def test_errors_name_file_and_key_but_not_the_value(tmp_path: Path, text: str, key: str) -> None:
+    path = write(tmp_path, "hub.toml", text)
+    with pytest.raises(ConfigError) as raised:
+        load_hub_settings(path)
+    assert str(raised.value).startswith(f"{path}: ") and key in str(raised.value)
+    assert "SECRET" not in str(raised.value)
+
+
 def test_invalid_window_rejected(tmp_path: Path) -> None:
     path = write(tmp_path, "collector.toml", "active_window_s = 0\n")
     with pytest.raises(ConfigError):
