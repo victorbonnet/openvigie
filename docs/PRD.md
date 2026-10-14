@@ -72,7 +72,7 @@ Requirements are numbered so issues and PRs can reference them. P0 is the MVP, P
 | FR-6 | Send traces to Langfuse when configured, and link each agent and session to its traces. The hub exports; metadata only by default (D5) | P0 |
 | FR-7 | Adapter plugin interface in Python so contributors can add new agent types | P0 |
 | FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets | P1 |
-| FR-9 | Score each agent's risk from its capabilities and sandbox state, with the reason for each flag | P1 |
+| FR-9 | Flag each agent's risks from its capabilities and sandbox state, with a severity and the reason for each flag (D10) | P1 |
 | FR-10 | List OpenShell sandboxes, which agent runs in each, and the active policy | P1 |
 | FR-11 | Generate a starter OpenShell policy from an agent's observed capabilities | P1 |
 | FR-12 | Edit and apply sandbox policies, with diff, dry-run and one-click rollback | P1 |
@@ -155,14 +155,16 @@ Decisions taken after this PRD was drafted. Each one is tracked in the roadmap (
 | D7 | 2026-10-14 | Collectors push to the hub over HTTP JSON with a per-host bearer token from enrolment, even when hub and collector share a host. | Architecture, Security → Access |
 | D8 | 2026-10-14 | Collector user model. Linux: a dedicated `openvigie` system user with `CAP_DAC_READ_SEARCH`, confined by systemd to read-only bind mounts of the agent folders (homes otherwise hidden). Read ACLs were rejected: agents create `0600` files, which get an empty ACL mask. macOS (and simple Linux setups): a per-user service, documented as weaker isolation. | Open question *Collector user model*, Security → Mitigations |
 | D9 | 2026-10-14 | Usage data and status history are kept forever by default; retention is opt-in per data type in `hub.toml` (`[retention]`). Spans are never kept: unexported ones leave the export queue after `span_queue_hours` (24 by default). Bundled prices not yet checked against the provider are shipped flagged `unverified`, and the UI says so wherever they are used. | Open question *Retention defaults*, FR-4, Security → Mitigations |
+| D10 | 2026-10-14 | Risk is reported as rule-based flags, not a numeric score. Each flag has a severity (low, medium, high) and a human-readable reason, and an agent's risk level is its highest flag. Rules are declarative data shipped with the package and overridable, like the price table. | Open question *Risk scoring rules*, FR-9 |
+| D11 | 2026-10-14 | OpenShell needs Linux, so agents that should be sandboxed on a Mac run inside a Linux VM or container (for example Lima, OrbStack or a devcontainer), with a collector inside it that reports like any Linux host. Agents running directly on macOS are monitored and risk-flagged, and the UI says they can't be sandboxed there. | Open question *macOS sandboxing*, FR-10 |
 
 ## Open questions and risks
 
 **Open questions**
 
-- [ ] macOS sandboxing: OpenShell relies on Linux features (Landlock, seccomp, network namespaces). Do Mac agents run in a Linux VM or container, or stay monitor-only?
+- [x] macOS sandboxing: OpenShell relies on Linux features (Landlock, seccomp, network namespaces). Do Mac agents run in a Linux VM or container, or stay monitor-only? *Resolved by D11.*
 - [x] Detection depth: process and config scanning only, or also hooks injected into each agent (for example Claude Code hooks)? *Resolved for the MVP by D2; revisit after.*
-- [ ] Risk scoring rules: which capabilities count as high risk, and how are scores weighted?
+- [x] Risk scoring rules: which capabilities count as high risk, and how are scores weighted? *Resolved by D10: flags with severities, no weights.*
 - [x] Retention defaults for usage data and traces. *Resolved by D9: kept forever by default, configurable.*
 - [x] Web UI stack: server-rendered (FastAPI + HTMX) or a separate front end? *Resolved by D1.*
 - [x] Collector user model: a dedicated system user (as the mitigations above require) cannot read agent folders in other users' homes by default. Grant read-only access with ACLs, or run the collector as each agent's user with weaker isolation (especially on macOS)? *Resolved by D8.*
