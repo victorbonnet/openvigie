@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from datetime import timedelta
+from pathlib import Path
 
 from openvigie import __version__
 from openvigie.redact import install_log_redaction
@@ -171,6 +172,17 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_service_print(args: argparse.Namespace) -> int:
+    from openvigie.service import render
+
+    try:
+        print(render(args.role, args.kind, [Path(h) for h in args.home]), end="")
+    except ValueError as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openvigie", description="Control tower for AI agents on your own machines."
@@ -213,6 +225,41 @@ def build_parser() -> argparse.ArgumentParser:
     enrol.add_argument("hub_url", help="e.g. http://127.0.0.1:7878 or https://hub.tailnet.ts.net")
     enrol.add_argument("code", help="one-time code from `openvigie hub enrol-code`")
     enrol.set_defaults(func=cmd_enrol)
+
+    service = sub.add_parser("service", help="print service definitions (installs nothing)")
+    service_sub = service.add_subparsers(dest="service_command", required=True)
+    printer = service_sub.add_parser(
+        "print",
+        parents=[common],
+        help="print a systemd unit or launchd plist to review and install yourself",
+    )
+    printer.add_argument("role", choices=["collector", "hub"])
+    kinds = printer.add_mutually_exclusive_group()
+    kinds.add_argument(
+        "--systemd",
+        dest="kind",
+        action="store_const",
+        const="system",
+        help="Linux system service with a dedicated user (default)",
+    )
+    kinds.add_argument(
+        "--systemd-user",
+        dest="kind",
+        action="store_const",
+        const="user",
+        help="Linux per-user service (weaker isolation)",
+    )
+    kinds.add_argument(
+        "--launchd", dest="kind", action="store_const", const="launchd", help="macOS LaunchAgent"
+    )
+    printer.add_argument(
+        "--home",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="home folder whose agent folders the system collector may read",
+    )
+    printer.set_defaults(func=cmd_service_print, kind="system")
 
     collect = sub.add_parser("collect", parents=[common], help="run the collector daemon")
     collect.add_argument("--once", action="store_true", help="one tick and push, then exit")
