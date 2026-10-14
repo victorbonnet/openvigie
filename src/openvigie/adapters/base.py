@@ -109,9 +109,16 @@ class AdapterState:
     the hub acknowledged the data derived from them (at-least-once delivery).
     """
 
-    def __init__(self, committed: dict[str, dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        committed: dict[str, dict[str, Any]] | None = None,
+        *,
+        backfill_since: datetime | None = None,
+    ) -> None:
         self.committed: dict[str, dict[str, Any]] = committed or {}
         self.staged: dict[str, dict[str, Any]] = {}
+        # On first read of a file (no cursor), skip records older than this.
+        self.backfill_since = backfill_since
 
     def get(self, key: str) -> dict[str, Any] | None:
         return self.staged.get(key, self.committed.get(key))
