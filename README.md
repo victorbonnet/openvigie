@@ -67,6 +67,7 @@ Read [docs/threat-model.md](docs/threat-model.md) for the details and
 - [Troubleshooting](docs/troubleshooting.md)
 - [Running as a service](docs/services.md)
 - [Write actions](docs/write-actions.md): admins, the confirm step, what each host allows
+- [Budgets and alerts](docs/alerts.md)
 - [Traces in Langfuse](docs/traces.md) · [Usage over OTLP](docs/otlp.md)
 - [Writing an adapter](docs/adapters.md) · [Architecture](docs/architecture.md) · [Product requirements](docs/PRD.md)
 

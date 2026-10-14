@@ -30,6 +30,7 @@ from openvigie import __version__
 from openvigie.config import ConfigError, HubSettings
 from openvigie.hub import admin, api, ui
 from openvigie.hub.api_models import describe_invalid
+from openvigie.hub.budgets import budgets_lifespan
 from openvigie.hub.langfuse import LangfuseExporter, export_lifespan
 from openvigie.hub.retention import retention_lifespan
 from openvigie.hub.roles import IdentityMiddleware, RefusalBudget
@@ -126,7 +127,7 @@ def display_timezone(settings: HubSettings) -> tzinfo:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    async with retention_lifespan(app), export_lifespan(app):
+    async with retention_lifespan(app), export_lifespan(app), budgets_lifespan(app):
         yield
 
 

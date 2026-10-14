@@ -67,9 +67,10 @@ flowchart LR
 | `hub/ui` | The web UI (GET only) | routes, templates in `hub/templates` |
 | `hub/actions` + `hub/admin` | Write actions (FR-17, D14): propose, diff, typed confirm, command, rollback (kinds: `noop`, `sandbox.policy`); the admin's POST routes with CSRF and same-origin checks; the network-rules editor (FR-12, D15) | `KINDS`, `Kind`, `Plan`, `propose`, `confirm`, `cancel`, `rollback`; `admin.router`, `csrf_token` |
 | `hub/roles` | Who makes a request: viewer or admin (D14) | `IdentityMiddleware`, `identity(request)`, `Admin` (dependency for write routes) |
-| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials`, `AuditLog`, `CommandQueue` |
+| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials`, `AuditLog`, `CommandQueue`, `AlertStore` |
 | `hub/store/audit` | The audit log of admin actions (FR-17, D14): append-only, hash-chained, redacted | `AuditLog.record` (the only writer), `entries`, `all`, `verify` |
 | `hub/reports` | Usage and cost aggregation | `usage_report` |
+| `hub/budgets` | Budgets from `budgets.toml` and their alerts (FR-14, D17) | `load_budgets`, `evaluate`, `check`, `budgets_lifespan` |
 | `hub/riskview` | Risk of known agents | `agent_risks` |
 | `hub/langfuse` | Trace export (FR-6, opt-in) | `LangfuseExporter`, `trace_link` |
 

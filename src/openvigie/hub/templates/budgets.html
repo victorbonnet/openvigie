@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Budgets</h1>
+<p class="muted">Cost and token limits per day or month, from <code>{{ budgets.path }}</code>.
+  The hub checks them every minute and raises an alert the first time a budget reaches its
+  warning level or its limit in a period. Budgets only alert: nothing is stopped.</p>
+{% for problem in budgets.problems %}<p class="error-box">{{ problem }}</p>{% endfor %}
+{% if statuses %}
+<table>
+  <thead><tr><th>Budget</th><th>Covers</th><th>Period</th><th>Used</th><th></th><th>Status</th></tr></thead>
+  <tbody>
+  {% for s in statuses %}
+    {% set pct = (s.fraction * 100) | round | int %}
+    <tr>
+      <td><code>{{ s.budget.id }}</code></td>
+      <td>{{ s.budget.scope }}</td>
+      <td>{{ "today" if s.budget.period == "day" else "this month" }}</td>
+      <td>{{ used(s) }}</td>
+      <td class="num">{{ "≥ " if not s.cost_complete and s.budget.max_cost_usd else "" }}{{ pct }} %
+        <meter min="0" max="100" low="{{ (s.budget.warn_at * 100) | round | int }}" high="99" optimum="0" value="{{ [pct, 100] | min }}">{{ pct }} %</meter></td>
+      <td><span class="badge {{ {'ok': 'ok', 'warning': 'degraded', 'exceeded': 'error'}[s.level] }}">{{ s.level }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if statuses | rejectattr("cost_complete") | list %}<p class="muted">≥: part of the usage has no known price, so the cost is at least this much.</p>{% endif %}
+{% elif not budgets.problems %}
+<p class="muted">No budgets yet. Add some to <code>{{ budgets.path }}</code>, for example:</p>
+<pre>[[budgets]]
+id = "claude-daily"
+agent_type = "claude-code"   # or host = "pi5", agent_id = "…"; none: every agent
+period = "day"               # or "month"
+max_cost_usd = 5
+max_tokens = 2000000         # optional
+warn_at = 0.8                # alert at 80 % too</pre>
+{% endif %}
+
+<h2>Recent alerts</h2>
+{% if alerts %}
+<table>
+  <thead><tr><th>When</th><th>Alert</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for a in alerts %}
+    <tr><td title="{{ a.at }}">{{ a.at | ago }}</td>
+      <td><span class="badge {{ 'error' if a.level == 'exceeded' else 'degraded' }}">{{ a.level }}</span> {{ a.title }}</td>
+      <td class="muted">{{ a.detail }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No alerts.</p>
+{% endif %}
+{% endblock %}
