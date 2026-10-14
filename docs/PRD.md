@@ -151,7 +151,7 @@ Decisions taken after this PRD was drafted. Each one is tracked in the roadmap (
 | D3 | 2026-10-14 | Claude Code and Codex usage is read from local session logs first (`~/.claude/projects`, `~/.codex/sessions`), so it works with no agent setup. An OTLP/HTTP receiver follows for users who enable agent telemetry. | FR-3 |
 | D4 | 2026-10-14 | The price table ships with the package and is edited through an override file. The UI shows it read-only; editing it from the web is a later write action. | FR-4 |
 | D5 | 2026-10-14 | The hub, not the collectors, exports traces to Langfuse, so the Langfuse key lives on one machine. Export is metadata only by default; prompt and output content is opt-in and redacted. | FR-6, Security |
-| D6 | 2026-10-14 | Remote access uses `tailscale serve` in front of a hub bound to `127.0.0.1`. The hub never binds a tailnet or public interface itself. | Security → Access |
+| D6 | 2026-10-14 | Remote access uses `tailscale serve` in front of a hub bound to `127.0.0.1`. The hub does not bind a tailnet or public interface unless the operator explicitly opts in. | Security → Access |
 | D7 | 2026-10-14 | Collectors push to the hub over HTTP JSON with a per-host bearer token from enrolment, even when hub and collector share a host. | Architecture, Security → Access |
 
 ## Open questions and risks
