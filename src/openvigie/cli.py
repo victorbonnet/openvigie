@@ -107,6 +107,40 @@ def cmd_enrol(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    import signal
+    import threading
+
+    from openvigie.adapters.registry import discover
+    from openvigie.collector.client import HubClient
+    from openvigie.collector.daemon import Collector
+    from openvigie.collector.host import build_context
+    from openvigie.config import ConfigError, load_collector_settings, read_private_file
+
+    try:
+        settings = load_collector_settings()
+        if not settings.hub_url:
+            raise ConfigError("no hub configured; run `openvigie enrol <hub-url> <code>` first")
+        token = read_private_file(settings.resolved_token_file())
+        client = HubClient(settings.hub_url, token=token)
+    except FileNotFoundError:
+        print("openvigie: no token found; run `openvigie enrol <hub-url> <code>`", file=sys.stderr)
+        return 2
+    except (ConfigError, ValueError) as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    discovery = discover(settings.enable_plugins, settings.disable_adapters)
+    collector = Collector(settings, build_context(settings), discovery, client)
+    if args.once:
+        return 0 if collector.tick() else 1
+    stop = threading.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_: stop.set())
+    print(f"openvigie collector pushing to {client.base_url} every {settings.fast_tick_s:g}s")
+    collector.run(stop)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openvigie", description="Control tower for AI agents on your own machines."
@@ -139,6 +173,10 @@ def build_parser() -> argparse.ArgumentParser:
     enrol.add_argument("hub_url", help="e.g. http://127.0.0.1:7878 or https://hub.tailnet.ts.net")
     enrol.add_argument("code", help="one-time code from `openvigie hub enrol-code`")
     enrol.set_defaults(func=cmd_enrol)
+
+    collect = sub.add_parser("collect", parents=[common], help="run the collector daemon")
+    collect.add_argument("--once", action="store_true", help="one tick and push, then exit")
+    collect.set_defaults(func=cmd_collect)
     return parser
 
 
