@@ -49,6 +49,7 @@ header.top {
 
 header.top .brand { font-weight: 700; color: var(--fg); }
 header.top nav { display: flex; gap: 16px; }
+header.top .who { margin-left: auto; font-size: 13px; }
 
 main { padding: 24px; max-width: 1200px; margin: 0 auto; }
 footer { padding: 16px 24px; color: var(--muted); font-size: 13px; }

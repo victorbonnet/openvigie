@@ -64,6 +64,8 @@ Port = Annotated[int, Strict(), Field(ge=1, le=65535)]
 Days = Annotated[int, Strict(), Field(ge=0)]  # 0 keeps data forever
 Seconds = Annotated[float, Strict(), Field(gt=0)]
 UserPath = Annotated[Path, AfterValidator(Path.expanduser)]
+# a Tailscale login as `tailscale status` shows it, e.g. alice@example.com or octocat@github
+Login = Annotated[str, Strict(), Field(pattern=r"^[A-Za-z0-9._%+@:-]{1,256}$")]
 UsageSource = Literal["auto", "logs", "otlp"]
 SETTINGS = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -135,9 +137,16 @@ class HubSettings:
     display_timezone: StrictStr | None = None  # default: hub local time
     retention: Retention = field(default_factory=Retention)
     langfuse: LangfuseSettings | None = None
+    # write actions (D14): these logins are admins, everyone else is a viewer. Identity comes
+    # from Tailscale Serve's headers, trusted only when this is on: the hub host must then be
+    # single-user, since any local user could send the same headers to 127.0.0.1.
+    admins: Annotated[tuple[Login, ...], Field(max_length=64)] = ()
+    trust_tailscale_identity: StrictBool = False
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        if self.admins and not self.trust_tailscale_identity:
+            log.warning("hub.admins has no effect until trust_tailscale_identity = true")
         if not is_loopback(self.bind):
             if not self.allow_non_loopback:
                 raise ValueError(

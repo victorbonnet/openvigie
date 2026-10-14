@@ -12,6 +12,7 @@ from openvigie import __version__
 
 
 def templates_env() -> jinja2.Environment:
+    from openvigie.hub.roles import identity
     from openvigie.hub.ui import ago
 
     env = jinja2.Environment(
@@ -22,6 +23,7 @@ def templates_env() -> jinja2.Environment:
     env.globals["version"] = __version__
     env.filters["ago"] = ago
     env.globals["adapter_alerts"] = adapter_alerts
+    env.globals["whoami"] = identity
     return env
 
 
