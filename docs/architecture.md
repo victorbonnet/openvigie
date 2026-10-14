@@ -50,7 +50,7 @@ flowchart LR
 | `semconv` | OTel GenAI attribute names | constants |
 | `pricing` | Prices and cost (FR-4) | `load_price_table`, `PriceTable.find`, `compute_cost`; file format `PriceFile` |
 | `risk` | Risk rules and flags (FR-9) | `load_rules`, `facts`, `evaluate`, `level`; file format `RuleFile` / `Rule` / `Condition` |
-| `openshell` | Everything about NVIDIA OpenShell; the only module that talks to it | `versions.MIN_SUPPORTED`, `is_supported` (latest stable only, checked weekly in CI) |
+| `openshell` | Everything about NVIDIA OpenShell; the only module that talks to it (D13) | `cli.Reader(cli_runner()).read()` → `Inventory` (state, sandboxes with their policy); models of the CLI's JSON in `models`; `versions.MIN_SUPPORTED`, `is_supported` |
 | `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `health`), `HostContext`, `AdapterState`, `ActivityBatch` |
 | `adapters/registry` | Loading adapters and running them safely | `discover`, `run_detect`, `run_collect`, `run_capabilities` |
 | `adapters/usage`, `spans`, `caps` | Helpers shared by adapters | incremental JSONL tailing; span ids and content; capability parsing |
