@@ -1,0 +1,29 @@
+# What each agent type needs to reach to work at all, for starter OpenShell policies (FR-11).
+# Kept small on purpose: telemetry and update checks are left out (the agent works without them).
+# Binaries are where the agent usually lives in a Linux image; scripts are matched by their
+# interpreter in OpenShell, so a Node.js agent needs its `node` path. Adjust to your image.
+
+[agents.claude-code]
+binaries = ["/usr/local/bin/claude", "/usr/bin/node", "/usr/local/bin/node"]
+endpoints = [
+  { host = "api.anthropic.com", reason = "the Claude API: every model call" },
+]
+
+[agents.codex]
+binaries = ["/usr/local/bin/codex", "/usr/bin/codex"]
+endpoints = [
+  { host = "api.openai.com", reason = "the OpenAI API: model calls with an API key" },
+  { host = "chatgpt.com", reason = "model calls when signed in with a ChatGPT plan" },
+  { host = "auth.openai.com", reason = "refreshing a ChatGPT sign-in" },
+]
+
+# Package registries, for MCP servers started with these commands (they download at start)
+[registries]
+npx = ["registry.npmjs.org"]
+uvx = ["pypi.org", "files.pythonhosted.org"]
+pipx = ["pypi.org", "files.pythonhosted.org"]
+
+[registry_binaries]
+npx = ["/usr/bin/node", "/usr/local/bin/node", "/usr/bin/npx", "/usr/local/bin/npx"]
+uvx = ["/usr/local/bin/uv", "/usr/bin/uv", "/usr/local/bin/uvx"]
+pipx = ["/usr/bin/python3*", "/usr/local/bin/python3*"]
