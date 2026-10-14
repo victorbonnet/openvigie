@@ -98,7 +98,7 @@ class ClaudeCodeAdapter(Adapter):
             return batch
         records: dict[str, UsageRecord] = {}
         sessions: dict[str, Session] = {}
-        for entry in tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget()):
+        for _, entry in tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget()):
             record = self._usage(agent, entry, state)
             if record is None:
                 continue
