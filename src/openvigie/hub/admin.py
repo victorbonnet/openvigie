@@ -62,6 +62,7 @@ class ProposeForm(Form):
     workspace: Short = ""
     sandbox: Short = ""
     text: Annotated[str, Field(max_length=MAX_TEXT)] = ""
+    agent_id: Short = ""
 
 
 class ConfirmForm(Form):

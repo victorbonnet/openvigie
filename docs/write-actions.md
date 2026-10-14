@@ -62,6 +62,22 @@ Admins can edit them there, starting from the current rules or from the agent's 
 
 ![Reviewing a change to network rules](img/policy-review.png)
 
+## Stopping and killing an agent
+
+While an agent has a running process, its page offers *Stop…* and *Kill…* to admins. To
+confirm, type `<host>/<agent type>`, for example `pi5/claude-code`.
+
+- **Stop** sends SIGTERM to the agent's processes and their children, then SIGKILL to whatever
+  is still running after 10 seconds. **Kill** sends SIGKILL at once.
+- **Allowed separately.** The host must allow each action:
+  `allow_actions = ["agent.stop", "agent.kill"]`. Allow just `agent.stop` if you never want a
+  hard kill.
+- **Only the agent's own processes.** The hub only names the agent. The collector signals the
+  processes its adapter found for that agent, checks each one again just before signalling it,
+  and never escalates privileges. If the collector runs as another user than the agent, the
+  result says *not permitted: run the collector as the agent's user*.
+- **No rollback.** A stopped Claude Code or Codex session can't be restarted from the hub.
+
 ## Safety
 
 - **Two keys.** The hub decides what to ask, and each host decides what it accepts. A
