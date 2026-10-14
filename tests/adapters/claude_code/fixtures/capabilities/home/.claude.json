@@ -1,0 +1,12 @@
+{
+  "oauthAccount": {"emailAddress": "someone@example.com", "accountUuid": "00000000-0000-0000-0000-000000000000"},
+  "userID": "deadbeef",
+  "mcpServers": {
+    "github": {"type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"],
+               "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_FAKE1111111111111111111111111111111111"}}
+  },
+  "projects": {
+    "{HOME}/src/app": {"mcpServers": {"db": {"command": "uvx", "args": ["postgres-mcp==0.3.1"]}}},
+    "/etc": {"mcpServers": {}}
+  }
+}

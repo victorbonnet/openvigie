@@ -12,8 +12,15 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path, PurePath
+from typing import Any
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
+from openvigie.adapters.claude_code.capabilities import (
+    CACHE_TTL,
+    file_states,
+    mode_from_cmdline,
+    read_capabilities,
+)
 from openvigie.adapters.claude_code.spans import TranscriptSpans
 from openvigie.adapters.common import (
     attribute_processes,
@@ -30,6 +37,7 @@ from openvigie.adapters.usage import (
 )
 from openvigie.model import (
     AgentInstance,
+    Capabilities,
     SandboxState,
     Session,
     UsageQuality,
@@ -58,6 +66,8 @@ class ClaudeCodeAdapter(Adapter):
     def __init__(self) -> None:
         super().__init__()
         self.roots: dict[str, Path] = {}
+        self.procs: dict[str, list[ProcessInfo]] = {}
+        self.capabilities_cache: dict[str, tuple[Any, Capabilities]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         roots = [
@@ -70,6 +80,7 @@ class ClaudeCodeAdapter(Adapter):
         for root in roots:
             self.roots[stable_id(ctx.host.host_id, self.agent_type, str(root))] = root
             procs = attribute_processes(claude_procs, root, roots)
+            self.procs[stable_id(ctx.host.host_id, self.agent_type, str(root))] = procs
             newest = newest_mtime(root / "projects", "*.jsonl")
             sandboxed, kind = SandboxState.UNKNOWN, None
             if procs:
@@ -99,6 +110,20 @@ class ClaudeCodeAdapter(Adapter):
         except (OSError, UnsafeFileError):
             self.notes.append("could not read newest transcript")
         return None
+
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        root = self.roots.get(agent.agent_id)
+        if root is None:
+            return None
+        procs = self.procs.get(agent.agent_id, [])
+        key = (mode_from_cmdline(procs), file_states(root))
+        cached = self.capabilities_cache.get(agent.agent_id)
+        fresh = cached and ctx.now() - cached[1].observed_at < CACHE_TTL
+        if cached and fresh and cached[0] == key:  # unchanged: don't re-parse ~/.claude.json
+            return cached[1]
+        caps = read_capabilities(agent, root, ctx.homes, procs, ctx.now())
+        self.capabilities_cache[agent.agent_id] = (key, caps)
+        return caps
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         root = self.roots.get(agent.agent_id)

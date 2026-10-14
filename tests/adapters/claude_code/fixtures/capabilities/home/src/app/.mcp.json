@@ -1,0 +1,1 @@
+{"mcpServers": {"docs": {"type": "http", "url": "https://mcp.example.com/v1?key=FAKEKEY123", "headers": {"Authorization": "Bearer FAKE"}}}}
