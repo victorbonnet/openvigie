@@ -21,6 +21,49 @@
   </dd>
 </dl>
 
+{% set t = usage.total %}
+<h2>Usage · last 30 days</h2>
+{% if t.records %}
+<div class="tiles">
+  <div class="tile"><div class="k">Cost</div><div class="v">{% if not t.cost_complete %}≥ {% endif %}{{ money(t.cost) }}</div></div>
+  <div class="tile"><div class="k">Tokens</div><div class="v">{{ compact(t.tokens) }}</div></div>
+  <div class="tile"><div class="k">Calls</div><div class="v">{{ t.records }}</div>
+    <div class="s">{{ t.exact }} exact · {{ t.estimated }} estimated · {{ t.unknown }} unknown</div></div>
+</div>
+{{ usage.chart }}
+<h2>By model</h2>
+<table>
+  <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cost</th></tr></thead>
+  <tbody>
+  {% for r in usage.models %}
+    <tr><td>{{ r.labels.model }}</td><td class="num">{{ r.records }}</td><td class="num">{{ compact(r.input_tokens) }}</td>
+      <td class="num">{{ compact(r.output_tokens) }}</td><td class="num">{{ compact(r.cache_read_tokens) }}</td>
+      <td class="num">{% if not r.cost_complete %}≥ {% endif %}{{ money(r.cost) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>Sessions</h2>
+<table>
+  <thead><tr><th>Session</th><th>Started</th><th>Duration</th><th>Models</th><th class="num">Tokens</th><th class="num">Cost</th><th>Quality</th></tr></thead>
+  <tbody>
+  {% for v in usage.sessions %}
+    {% set s = v.session %}
+    <tr>
+      <td><code>{{ v.usage.key.session[:12] or "unknown" }}</code></td>
+      <td>{% if s and s.started_at %}{{ s.started_at | ago }}{% else %}unknown{% endif %}</td>
+      <td>{% if s and s.started_at and s.last_event_at %}{{ ((s.last_event_at - s.started_at).total_seconds() // 60) | int }} min{% else %}unknown{% endif %}</td>
+      <td>{% if s %}{{ s.models | join(", ") }}{% endif %}</td>
+      <td class="num">{{ compact(v.usage.tokens) }}</td>
+      <td class="num">{% if not v.usage.cost_complete %}≥ {% endif %}{{ money(v.usage.cost) }}</td>
+      <td>{% if v.usage.unknown %}<span class="badge unknown">partly unknown</span>{% elif v.usage.estimated %}<span class="badge idle">estimated</span>{% else %}<span class="badge ok">exact</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No usage recorded in the last 30 days.</p>
+{% endif %}
+
 <h2>Status history</h2>
 {% if history %}
 <table>
