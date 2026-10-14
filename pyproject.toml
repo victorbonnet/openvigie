@@ -42,7 +42,7 @@ select = [
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 python_version = "3.12"
 
 [tool.pytest.ini_options]

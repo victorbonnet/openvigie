@@ -76,7 +76,7 @@ PATTERNS: tuple[Pattern, ...] = (
         re.compile(
             r"(?m)^(\s{0,40}(?:export\s+)?[A-Z0-9_]{0,64}"
             r"(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]{0,64}\s{0,8}=\s{0,8})"
-            r"[^\s\[][^\s]*"
+            r"(?!\S*\[REDACTED)\S+"
         ),
         _keep_group("env"),
     ),
@@ -84,7 +84,8 @@ PATTERNS: tuple[Pattern, ...] = (
         "json-secret",
         re.compile(
             r'(?i)("(?:[a-z0-9_-]{0,32}(?:api[_-]?key|secret|password|passwd)|'
-            r'(?:access|refresh|id|auth|bot|api)?[_-]?token)"\s{0,8}:\s{0,8}")[^"\\]{4,}'
+            r'(?:access|refresh|id|auth|bot|api)?[_-]?token)"\s{0,8}:\s{0,8}")'
+            r'(?![^"]*\[REDACTED)[^"\\]{4,}'
         ),
         _keep_group("json"),
     ),
