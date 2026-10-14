@@ -21,7 +21,13 @@ from openvigie.adapters.common import (
     display_path,
     newest_mtime,
 )
-from openvigie.adapters.usage import TailBudget, int_or_none, parse_time, tail_files
+from openvigie.adapters.usage import (
+    TailBudget,
+    before_backfill,
+    int_or_none,
+    parse_time,
+    tail_files,
+)
 from openvigie.model import (
     AgentInstance,
     SandboxState,
@@ -105,7 +111,7 @@ class ClaudeCodeAdapter(Adapter):
         files = tail_files(root, root / "projects", "*.jsonl", state, batch, TailBudget())
         for key, entry in files:
             record = self._usage(agent, entry, state)
-            if ctx.traces.enabled and not self._before_backfill(entry, state):
+            if ctx.traces.enabled and not before_backfill(entry, state):
                 if key not in tracers:
                     tracers[key] = TranscriptSpans(
                         agent, key, state, export_content=ctx.traces.export_content
@@ -124,11 +130,6 @@ class ClaudeCodeAdapter(Adapter):
         if batch.usage:
             batch.last_activity_at = max(r.timestamp for r in batch.usage)
         return batch
-
-    @staticmethod
-    def _before_backfill(entry: object, state: AdapterState) -> bool:
-        when = parse_time(entry.get("timestamp")) if isinstance(entry, dict) else None
-        return bool(state.backfill_since and when and when < state.backfill_since)
 
     def _usage(
         self, agent: AgentInstance, entry: object, state: AdapterState

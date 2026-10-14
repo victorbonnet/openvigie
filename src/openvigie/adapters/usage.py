@@ -39,6 +39,12 @@ def parse_time(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def before_backfill(entry: Any, state: AdapterState) -> bool:
+    """Whether a log entry is older than the first-run backfill window."""
+    when = parse_time(entry.get("timestamp")) if isinstance(entry, dict) else None
+    return bool(state.backfill_since and when and when < state.backfill_since)
+
+
 def tail_files(
     root: Path,
     directory: Path,

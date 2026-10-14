@@ -1,0 +1,121 @@
+[
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.agent.name": "codex",
+   "gen_ai.conversation.id": "0199e0b0-2222-7000-8000-000000000002",
+   "gen_ai.operation.name": "invoke_agent",
+   "gen_ai.provider.name": "openai",
+   "openvigie.agent.id": "agent-codex-fixture",
+   "openvigie.agent.type": "codex",
+   "session.id": "0199e0b0-2222-7000-8000-000000000002"
+  },
+  "end_time": "2026-10-13T18:30:09+00:00",
+  "name": "invoke_agent codex",
+  "parent_span_id": null,
+  "span_id": "c706c8400059afa2",
+  "start_time": "2026-10-13T18:30:00+00:00",
+  "status": "unset",
+  "trace_id": "7d1644a23f520b44e10883b8ac5520a9"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "openai",
+   "gen_ai.request.model": "gpt-5",
+   "gen_ai.response.model": "gpt-5",
+   "gen_ai.usage.cache_read.input_tokens": 0,
+   "gen_ai.usage.input_tokens": 3000,
+   "gen_ai.usage.output_tokens": 120,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 0,
+   "session.id": "0199e0b0-2222-7000-8000-000000000002"
+  },
+  "end_time": "2026-10-13T18:30:09+00:00",
+  "name": "chat gpt-5",
+  "parent_span_id": "c706c8400059afa2",
+  "span_id": "3ca773a02022d7fd",
+  "start_time": "2026-10-13T18:30:03+00:00",
+  "status": "unset",
+  "trace_id": "7d1644a23f520b44e10883b8ac5520a9"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.agent.name": "codex",
+   "gen_ai.conversation.id": "0199e5a0-1111-7000-8000-000000000001",
+   "gen_ai.operation.name": "invoke_agent",
+   "gen_ai.provider.name": "openai",
+   "openvigie.agent.id": "agent-codex-fixture",
+   "openvigie.agent.type": "codex",
+   "session.id": "0199e5a0-1111-7000-8000-000000000001"
+  },
+  "end_time": "2026-10-14T09:00:15.200000+00:00",
+  "name": "invoke_agent codex",
+  "parent_span_id": null,
+  "span_id": "9f891d966c1858c2",
+  "start_time": "2026-10-14T09:00:00+00:00",
+  "status": "unset",
+  "trace_id": "90ea240b0227d14ac1be40d2226bfa41"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "openai",
+   "gen_ai.request.model": "gpt-5-codex",
+   "gen_ai.response.model": "gpt-5-codex",
+   "gen_ai.usage.cache_read.input_tokens": 1000,
+   "gen_ai.usage.input_tokens": 5000,
+   "gen_ai.usage.output_tokens": 200,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 64,
+   "session.id": "0199e5a0-1111-7000-8000-000000000001"
+  },
+  "end_time": "2026-10-14T09:00:06.100000+00:00",
+  "name": "chat gpt-5-codex",
+  "parent_span_id": "9f891d966c1858c2",
+  "span_id": "e37d7f5a55e0aad6",
+  "start_time": "2026-10-14T09:00:02+00:00",
+  "status": "unset",
+  "trace_id": "90ea240b0227d14ac1be40d2226bfa41"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "execute_tool",
+   "gen_ai.tool.call.id": "call_1",
+   "gen_ai.tool.name": "shell"
+  },
+  "end_time": "2026-10-14T09:00:09+00:00",
+  "name": "execute_tool shell",
+  "parent_span_id": "e37d7f5a55e0aad6",
+  "span_id": "5168c9aa7991c7ac",
+  "start_time": "2026-10-14T09:00:06+00:00",
+  "status": "ok",
+  "trace_id": "90ea240b0227d14ac1be40d2226bfa41"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "openai",
+   "gen_ai.request.model": "gpt-5-codex",
+   "gen_ai.response.model": "gpt-5-codex",
+   "gen_ai.usage.cache_read.input_tokens": 3800,
+   "gen_ai.usage.input_tokens": 7000,
+   "gen_ai.usage.output_tokens": 450,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 64,
+   "session.id": "0199e5a0-1111-7000-8000-000000000001"
+  },
+  "end_time": "2026-10-14T09:00:15.100000+00:00",
+  "name": "chat gpt-5-codex",
+  "parent_span_id": "9f891d966c1858c2",
+  "span_id": "35cbf680fcafbc45",
+  "start_time": "2026-10-14T09:00:09+00:00",
+  "status": "unset",
+  "trace_id": "90ea240b0227d14ac1be40d2226bfa41"
+ }
+]
