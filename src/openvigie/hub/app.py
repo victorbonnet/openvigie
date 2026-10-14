@@ -22,6 +22,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from openvigie import __version__
 from openvigie.config import HubSettings
+from openvigie.hub import api
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
 
@@ -127,11 +128,13 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.db = db
     app.state.inventory = Inventory(db)
     app.state.templates = templates_env()
+    app.state.enrol_limiter = api.FailureLimiter()
 
     app.add_middleware(BodyLimit)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     app.add_middleware(SecurityHeaders)
 
+    app.include_router(api.router)
     static = resources.files("openvigie.hub") / "static"
     app.mount("/static", StaticFiles(directory=str(static)), name="static")
 
