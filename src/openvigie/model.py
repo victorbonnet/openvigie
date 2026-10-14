@@ -176,8 +176,13 @@ class CodecError(ValueError):
 
 
 def to_dict(obj: Any) -> dict[str, Any]:
-    if not dataclasses.is_dataclass(obj) or isinstance(obj, type):
-        raise TypeError("to_dict expects a dataclass instance")
+    if (
+        not dataclasses.is_dataclass(obj)
+        or isinstance(obj, type)
+        or type(obj).__module__ != __name__
+    ):
+        # only wire types are serializable (e.g. never ProcessInfo with its command line)
+        raise TypeError("to_dict only serializes openvigie.model types")
     return {f.name: _encode(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
 
 
