@@ -1,0 +1,161 @@
+Create a sandbox
+
+USAGE
+  openshell sandbox create [OPTIONS] [-- <COMMAND>...]
+
+FLAGS:
+      --name <NAME>
+          Optional sandbox name (auto-generated when omitted)
+
+      --template <TEMPLATE>
+          Create the sandbox from a named sandbox template
+
+      --from <FROM>
+          Sandbox source: a rootfs tar archive (`.tar`, `.tar.gz`, or `.tgz`) or a container image reference (e.g., `myregistry.com/img:tag`).
+          
+          To use a local Dockerfile, build and tag it with the container engine used by your local gateway, then pass the resulting image reference here. A rootfs tar is staged for the VM compute driver.
+
+      --no-keep
+          Delete the sandbox after the initial command or shell exits
+
+      --editor <EDITOR>
+          Launch a remote editor after the sandbox is ready. Keeps the sandbox alive and installs OpenShell-managed SSH config
+          
+          [possible values: vscode, cursor]
+
+      --gpu [<COUNT>]
+          Request GPU resources for the sandbox.
+          
+          Omit COUNT for the driver's default GPU selection, or pass COUNT to request a specific number of GPUs.
+
+      --cpu <CPU>
+          CPU limit for the sandbox (for example: 500m, 1, 2.5)
+
+      --memory <MEMORY>
+          Memory limit for the sandbox (for example: 512Mi, 4Gi, 8G)
+
+      --driver-config-json <JSON>
+          Driver-keyed JSON object for driver-specific sandbox settings. Disabled unless the gateway administrator enables `allow_driver_config`. External resource attachments still require approval labels.
+          
+          For Kubernetes, pass a value such as `{"kubernetes":{"pod":{"node_selector":{"pool":"gpu"}}}}`.
+
+      --provider <PROVIDERS>
+          Attach a configured credential provider to the sandbox. Use providers for API keys, tokens, and other secrets so commands in the sandbox do not receive the real credential values. Repeatable
+
+      --policy <POLICY>
+          Path to a custom sandbox policy YAML file. Overrides the built-in default and the `OPENSHELL_SANDBOX_POLICY` env var
+
+      --forward <FORWARD>
+          Forward a local port to the sandbox before the initial command or shell starts. Accepts [`bind_address`:]port (e.g. 8080, 0.0.0.0:8080). Keeps the sandbox alive
+
+      --expose <PORT>
+          Expose a loopback HTTP or WebSocket service after the sandbox is ready. Keeps the sandbox alive. Use `openshell service expose` to add a named service
+
+      --expose-authorization-mode <EXPOSE_AUTHORIZATION_MODE>
+          Handling for an incoming application Authorization header
+          
+          [default: strip]
+          [possible values: strip, bearer-passthrough]
+
+      --tty
+          Allocate a pseudo-terminal for the remote command. Defaults to auto-detection (on when stdin and stdout are terminals). Use --tty to force a PTY even when auto-detection fails, or --no-tty to disable
+
+      --no-tty
+          Disable pseudo-terminal allocation
+
+      --detach
+          Start the canonical main process without attaching to it
+
+      --restart-policy <RESTART_POLICY>
+          Restart behavior after the canonical main process exits
+          
+          [default: never]
+          [possible values: never, on-failure, always]
+
+      --auto-providers
+          Auto-create missing providers from local credentials.
+          
+          Without this flag, an interactive prompt asks per-provider; in non-interactive mode the command errors.
+
+      --no-auto-providers
+          Never auto-create providers; error if required providers are missing
+
+      --label <LABELS>
+          Attach labels to the sandbox (key=value format, repeatable)
+
+      --env <KEY=VALUE>
+          Set a non-secret environment variable in the sandbox. Do not use this option for API keys, tokens, or other secrets; create a provider and attach it with `--provider` instead. Repeatable
+
+      --no-credential-warnings
+          Suppress warnings when --env values look like credentials
+
+      --approval-mode <APPROVAL_MODE>
+          Approval mode for agent-authored policy proposals.
+          
+          `manual` (default): every proposal lands in the draft inbox for human review, regardless of the prover verdict.
+          
+          `auto`: proposals whose prover delta is empty are approved automatically; proposals with findings still require human approval. Auto mode is an explicit opt-in — `OpenShell`'s default-deny posture is preserved unless you choose otherwise.
+          
+          [default: manual]
+          [possible values: manual, auto]
+
+  -o, --output <OUTPUT>
+          Output format
+          
+          [default: table]
+          [possible values: table, yaml, json]
+
+  [COMMAND]...
+          Command to run after "--" (defaults to an interactive shell)
+
+UPLOAD FLAGS:
+      --upload <UPLOAD>
+          Upload local files into the sandbox before running.
+          
+          Format: `<LOCAL_PATH>[:<SANDBOX_PATH>]`. When `SANDBOX_PATH` is omitted, files are uploaded to the container's working directory. Inside a Git work tree, `.gitignore` rules are applied by default. Outside a Git work tree, uploads proceed unfiltered with a warning. Filtering errors or empty selections stop the upload; use `--no-git-ignore` to intentionally upload everything.
+
+      --no-git-ignore
+          Disable `.gitignore` filtering for `--upload`
+
+GATEWAY FLAGS:
+  -g, --gateway <GATEWAY>
+          Gateway name to operate on (resolved from stored metadata)
+          
+          [env: OPENSHELL_GATEWAY=]
+
+      --gateway-endpoint <GATEWAY_ENDPOINT>
+          Gateway endpoint URL (e.g. <https://gateway.example.com>). Connects directly without looking up gateway metadata
+          
+          [env: OPENSHELL_GATEWAY_ENDPOINT=]
+
+      --gateway-insecure
+          Skip TLS certificate verification for gateway connections
+          
+          [env: OPENSHELL_GATEWAY_INSECURE=]
+
+GLOBAL FLAGS:
+      --workspace <WORKSPACE>
+          Workspace scope for resource operations
+          
+          [env: OPENSHELL_WORKSPACE=]
+          [default: default]
+
+  -v, --verbose...
+          Increase verbosity (-v, -vv, -vvv)
+
+      --color <WHEN>
+          When to colorize output. `auto` colorizes only when stdout is a terminal
+
+          Possible values:
+          - auto:   Colorize a stream only when that stream is a terminal and no environment override applies
+          - always: Always colorize, even when output is redirected
+          - never:  Never colorize
+          
+          [env: OPENSHELL_COLOR=]
+          [default: auto]
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version

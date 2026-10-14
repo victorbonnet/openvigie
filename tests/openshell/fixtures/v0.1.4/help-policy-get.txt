@@ -1,0 +1,71 @@
+Show current effective policy for a sandbox or a stored global policy
+
+USAGE
+  openshell policy get [OPTIONS] [NAME]
+
+FLAGS:
+      --rev <REV>
+          Show a specific stored policy revision. Default shows the current effective policy
+          
+          [default: 0]
+
+      --full
+          Include the effective policy payload, including provider-composed entries
+
+      --base
+          Include the base policy payload without provider-composed entries
+
+  -o, --output <OUTPUT>
+          Output format
+          
+          [default: table]
+          [possible values: table, json]
+
+      --global
+          Show the global policy revision
+
+  [NAME]
+          Sandbox name (defaults to last-used sandbox). Ignored with --global
+
+GATEWAY FLAGS:
+  -g, --gateway <GATEWAY>
+          Gateway name to operate on (resolved from stored metadata)
+          
+          [env: OPENSHELL_GATEWAY=]
+
+      --gateway-endpoint <GATEWAY_ENDPOINT>
+          Gateway endpoint URL (e.g. <https://gateway.example.com>). Connects directly without looking up gateway metadata
+          
+          [env: OPENSHELL_GATEWAY_ENDPOINT=]
+
+      --gateway-insecure
+          Skip TLS certificate verification for gateway connections
+          
+          [env: OPENSHELL_GATEWAY_INSECURE=]
+
+GLOBAL FLAGS:
+      --workspace <WORKSPACE>
+          Workspace scope for resource operations
+          
+          [env: OPENSHELL_WORKSPACE=]
+          [default: default]
+
+  -v, --verbose...
+          Increase verbosity (-v, -vv, -vvv)
+
+      --color <WHEN>
+          When to colorize output. `auto` colorizes only when stdout is a terminal
+
+          Possible values:
+          - auto:   Colorize a stream only when that stream is a terminal and no environment override applies
+          - always: Always colorize, even when output is redirected
+          - never:  Never colorize
+          
+          [env: OPENSHELL_COLOR=]
+          [default: auto]
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version

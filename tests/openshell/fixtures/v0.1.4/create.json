@@ -1,0 +1,63 @@
+Provisioning sandbox (structured output on stdout)...
+{
+  "annotations": {
+    "internal.openshell.ai/auth-epoch": "1",
+    "internal.openshell.ai/gateway-token-id": "fixture-token-id",
+    "internal.openshell.ai/runtime-generation": "d55f16d5-f8a3-4f1f-bd3e-59ad3a8bce0f"
+  },
+  "conditions": [
+    {
+      "last_transition_time": "",
+      "message": "Supervisor session connected",
+      "reason": "DependenciesReady",
+      "status": "True",
+      "type": "Ready"
+    },
+    {
+      "last_transition_time": "",
+      "message": "",
+      "reason": "ConfigurationAccepted",
+      "status": "True",
+      "type": "ConfigurationReady"
+    }
+  ],
+  "configuration_admission": {
+    "config_revision": 16709790733110020355,
+    "error": "",
+    "policy_hash": "a45a8ff3564f00ae26cbd66f1131f37eedd8b54a66fbfec103d65a204c19c6e8",
+    "policy_version": 1,
+    "provider_env_revision": 3176606324465211593,
+    "state": "accepted"
+  },
+  "created_at": "2026-10-14 20:06:25",
+  "created_from_workload_template": null,
+  "current_policy_version": 1,
+  "endpoint_statuses": [],
+  "exit_code": null,
+  "host_key_fingerprint": "SHA256:FIXTURE-HOST-KEY",
+  "id": "38c077af-842b-4c5d-9783-e26670449dd7",
+  "labels": {
+    "openvigie.agent": "claude-code"
+  },
+  "name": "ov-fixture",
+  "phase": "Ready",
+  "provisioning": {
+    "admission_start_time": "2026-10-14T20:06:28.682Z",
+    "attempt_id": "710669d1-e333-45ec-a697-624559a08cc4",
+    "cleanup_completed_time": null,
+    "cleanup_error": "",
+    "cleanup_retry_time": null,
+    "configuration_change_id": "aac38bec6d921248b546901450130641b8101bd1535ed36dc455bf28f5771c3f",
+    "configuration_change_time": "2026-10-14T20:06:28.688Z",
+    "deadline": null,
+    "driver_operation_id": "c0558e1b-12d3-4b67-b20a-babd8e0b9e4a",
+    "driver_operation_pending": false,
+    "first_rejection_time": null,
+    "phase": "ready",
+    "preparation_deadline": "2026-10-14T20:36:25.316Z",
+    "timeout_time": null
+  },
+  "resource_version": 11,
+  "service_urls": {},
+  "workspace": "default"
+}
