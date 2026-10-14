@@ -5,8 +5,9 @@ when its action is not in ``allow_actions`` in collector.toml (empty by default)
 expired, when its id was seen before, or when it is malformed. Seen ids are kept until the
 command expires, in the state store when there is one, so a restart doesn't allow a replay.
 
-No real action exists yet: ``noop`` does nothing, for tests and end-to-end checks. Real ones
-(e.g. applying an OpenShell policy, #17) are added to ``ACTIONS``.
+Actions: ``noop`` does nothing, to check the channel end to end; ``sandbox.policy.set`` applies
+network rules to an OpenShell sandbox, reverting if they don't load (FR-12, D15). It can take
+two minutes, during which this loop doesn't push.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from typing import Any
 
 from openvigie.collector.state import StateStore
 from openvigie.model import CodecError, Command, CommandResult, CommandStatus, from_dict
+from openvigie.openshell.apply import WAIT_S, ApplyError, apply_network
+from openvigie.openshell.cli import cli_runner
 from openvigie.redact import redact
 
 log = logging.getLogger(__name__)
@@ -30,7 +33,18 @@ def noop(args: Mapping[str, str]) -> str:
     return "did nothing, as asked"
 
 
-ACTIONS: dict[str, Action] = {"noop": noop}
+def sandbox_policy_set(args: Mapping[str, str]) -> str:
+    run = cli_runner(timeout=2 * WAIT_S + 30)
+    if run is None:
+        raise ApplyError("OpenShell is not installed on this host")
+    missing = [k for k in ("sandbox", "base_hash", "network_policies") if k not in args]
+    if missing:
+        raise ApplyError(f"missing argument {missing[0]}")
+    return apply_network(run, args["sandbox"], args.get("workspace", "default"),
+                         args["base_hash"], args["network_policies"])  # fmt: skip
+
+
+ACTIONS: dict[str, Action] = {"noop": noop, "sandbox.policy.set": sandbox_policy_set}
 MAX_DETAIL = 500
 
 
@@ -80,6 +94,8 @@ class CommandRunner:
         log.warning("running %s for the hub (command %s)", command.action, command.command_id)
         try:
             detail = action(command.args)
+        except ApplyError as exc:  # says what happened and the state the sandbox is in
+            return self._result(command.command_id, CommandStatus.FAILED, str(exc))
         except Exception as exc:  # any failure is reported, never raised
             return self._result(command.command_id, CommandStatus.FAILED,
                                 f"{type(exc).__name__}: {exc}")  # fmt: skip
