@@ -21,7 +21,7 @@ from openvigie.adapters.base import (
     AdapterState,
     HostContext,
 )
-from openvigie.model import AdapterHealth, AgentInstance, HealthState
+from openvigie.model import AdapterHealth, AgentInstance, Capabilities, HealthState
 from openvigie.redact import redact
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,20 @@ def run_detect(adapter: Adapter, ctx: HostContext) -> tuple[list[AgentInstance],
         return [], _error(adapter.agent_type, exc)
     _slow(adapter, "detect", started)
     return agents, adapter.health()
+
+
+def run_capabilities(
+    adapter: Adapter, ctx: HostContext, agent: AgentInstance
+) -> Capabilities | None:
+    """The agent's capabilities, or ``None`` if unsupported or the adapter failed (logged)."""
+    started = time.monotonic()
+    try:
+        found = adapter.capabilities(ctx, agent)
+    except Exception as exc:
+        log.warning("adapter %s: capabilities failed: %s", adapter.agent_type, exc)
+        return None
+    _slow(adapter, "capabilities", started)
+    return found
 
 
 def run_collect(

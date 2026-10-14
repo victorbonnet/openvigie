@@ -76,6 +76,7 @@ def test_happy_path_and_idempotent_replay(client: TestClient, db: Database) -> N
         "usage": 0,
         "sessions": 0,
         "spans": 0,
+        "capabilities": 0,
     }
     assert first.json()["next_push_s"] == 5
     assert first.json()["traces"] == {"wanted": False, "export_content": False}

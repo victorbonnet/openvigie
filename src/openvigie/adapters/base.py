@@ -23,6 +23,7 @@ from typing import Any, ClassVar
 from openvigie.model import (
     AdapterHealth,
     AgentInstance,
+    Capabilities,
     HealthState,
     Host,
     SandboxState,
@@ -170,9 +171,12 @@ class Adapter(ABC):
         """Return activity since the cursors in ``state``. Default: nothing to report."""
         return ActivityBatch()
 
-    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Any:
-        """What the agent can access (FR-8, P1)."""
-        raise NotImplementedError
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        """What the agent can access (FR-8), from its config files; ``None`` if not supported.
+
+        Secrets are reported by name only (``SecretRef``): never read a value into the result.
+        """
+        return None
 
     def health(self) -> AdapterHealth:
         """Default: degraded when files had to be skipped, with the first note as reason."""

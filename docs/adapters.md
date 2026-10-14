@@ -37,7 +37,11 @@ class MyAgentAdapter(Adapter):
         return ActivityBatch()
 ```
 
-`capabilities()` ("what can it access?") is reserved for P1 (FR-8).
+`capabilities()` answers "what can it access?" (FR-8): return a `Capabilities` snapshot built
+from the agent's config files, or `None` (the default) if your adapter doesn't support it.
+Unknown stays unknown (`UNKNOWN`, `None`), and secrets are reported **by name only**
+(`SecretRef`): never read a secret's value into the result. The collector sends a snapshot
+when it changes; the hub keeps the latest one and a log of what changed.
 
 ## Rules
 
