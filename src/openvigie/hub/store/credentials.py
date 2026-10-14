@@ -104,3 +104,37 @@ class Credentials:
                     (ts(now), wanted),
                 )
         return str(row["host_id"])
+
+    def revoke_host(self, host_id: str, now: datetime) -> bool:
+        """Invalidate every token of ``host_id`` and mark the host revoked (data is kept)."""
+        with self.db.transaction() as conn:
+            changed = conn.execute(
+                "UPDATE hosts SET revoked_at = ? WHERE host_id = ? AND revoked_at IS NULL",
+                (ts(now), host_id),
+            ).rowcount
+            conn.execute(
+                "UPDATE host_tokens SET revoked_at = ? WHERE host_id = ? AND revoked_at IS NULL",
+                (ts(now), host_id),
+            )
+        return changed == 1
+
+    def is_revoked(self, host_id: str) -> bool:
+        with self.db.read() as conn:
+            row = conn.execute(
+                "SELECT revoked_at FROM hosts WHERE host_id = ?", (host_id,)
+            ).fetchone()
+        return row is not None and row["revoked_at"] is not None
+
+    def reinstate(self, host_id: str) -> None:
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE hosts SET revoked_at = NULL WHERE host_id = ?", (host_id,))
+
+    def token_info(self) -> dict[str, tuple[datetime | None, datetime | None]]:
+        """host_id -> (created_at, last_used_at) of its active token."""
+        with self.db.read() as conn:
+            rows = conn.execute(
+                "SELECT host_id, created_at, last_used_at FROM host_tokens WHERE revoked_at IS NULL"
+            ).fetchall()
+        return {
+            r["host_id"]: (parse_ts(r["created_at"]), parse_ts(r["last_used_at"])) for r in rows
+        }
