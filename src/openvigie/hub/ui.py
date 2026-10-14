@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -10,7 +11,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from markupsafe import Markup
 
 from openvigie.adapters.spans import trace_id
@@ -26,6 +27,7 @@ from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.templating import render
 from openvigie.model import AgentStatus, HealthState, OpenShellSandbox, Session
+from openvigie.openshell.starter import StarterPolicy, generate
 from openvigie.pricing import PriceTable
 
 router = APIRouter(include_in_schema=False)
@@ -156,6 +158,7 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         money=money,
         compact=compact,
         sandbox=sandbox,
+        starter=starter_view(request, row, sandbox),
         sandbox_changes=sandboxes.changes(sandbox.sandbox_id, limit=10) if sandbox else [],
         sandboxes={agent_id: sandbox} if sandbox else {},
     )
@@ -231,6 +234,37 @@ def prices_page(request: Request) -> HTMLResponse:
         unpriced=unpriced,
         override_path=str(table.override_path or "prices.toml"),
         compact=compact,
+    )
+
+
+@dataclass(frozen=True)
+class StarterView:
+    """An agent's starter OpenShell policy, and how it compares with its sandbox (FR-11)."""
+
+    policy: StarterPolicy
+    missing: tuple[str, ...]  # hosts the starter allows that the agent's sandbox doesn't
+    extra: tuple[str, ...]  # hosts the sandbox allows that the starter doesn't need
+
+
+def starter_view(request: Request, row: AgentRow, sandbox: OpenShellSandbox | None) -> StarterView:
+    caps = CapabilityStore(request.app.state.db).get(row.agent.agent_id)
+    policy = generate(row.agent, caps)
+    if sandbox is None or sandbox.network_rules is None:
+        return StarterView(policy, (), ())  # nothing to compare with
+    wanted = {host for rule in policy.rules for host in rule.hosts}
+    current = {e.host for rule in sandbox.network_rules for e in rule.endpoints if e.host}
+    return StarterView(policy, tuple(sorted(wanted - current)), tuple(sorted(current - wanted)))
+
+
+@router.get("/agents/{agent_id}/starter-policy.yaml")
+def starter_policy(request: Request, agent_id: AgentId) -> Response:
+    """The agent's starter policy as a file to review and use (FR-11). Nothing is applied."""
+    row = _agent_or_404(request, agent_id)
+    policy = generate(row.agent, CapabilityStore(request.app.state.db).get(agent_id))
+    name = re.sub(r"[^a-z0-9-]+", "-", row.agent.agent_type.lower()).strip("-") or "agent"
+    disposition = f'attachment; filename="openvigie-starter-{name}.yaml"'
+    return Response(
+        policy.yaml, media_type="application/yaml", headers={"Content-Disposition": disposition}
     )
 
 

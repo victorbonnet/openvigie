@@ -40,6 +40,33 @@ runs only read-only commands: `openshell sandbox list`, `sandbox get` and `polic
   - degraded with the reason: an unsupported version or an unreachable gateway;
   - absent when OpenShell isn't installed.
 
+### A starter policy for an agent (FR-11)
+
+Each agent page on Linux offers a **starter OpenShell policy**: a least-privilege starting point
+built from what openvigie observed, with a comment on each rule. Copy or download it, review
+it, then use it:
+
+```sh
+openshell sandbox create --policy starter.yaml -- claude      # a new sandbox
+openshell policy set my-sandbox --policy starter.yaml --wait   # network rules of a running one
+```
+
+It contains:
+
+- **Network:** the model API the agent needs, hosts the agent's own settings already allow, its
+  remote MCP servers, and the package registry used by `npx`/`uvx` MCP servers. Nothing else:
+  OpenShell denies the rest.
+- **Files:** the project read-write and system paths read-only.
+
+What openvigie can't know becomes a `# NOTE`, for example the hosts an MCP server calls itself,
+or binary paths in your image. When the agent already runs in a sandbox, the page lists the hosts
+the starter would add or drop compared with the sandbox's current rules.
+
+openvigie doesn't apply the policy. Every generated policy is checked in CI against a real
+OpenShell: a sandbox created from it must become Ready with all its rules loaded.
+
+![A starter policy on an agent's page](img/starter-policy.png)
+
 ## macOS
 
 OpenShell relies on Linux kernel features, so it can't sandbox an agent that runs directly on
