@@ -1,7 +1,9 @@
+import json
 import os
 import shutil
 import threading
 import time
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,9 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.model import AgentStatus, SandboxState, to_dict
+from openvigie.model import AgentStatus, HealthState, SandboxState, to_dict
+from openvigie.openshell.cli import Reader
+from openvigie.openshell.mapping import OpenShellProbe
 
 FIXTURE = Path(__file__).parents[1] / "adapters/claude_code/fixtures/home/.claude"
 
@@ -257,3 +261,59 @@ def test_span_chunks_respect_count_and_size() -> None:
     chunks = daemon._span_chunks(big)
     assert sum(len(c) for c in chunks) == 7 and all(len(c) <= 2 for c in chunks)
     assert daemon._span_chunks([]) == []
+
+
+# --- OpenShell (FR-10) ------------------------------------------------------------------------
+
+OPENSHELL = Path(__file__).parents[1] / "openshell" / "fixtures" / "v0.1.4"
+GET = json.loads((OPENSHELL / "sandbox-get.json").read_text())
+
+
+def fake_openshell(version: str = "openshell 0.1.4") -> Reader:
+    def run(args: Sequence[str]) -> str:
+        if list(args) == ["--version"]:
+            return version
+        if list(args[:2]) == ["sandbox", "list"]:
+            return json.dumps({"sandboxes": [GET], "next_page_token": ""})
+        if list(args[:2]) == ["sandbox", "get"]:
+            return json.dumps(GET)
+        return (OPENSHELL / "policy-base.json").read_text()
+
+    return Reader(run)
+
+
+def sandboxed_collector(
+    tmp_path: Path, hub: tuple[TestClient, Database], reader: Reader
+) -> Collector:
+    """A collector whose Claude Code process is the main process of the recorded sandbox."""
+    collector, host, _, _ = make_collector(tmp_path, hub)
+    started = GET["main_process_started_at_ms"] / 1000
+    host.processes = [
+        fake_process(2835, "openshell-sandbox", ppid=1),
+        fake_process(2955, "claude", ["claude"], ppid=2835, create_time=started),
+    ]
+    collector.ctx.sandbox_probe = OpenShellProbe(lambda pid: (SandboxState.NO, None),
+                                                 lambda: list(host.processes))  # fmt: skip
+    collector.openshell = reader
+    return collector
+
+
+def test_agent_in_a_sandbox_gets_its_name(tmp_path: Path, hub: tuple[TestClient, Database]) -> None:
+    collector = sandboxed_collector(tmp_path, hub, fake_openshell())
+    collector.tick()  # the slow tick reads OpenShell
+    agents, health = collector.observe()
+    assert [(a.sandboxed, a.sandbox_kind) for a in agents] == [
+        (SandboxState.YES, "openshell:ov-fixture")]  # fmt: skip
+    assert [(h.adapter, h.state) for h in health if h.adapter == "openshell"] == [
+        ("openshell", HealthState.OK)]  # fmt: skip
+
+
+def test_unsupported_openshell_is_reported_as_health(
+    tmp_path: Path, hub: tuple[TestClient, Database]
+) -> None:
+    collector = sandboxed_collector(tmp_path, hub, fake_openshell("openshell 0.1.2"))
+    collector.tick()
+    agents, health = collector.observe()
+    (row,) = [h for h in health if h.adapter == "openshell"]
+    assert row.state is HealthState.DEGRADED and "0.1.4 or newer" in (row.reason or "")
+    assert agents[0].sandboxed is SandboxState.NO  # falls back to the generic probe
