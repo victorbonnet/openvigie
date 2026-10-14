@@ -1,0 +1,535 @@
+{
+ "resourceLogs": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "codex_cli_rs"
+      }
+     }
+    ]
+   },
+   "scopeLogs": [
+    {
+     "scope": {
+      "name": "codex_otel"
+     },
+     "logRecords": [
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.sse_event"
+         }
+        },
+        {
+         "key": "event.kind",
+         "value": {
+          "stringValue": "response.completed"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-13T18:30:09.000Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e0b0-2222-7000-8000-000000000002"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "input_token_count",
+         "value": {
+          "stringValue": "3000"
+         }
+        },
+        {
+         "key": "output_token_count",
+         "value": {
+          "stringValue": "120"
+         }
+        },
+        {
+         "key": "cached_token_count",
+         "value": {
+          "stringValue": "0"
+         }
+        },
+        {
+         "key": "reasoning_token_count",
+         "value": {
+          "stringValue": "0"
+         }
+        },
+        {
+         "key": "tool_token_count",
+         "value": {
+          "stringValue": "3120"
+         }
+        },
+        {
+         "key": "ttft_ms",
+         "value": {
+          "stringValue": "800"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.sse_event"
+         }
+        },
+        {
+         "key": "event.kind",
+         "value": {
+          "stringValue": "response.output_item.done"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T09:00:05.000Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e5a0-1111-7000-8000-000000000001"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.sse_event"
+         }
+        },
+        {
+         "key": "event.kind",
+         "value": {
+          "stringValue": "response.completed"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T09:00:06.100Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e5a0-1111-7000-8000-000000000001"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "input_token_count",
+         "value": {
+          "stringValue": "5000"
+         }
+        },
+        {
+         "key": "output_token_count",
+         "value": {
+          "stringValue": "200"
+         }
+        },
+        {
+         "key": "cached_token_count",
+         "value": {
+          "stringValue": "1000"
+         }
+        },
+        {
+         "key": "reasoning_token_count",
+         "value": {
+          "stringValue": "64"
+         }
+        },
+        {
+         "key": "tool_token_count",
+         "value": {
+          "stringValue": "5200"
+         }
+        },
+        {
+         "key": "ttft_ms",
+         "value": {
+          "stringValue": "800"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.sse_event"
+         }
+        },
+        {
+         "key": "event.kind",
+         "value": {
+          "stringValue": "response.completed"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T09:00:07.000Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e5a0-1111-7000-8000-000000000001"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "error.message",
+         "value": {
+          "stringValue": "stream closed"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T09:00:08.000Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e5a0-1111-7000-8000-000000000001"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "stringValue": "900"
+         }
+        },
+        {
+         "key": "http.response.status_code",
+         "value": {
+          "stringValue": "200"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "0",
+       "attributes": [
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "codex.sse_event"
+         }
+        },
+        {
+         "key": "event.kind",
+         "value": {
+          "stringValue": "response.completed"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "2026-10-14T09:00:15.100Z"
+         }
+        },
+        {
+         "key": "conversation.id",
+         "value": {
+          "stringValue": "0199e5a0-1111-7000-8000-000000000001"
+         }
+        },
+        {
+         "key": "app.version",
+         "value": {
+          "stringValue": "0.46.0"
+         }
+        },
+        {
+         "key": "auth_mode",
+         "value": {
+          "stringValue": "ApiKey"
+         }
+        },
+        {
+         "key": "originator",
+         "value": {
+          "stringValue": "codex_cli_rs"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "xterm-256color"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "slug",
+         "value": {
+          "stringValue": "gpt-5-codex"
+         }
+        },
+        {
+         "key": "input_token_count",
+         "value": {
+          "stringValue": "7000"
+         }
+        },
+        {
+         "key": "output_token_count",
+         "value": {
+          "stringValue": "450"
+         }
+        },
+        {
+         "key": "cached_token_count",
+         "value": {
+          "stringValue": "3800"
+         }
+        },
+        {
+         "key": "reasoning_token_count",
+         "value": {
+          "stringValue": "64"
+         }
+        },
+        {
+         "key": "tool_token_count",
+         "value": {
+          "stringValue": "7450"
+         }
+        },
+        {
+         "key": "ttft_ms",
+         "value": {
+          "stringValue": "800"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
