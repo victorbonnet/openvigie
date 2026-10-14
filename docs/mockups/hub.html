@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>openvigie hub</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  Static mock of the openvigie hub UI (FR-5, FR-8, FR-9). All data below is example data.
+  No external assets, per D1: system fonts, inline CSS, inline JS.
+-->
+<style>
+/* Layout: one calm column, summary first, details on demand. Bottom tab bar on phones, top nav from 720px. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #141a24;
+  --muted: #616a79;
+  --line: #e1e5eb;
+  --accent: #2f5bd3;
+  --accent-soft: #e8eefc;
+  --ok: #1d7a46;
+  --warn: #946000;
+  --bad: #b3261e;
+  --off: #79818f;
+  --s1: #2f5bd3;
+  --s2: #1a8a8a;
+  --s3: #8a55c8;
+  --s4: #b9c0cb;
+
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --r: 10px;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1016; --surface: #151a22; --ink: #e6e9ef; --muted: #939cab; --line: #252c37;
+    --accent: #8aa8ff; --accent-soft: #1b2440;
+    --ok: #5dcf8f; --warn: #eeb44c; --bad: #ff8b7d; --off: #8a92a0;
+    --s1: #8aa8ff; --s2: #4fc6c0; --s3: #c39af0; --s4: #46505e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1016; --surface: #151a22; --ink: #e6e9ef; --muted: #939cab; --line: #252c37;
+  --accent: #8aa8ff; --accent-soft: #1b2440;
+  --ok: #5dcf8f; --warn: #eeb44c; --bad: #ff8b7d; --off: #8a92a0;
+  --s1: #8aa8ff; --s2: #4fc6c0; --s3: #c39af0; --s4: #46505e;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.mono, code { font-family: var(--font-mono); font-size: 0.86em; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1 { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.02em; }
+h2 { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+h3 { font-size: 1rem; font-weight: 600; }
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* Header */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.top .wrap { display: flex; align-items: center; gap: 20px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 650; letter-spacing: -0.01em; }
+.brand:hover { text-decoration: none; }
+.brand svg { width: 22px; height: 22px; color: var(--accent); }
+.topnav { display: none; gap: 4px; }
+.topnav a, .tabbar a { color: var(--muted); font-weight: 500; }
+.topnav a { padding: 6px 12px; border-radius: 8px; }
+.topnav a:hover { text-decoration: none; color: var(--ink); }
+.topnav a[aria-current="page"] { color: var(--ink); background: var(--surface); box-shadow: 0 0 0 1px var(--line); }
+.live { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent); animation: pulse 2.4s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.mock { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px dashed var(--line); border-radius: 999px; padding: 1px 8px; }
+
+/* Bottom tab bar (phones) */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 10px; font-size: 0.72rem; }
+.tabbar a:hover { text-decoration: none; }
+.tabbar svg { width: 22px; height: 22px; }
+.tabbar a[aria-current="page"] { color: var(--accent); }
+
+main { padding-block: 24px 112px; display: block; }
+.screen { display: grid; gap: 28px; }
+.head { display: grid; gap: 4px; }
+.head p { margin: 0; color: var(--muted); }
+.section { display: grid; gap: 12px; min-width: 0; }
+.section > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+@media (min-width: 720px) {
+  .topnav { display: flex; }
+  .tabbar { display: none; }
+  main { padding-block: 32px 56px; }
+  h1 { font-size: 1.9rem; }
+}
+
+/* Surfaces */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* Summary stats */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stat { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.stat .k { font-size: 0.78rem; color: var(--muted); }
+.stat .v { font-size: 1.5rem; font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat .s { font-size: 0.78rem; color: var(--muted); overflow-wrap: anywhere; }
+@media (min-width: 720px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Pills and severity marks */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 550; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.st-active { color: var(--ok); }
+.st-idle { color: var(--warn); }
+.st-stopped { color: var(--off); }
+.sev { font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+.sev-high { color: var(--bad); }
+.sev-medium { color: var(--warn); }
+.sev-low { color: var(--muted); }
+.sev-none { color: var(--ok); }
+.sev-unknown { color: var(--muted); }
+.tag { display: inline-block; font-size: 0.74rem; font-weight: 550; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tag.yes { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); }
+.tag.no { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.tag.unk { border-style: dashed; }
+
+/* Attention list */
+.flags { list-style: none; margin: 0; padding: 0; }
+.flags li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 4px 10px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.flags li:first-child { border-top: 0; }
+.flags .ic { grid-row: span 2; font-size: 0.85rem; line-height: 1.6; }
+.flags .t { font-weight: 560; }
+.flags .r { color: var(--muted); font-size: 0.88rem; }
+.flags a.who { font-weight: 560; }
+
+/* Filters */
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 1px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: none; font: inherit; font-size: 0.85rem; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip .n { color: var(--muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] .n { color: inherit; opacity: 0.7; }
+
+/* Agent list: two-line cards on phones, aligned columns from 720px */
+.agents { list-style: none; margin: 0; padding: 0; }
+.agents li { border-top: 1px solid var(--line); }
+.agents li:first-child { border-top: 0; }
+.arow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 14px 16px; color: inherit; }
+.arow:hover { text-decoration: none; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.arow .name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.arow .name b { font-weight: 600; }
+.arow .where { font-size: 0.82rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.arow .cost { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.arow .meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.arow .when { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
+.thead { display: none; }
+@media (min-width: 720px) {
+  .thead, .arow { grid-template-columns: minmax(0, 2.2fr) 0.9fr 1fr 0.9fr 0.8fr 0.9fr; align-items: center; }
+  .thead { display: grid; gap: 12px; padding: 10px 16px; font-size: 0.75rem; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .thead .r, .arow .cost { text-align: right; }
+  .arow .meta { display: contents; }
+  .arow .when { margin: 0; }
+  .arow .who { display: grid; gap: 1px; min-width: 0; }
+  .arow .cost { order: 6; }
+}
+
+/* Detail */
+.back { font-size: 0.88rem; }
+.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0; margin: 0; }
+.facts dt, .facts dd { padding: 10px 16px; border-top: 1px solid var(--line); margin: 0; }
+.facts dt { color: var(--muted); font-size: 0.88rem; padding-right: 8px; }
+.facts dd { overflow-wrap: anywhere; }
+.facts dt:first-of-type, .facts dt:first-of-type + dd { border-top: 0; }
+.cols { display: grid; gap: 28px; }
+@media (min-width: 900px) { .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+.callout { padding: 12px 16px; border-radius: var(--r); background: var(--accent-soft); font-size: 0.9rem; }
+
+/* Tables */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 10px 16px; border-top: 1px solid var(--line); white-space: nowrap; }
+thead th { border-top: 0; font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Segmented control */
+.seg { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); }
+.seg button { font: inherit; font-size: 0.85rem; border: 0; background: none; color: var(--muted); padding: 4px 12px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* Charts */
+.chart { padding: 16px 12px 8px; }
+.chart svg { display: block; width: 100%; height: auto; }
+.chart svg.spark { height: 72px; }
+.chart text { fill: var(--muted); font: 11px var(--font-ui); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0 16px 14px; font-size: 0.82rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; }
+
+/* Hosts */
+.hosts { display: grid; gap: 16px; }
+@media (min-width: 900px) { .hosts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.host { display: grid; align-content: start; }
+.host > header { padding: 16px; display: grid; gap: 4px; }
+.host .adapters { list-style: none; margin: 0; padding: 0; }
+.host .adapters li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.host .note { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 0.82rem; color: var(--muted); }
+
+footer.foot { padding-block: 0 24px; font-size: 0.8rem; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#agents" aria-label="openvigie home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <path d="M3 12c2.6-4.2 5.6-6.3 9-6.3s6.4 2.1 9 6.3c-2.6 4.2-5.6 6.3-9 6.3S5.6 16.2 3 12Z"/>
+        <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>
+      </svg>
+      openvigie
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a href="#agents" data-nav="agents">Agents</a>
+      <a href="#usage" data-nav="usage">Usage</a>
+      <a href="#hosts" data-nav="hosts">Hosts</a>
+    </nav>
+    <div class="live"><span class="pulse" aria-hidden="true"></span><span id="fresh">updated 3 s ago</span><span class="mock">mock</span></div>
+  </div>
+</header>
+
+<main class="wrap" id="app"></main>
+
+<footer class="foot wrap">openvigie 0.4.2 · read-only · hub on 127.0.0.1, remote over Tailscale · example data</footer>
+
+<nav class="tabbar" aria-label="Main">
+  <a href="#agents" data-nav="agents">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="7" r="1.4"/><circle cx="5" cy="12" r="1.4"/><circle cx="5" cy="17" r="1.4"/><path d="M10 7h10M10 12h10M10 17h10"/></svg>
+    Agents
+  </a>
+  <a href="#usage" data-nav="usage">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 20h16M7 16v-4M12 16V7M17 16v-7"/></svg>
+    Usage
+  </a>
+  <a href="#hosts" data-nav="hosts">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="6" rx="1.5"/><rect x="3.5" y="13.5" width="17" height="6" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+    Hosts
+  </a>
+</nav>
+
+<script>
+"use strict";
+
+// ---------- Example data (shapes follow the hub's inventory, capability and usage models) ----------
+
+const HOSTS = [
+  { id: "pi5", name: "pi5-garage", platform: "linux/arm64", collector: "0.4.2", last: "4 s ago",
+    adapters: [["hermes", "ok"], ["openclaw", "ok"]] },
+  { id: "studio", name: "studio-mac", platform: "darwin/arm64", collector: "0.4.2", last: "7 s ago",
+    adapters: [["claude-code", "ok"], ["codex", "degraded", "1 session file in an unknown format was skipped"]],
+    note: "Agents running directly on macOS can be monitored but not sandboxed. Run them in a Linux VM to sandbox them." },
+  { id: "lima", name: "lima-dev", platform: "linux/arm64", collector: "0.4.2", last: "2 s ago", parent: "VM on studio-mac",
+    adapters: [["claude-code", "ok"], ["codex", "ok"]] },
+];
+
+const FLAG = {
+  neverAsks: ["high", "Runs anything without asking, outside a sandbox",
+    "Approvals are bypassed (bypassPermissions) and the agent is not in a sandbox: a prompt injection can run any command on this machine."],
+  shellNet: ["high", "Shell and unrestricted network, outside a sandbox",
+    "It can run shell commands with unrestricted network access and is not sandboxed: data on this machine can be sent anywhere."],
+  unpinned: ["medium", "MCP server from an unpinned package",
+    "github runs the latest published version of a package each time: a compromised release would run with this agent's access."],
+  secrets: ["medium", "Secrets reachable by tools",
+    "These credentials are passed to the agent or its tools: GITHUB_TOKEN, LINEAR_API_KEY."],
+  macos: ["low", "Can't be sandboxed on macOS", "OpenShell needs Linux. Run this agent in a Linux VM (Lima, OrbStack) to sandbox it."],
+  hooks: ["low", "Hooks run commands", "A hook runs a shell command on every tool call: ./scripts/notify.sh."],
+};
+
+const AGENTS = [
+  { id: "a1", type: "claude-code", host: "studio", version: "2.4.1", status: "active", last: "40 s ago",
+    config: "~/.claude", sandbox: "no", adapter: "ok", quality: "exact",
+    flags: ["neverAsks", "unpinned", "secrets", "macos"],
+    caps: { approvals: ["runs anything without asking", "bypassPermissions"], files: "full access", network: "unrestricted",
+      shell: "yes", skills: "pdf, release-notes", secrets: "GITHUB_TOKEN (mcp: github), LINEAR_API_KEY (env)",
+      mcp: [["github", "stdio", "npx -y @modelcontextprotocol/server-github", false], ["linear", "http", "mcp.linear.app", null]] },
+    base: 3.1, models: "claude-sonnet-5-5, claude-opus-5-5" },
+  { id: "a2", type: "codex", host: "studio", version: "0.48.0", status: "idle", last: "2 h ago",
+    config: "~/.codex", sandbox: "no", adapter: "degraded", quality: "partly unknown",
+    flags: ["unpinned", "macos"],
+    caps: { approvals: ["asks before edits and commands", "on-request"], files: "project folders only", network: "no network",
+      shell: "yes", skills: "none", secrets: "none found",
+      mcp: [["github", "stdio", "npx -y @modelcontextprotocol/server-github", false]] },
+    base: 0.9, models: "gpt-5.2-codex" },
+  { id: "a3", type: "hermes", host: "pi5", version: "0.9.3", status: "active", last: "12 s ago",
+    config: "~/.hermes", sandbox: "yes", kind: "openshell", adapter: "ok", quality: "estimated",
+    flags: ["hooks"],
+    caps: { approvals: ["asks before edits and commands", "ask"], files: "project folders only", network: "allowlisted hosts only: api.anthropic.com, api.telegram.org",
+      shell: "yes", skills: "home-assistant, daily-brief", secrets: "TELEGRAM_BOT_TOKEN (env)", mcp: [] },
+    base: 0.55, models: "claude-haiku-5-5" },
+  { id: "a4", type: "openclaw", host: "pi5", version: "2026.9.2", status: "idle", last: "18 min ago",
+    config: "~/.openclaw", sandbox: "no", adapter: "ok", quality: "exact",
+    flags: ["shellNet"],
+    caps: { approvals: ["edits without asking, asks for some commands", "auto"], files: "project folders only", network: "unrestricted",
+      shell: "yes", skills: "browser, calendar", secrets: "none found", mcp: [] },
+    base: 0.35, models: "gpt-5" },
+  { id: "a5", type: "codex", host: "lima", version: "0.48.0", status: "active", last: "2 min ago",
+    config: "~/.codex", sandbox: "yes", kind: "openshell", adapter: "ok", quality: "exact",
+    flags: [],
+    caps: { approvals: ["edits without asking, asks for some commands", "auto-edit"], files: "project folders only", network: "allowlisted hosts only: api.openai.com, github.com",
+      shell: "yes", skills: "none", secrets: "none found", mcp: [] },
+    base: 0.7, models: "gpt-5.2-codex" },
+  { id: "a6", type: "claude-code", host: "lima", version: "2.3.9", status: "stopped", last: "3 days ago",
+    config: "~/.claude", sandbox: "yes", kind: "openshell", adapter: "ok", quality: "exact",
+    flags: null, caps: null, base: 0.4, models: "claude-sonnet-5-5", stoppedDaysAgo: 3 },
+];
+
+const SEV_ORDER = { high: 3, medium: 2, low: 1, none: 0, unknown: -1 };
+const SEV_ICON = { high: "▲", medium: "◆", low: "●", none: "✓", unknown: "?" };
+const hostOf = (a) => HOSTS.find((h) => h.id === a.host);
+const flagsOf = (a) => (a.flags || []).map((k) => FLAG[k]);
+function riskOf(a) {
+  if (a.flags === null) return "unknown";
+  return flagsOf(a).reduce((lvl, f) => (SEV_ORDER[f[0]] > SEV_ORDER[lvl] ? f[0] : lvl), "none");
+}
+
+// Deterministic daily cost per agent for the last 90 days, ending today (2026-10-14).
+const TODAY = new Date(Date.UTC(2026, 9, 14));
+const DAYS = 90;
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const DATES = Array.from({ length: DAYS }, (_, i) => new Date(TODAY.getTime() - (DAYS - 1 - i) * 864e5));
+AGENTS.forEach((a, n) => {
+  const r = rng(17 + n * 101);
+  a.daily = DATES.map((d, i) => {
+    if (a.stoppedDaysAgo && i > DAYS - 1 - a.stoppedDaysAgo) return 0;
+    const weekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+    const coding = a.type === "claude-code" || a.type === "codex";
+    const trend = 0.75 + 0.5 * (i / DAYS);
+    const v = a.base * trend * (coding && weekend ? 0.25 : 1) * (0.45 + r() * 1.1);
+    return Math.round(v * 100) / 100;
+  });
+});
+const sum = (xs) => xs.reduce((s, x) => s + x, 0);
+const lastN = (xs, n) => xs.slice(xs.length - n);
+const money = (v) => "$" + v.toFixed(2);
+const compact = (v) => (v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "k" : String(Math.round(v)));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const fmtDay = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const lowerBound = (a) => a.quality === "partly unknown";
+const costLabel = (a, v) => (lowerBound(a) ? "≥ " : "") + money(v);
+
+// ---------- Small render helpers ----------
+
+const statusPill = (s) => `<span class="pill st-${s}"><span class="dot"></span>${s}</span>`;
+const riskMark = (lvl) => `<span class="sev sev-${lvl}"><span aria-hidden="true">${SEV_ICON[lvl]}</span> ${lvl === "none" ? "no flags" : lvl}</span>`;
+function sandboxTag(a) {
+  if (a.sandbox === "yes") return `<span class="tag yes">sandboxed · ${esc(a.kind)}</span>`;
+  if (a.sandbox === "no") return `<span class="tag no">not sandboxed</span>`;
+  return `<span class="tag unk">sandbox unknown</span>`;
+}
+function qualityTag(q) {
+  if (q === "exact") return `<span class="tag yes">exact</span>`;
+  if (q === "estimated") return `<span class="tag warn">estimated</span>`;
+  return `<span class="tag unk">${esc(q)}</span>`;
+}
+
+// ---------- Charts (SVG, one scale per chart) ----------
+
+function niceMax(v) {
+  const step = Math.pow(10, Math.floor(Math.log10(v || 1)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * step >= v) return m * step;
+  return 10 * step;
+}
+
+function stackedBars(series, days) {
+  const W = 720, H = 240, L = 44, R = 8, T = 10, B = 24;
+  const n = days;
+  const totals = Array.from({ length: n }, (_, i) => sum(series.map((s) => lastN(s.values, n)[i])));
+  const max = niceMax(Math.max(...totals) * 1.05);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const bw = (W - L - R) / n;
+  const gap = n > 40 ? 1 : 3;
+  let out = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = (max / 4) * k, yy = y(v);
+    out += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--line)" stroke-width="1"/>`;
+    out += `<text x="${L - 8}" y="${yy + 4}" text-anchor="end">$${v % 1 ? v.toFixed(1) : v}</text>`;
+  }
+  const dates = lastN(DATES, n);
+  for (let i = 0; i < n; i++) {
+    let acc = 0;
+    const x = L + i * bw + gap / 2;
+    series.forEach((s) => {
+      const v = lastN(s.values, n)[i];
+      if (!v) return;
+      out += `<rect x="${x.toFixed(1)}" y="${y(acc + v).toFixed(1)}" width="${(bw - gap).toFixed(1)}" height="${(y(acc) - y(acc + v)).toFixed(1)}" fill="${s.color}"><title>${fmtDay(dates[i])} · ${esc(s.label)} · ${money(v)}</title></rect>`;
+      acc += v;
+    });
+  }
+  const every = n <= 7 ? 1 : n <= 30 ? 7 : 21;
+  for (let i = n - 1; i >= 0; i -= every) {
+    out += `<text x="${(L + i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${fmtDay(dates[i])}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily cost by agent, last ${n} days">${out}</svg>`;
+}
+
+function sparkBars(values, color) {
+  const W = 320, H = 64, n = values.length, max = niceMax(Math.max(...values) || 1);
+  const bw = W / n;
+  return `<svg class="spark" viewBox="0 0 ${W} ${H + 2}" preserveAspectRatio="none" role="img" aria-label="Daily cost, last ${n} days">` +
+    `<line x1="0" x2="${W}" y1="${H}" y2="${H}" stroke="var(--line)"/>` +
+    values.map((v, i) => {
+      const h = Math.max(v ? 2 : 0, (v / max) * H);
+      const op = i === n - 1 ? 1 : 0.55;
+      return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${color}" opacity="${op}"><title>${fmtDay(lastN(DATES, n)[i])} · ${money(v)}</title></rect>`;
+    }).join("") + `</svg>`;
+}
+
+// ---------- Screens ----------
+
+const state = { filter: "all", range: 30 };
+
+function screenAgents() {
+  const active = AGENTS.filter((a) => a.status === "active").length;
+  const high = AGENTS.filter((a) => riskOf(a) === "high").length;
+  const unsandboxed = AGENTS.filter((a) => a.sandbox !== "yes").length;
+  const week = sum(AGENTS.map((a) => sum(lastN(a.daily, 7))));
+  const anyLower = AGENTS.some(lowerBound);
+
+  const attention = AGENTS.flatMap((a) => flagsOf(a).filter((f) => f[0] !== "low").map((f) => ({ a, f })))
+    .sort((p, q) => SEV_ORDER[q.f[0]] - SEV_ORDER[p.f[0]]);
+
+  const counts = { all: AGENTS.length };
+  ["active", "idle", "stopped"].forEach((s) => (counts[s] = AGENTS.filter((a) => a.status === s).length));
+  const shown = AGENTS.filter((a) => state.filter === "all" || a.status === state.filter)
+    .sort((p, q) => SEV_ORDER[riskOf(q)] - SEV_ORDER[riskOf(p)]);
+
+  return `
+  <div class="screen">
+    <div class="head">
+      <h1>Agents</h1>
+      <p>${AGENTS.length} agents on ${HOSTS.length} hosts</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="k">Active now</span><span class="v">${active}</span><span class="s">of ${AGENTS.length} agents</span></div>
+      <div class="stat"><span class="k">High risk</span><span class="v" style="color:var(--bad)">${high}</span><span class="s">${attention.length} flags need a look</span></div>
+      <div class="stat"><span class="k">Not sandboxed</span><span class="v">${unsandboxed}</span><span class="s">2 on macOS, 1 on Linux</span></div>
+      <div class="stat"><span class="k">Cost, last 7 days</span><span class="v">${anyLower ? "≥ " : ""}${money(week)}</span><span class="s">list-price equivalent</span></div>
+    </div>
+
+    <section class="section" aria-labelledby="att">
+      <header><h2 id="att">Needs attention</h2><span class="muted" style="font-size:.82rem">from risk rules</span></header>
+      <ul class="flags panel">
+        ${attention.map(({ a, f }) => `
+          <li>
+            <span class="ic sev-${f[0]}" aria-label="${f[0]}">${SEV_ICON[f[0]]}</span>
+            <span class="t">${esc(f[1])}</span>
+            <span class="r"><a class="who" href="#${a.id}">${esc(a.type)} · ${esc(hostOf(a).name)}</a> — ${esc(f[2])}</span>
+          </li>`).join("")}
+      </ul>
+    </section>
+
+    <section class="section" aria-labelledby="all">
+      <header><h2 id="all">All agents</h2></header>
+      <div class="chips" role="group" aria-label="Filter by status">
+        ${["all", "active", "idle", "stopped"].map((s) => `<button class="chip" id="f-${s}" data-filter="${s}" aria-pressed="${state.filter === s}">${s === "all" ? "All" : s[0].toUpperCase() + s.slice(1)}<span class="n">${counts[s]}</span></button>`).join("")}
+      </div>
+      <div class="panel">
+        <div class="thead" aria-hidden="true"><span>Agent</span><span>Status</span><span>Risk</span><span>Sandbox</span><span>Last activity</span><span class="r">7 days</span></div>
+        <ul class="agents">
+          ${shown.map((a) => `
+          <li><a class="arow" href="#${a.id}">
+            <span class="who">
+              <span class="name"><b>${esc(a.type)}</b></span>
+              <span class="where">${esc(hostOf(a).name)} · <span class="mono">${esc(a.config)}</span> · v${esc(a.version)}</span>
+            </span>
+            <span class="cost">${costLabel(a, sum(lastN(a.daily, 7)))}</span>
+            <span class="meta">
+              ${statusPill(a.status)}
+              ${riskMark(riskOf(a))}
+              <span>${sandboxTag(a)}</span>
+              <span class="when">${esc(a.last)}</span>
+            </span>
+          </a></li>`).join("") || `<li class="muted" style="padding:14px 16px">No agents match this filter.</li>`}
+        </ul>
+      </div>
+    </section>
+  </div>`;
+}
+
+function screenAgent(a) {
+  const h = hostOf(a);
+  const lvl = riskOf(a);
+  const d30 = lastN(a.daily, 30);
+  const c30 = sum(d30);
+  const tokens = c30 * 236000;
+  const sessions = [
+    ["7f3a9c2e41b0", "2 h ago", "47 min", 0.31],
+    ["c81d0e5f9a27", "yesterday", "1 h 12 min", 0.24],
+    ["19be44d7c3f6", "2 days ago", "18 min", 0.09],
+  ];
+  const caps = a.caps;
+
+  return `
+  <div class="screen">
+    <div class="head">
+      <a class="back" href="#agents">← Agents</a>
+      <div class="title-row"><h1>${esc(a.type)}</h1>${statusPill(a.status)}${riskMark(lvl)}</div>
+      <p>${esc(h.name)} · <span class="mono">${esc(a.config)}</span> · last activity ${esc(a.last)}</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="k">Cost, 30 days</span><span class="v">${costLabel(a, c30)}</span><span class="s">${esc(a.models)}</span></div>
+      <div class="stat"><span class="k">Tokens</span><span class="v">${compact(tokens)}</span><span class="s">${compact(tokens * 0.08)} in · ${compact(tokens * 0.03)} out · rest cache</span></div>
+      <div class="stat"><span class="k">Usage data</span><span class="v" style="font-size:1rem;padding-block:7px">${qualityTag(a.quality)}</span><span class="s">${a.quality === "estimated" ? "token counts estimated from logs" : a.quality === "exact" ? "read from session logs" : "some calls had no token counts"}</span></div>
+      <div class="stat"><span class="k">Sandbox</span><span class="v" style="font-size:1rem;padding-block:7px">${sandboxTag(a)}</span><span class="s">${a.sandbox === "yes" ? "OpenShell policy active" : h.platform.startsWith("darwin") ? "macOS: needs a Linux VM" : "can be sandboxed"}</span></div>
+    </div>
+
+    <section class="section panel" aria-label="Daily cost" style="gap:4px">
+      <div class="chart" style="padding-bottom:4px">${sparkBars(d30, "var(--s1)")}</div>
+      <div class="legend" style="justify-content:space-between"><span>${fmtDay(lastN(DATES, 30)[0])}</span><span>today ${money(d30[29])}</span></div>
+    </section>
+
+    <div class="cols">
+      <section class="section" aria-labelledby="risk">
+        <header><h2 id="risk">Risk flags</h2></header>
+        ${lvl === "unknown"
+          ? `<p class="callout">Not reported yet: this agent's collector hasn't sent its capabilities, so its risk is unknown, not zero.</p>`
+          : lvl === "none"
+          ? `<p class="callout">No risk rules match this agent.</p>`
+          : `<ul class="flags panel">${flagsOf(a).map((f) => `
+              <li><span class="ic sev-${f[0]}" aria-label="${f[0]}">${SEV_ICON[f[0]]}</span><span class="t">${esc(f[1])}</span><span class="r">${esc(f[2])}</span></li>`).join("")}
+            </ul>`}
+      </section>
+
+      <section class="section" aria-labelledby="det">
+        <header><h2 id="det">Details</h2></header>
+        <dl class="facts panel">
+          <dt>Host</dt><dd><a href="#hosts">${esc(h.name)}</a> <span class="muted">${esc(h.platform)}</span></dd>
+          <dt>Version</dt><dd>${esc(a.version)}</dd>
+          <dt>Config</dt><dd><code>${esc(a.config)}</code></dd>
+          <dt>First seen</dt><dd>41 days ago</dd>
+          <dt>Adapter</dt><dd>${a.adapter === "ok" ? `<span class="tag yes">ok</span>` : `<span class="tag warn">degraded</span> <span class="muted">1 file skipped</span>`}</dd>
+        </dl>
+      </section>
+    </div>
+
+    <section class="section" aria-labelledby="cap">
+      <header><h2 id="cap">What it can access</h2>${caps ? `<span class="muted" style="font-size:.82rem">from <code>${esc(a.config)}/settings.json</code> · checked 1 min ago</span>` : ""}</header>
+      ${caps ? `
+      <dl class="facts panel">
+        <dt>Approvals</dt><dd>${caps.approvals[0].startsWith("runs") ? `<span class="tag no">${esc(caps.approvals[0])}</span>` : esc(caps.approvals[0])} <span class="muted">(<code>${esc(caps.approvals[1])}</code>)</span></dd>
+        <dt>Files</dt><dd>${esc(caps.files)}</dd>
+        <dt>Network</dt><dd>${esc(caps.network)}</dd>
+        <dt>Shell</dt><dd>${esc(caps.shell)}</dd>
+        <dt>Skills</dt><dd>${esc(caps.skills)}</dd>
+        <dt>Secrets</dt><dd>${esc(caps.secrets)}</dd>
+      </dl>
+      ${caps.mcp.length ? `
+      <div class="panel scroll">
+        <table>
+          <thead><tr><th>MCP server</th><th>Transport</th><th>Runs</th><th>Pinned</th></tr></thead>
+          <tbody>${caps.mcp.map((m) => `<tr><td>${esc(m[0])}</td><td>${esc(m[1])}</td><td><code>${esc(m[2])}</code></td><td>${m[3] === null ? `<span class="muted">n/a</span>` : m[3] ? "yes" : `<span class="tag warn">no</span>`}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>` : ""}`
+      : `<p class="callout">Capabilities not reported yet.</p>`}
+    </section>
+
+    <section class="section" aria-labelledby="ses">
+      <header><h2 id="ses">Recent sessions</h2></header>
+      <div class="panel scroll">
+        <table>
+          <thead><tr><th>Session</th><th>Started</th><th>Duration</th><th class="n">Cost</th><th>Trace</th></tr></thead>
+          <tbody>${sessions.map((s) => `<tr><td><code>${s[0]}</code></td><td>${s[1]}</td><td>${s[2]}</td><td class="n">${money(s[3] * a.base * 10)}</td><td><a href="#${a.id}">Langfuse ↗</a></td></tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>`;
+}
+
+function screenUsage() {
+  const n = state.range;
+  const ranked = [...AGENTS].sort((p, q) => sum(lastN(q.daily, n)) - sum(lastN(p.daily, n)));
+  const colors = ["var(--s1)", "var(--s2)", "var(--s3)"];
+  const series = ranked.slice(0, 3).map((a, i) => ({ label: `${a.type} · ${hostOf(a).name}`, values: a.daily, color: colors[i] }));
+  const rest = ranked.slice(3);
+  series.push({ label: `${rest.length} others`, values: DATES.map((_, i) => sum(rest.map((a) => a.daily[i]))), color: "var(--s4)" });
+
+  const total = sum(AGENTS.map((a) => sum(lastN(a.daily, n))));
+  const tokens = total * 236000;
+  const top = ranked[0];
+  const calls = Math.round(total * 41);
+  const models = [
+    ["claude-sonnet-5-5", 0.49, true], ["claude-opus-5-5", 0.19, true], ["gpt-5.2-codex", 0.2, true],
+    ["claude-haiku-5-5", 0.06, true], ["gpt-5", 0.06, false],
+  ];
+
+  return `
+  <div class="screen">
+    <div class="head" style="gap:12px">
+      <h1>Usage</h1>
+      <div class="seg" role="group" aria-label="Period">
+        ${[7, 30, 90].map((d) => `<button id="r-${d}" data-range="${d}" aria-pressed="${n === d}">${d} days</button>`).join("")}
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="k">Cost</span><span class="v">≥ ${money(total)}</span><span class="s">${fmtDay(lastN(DATES, n)[0])} → ${fmtDay(TODAY)}</span></div>
+      <div class="stat"><span class="k">Tokens</span><span class="v">${compact(tokens)}</span><span class="s">${compact(tokens * 0.08)} in · ${compact(tokens * 0.03)} out · ${compact(tokens * 0.89)} cache</span></div>
+      <div class="stat"><span class="k">Top agent</span><span class="v">${money(sum(lastN(top.daily, n)))}</span><span class="s">${esc(top.type)} · ${esc(hostOf(top).name)}</span></div>
+      <div class="stat"><span class="k">Coverage</span><span class="v">${calls.toLocaleString("en")}</span><span class="s">calls · ${Math.round(calls * 0.86)} exact · ${Math.round(calls * 0.11)} estimated · ${calls - Math.round(calls * 0.86) - Math.round(calls * 0.11)} unknown</span></div>
+    </div>
+
+    <p class="callout">Costs are the list-price equivalent of the tokens used. Subscription plans are billed differently. Totals marked ≥ include calls with no token counts.</p>
+
+    <section class="section" aria-labelledby="daily">
+      <header><h2 id="daily">Daily cost by agent</h2></header>
+      <div class="panel">
+        <div class="chart">${stackedBars(series, n)}</div>
+        <div class="legend">${series.map((s) => `<span><span class="sw" style="background:${s.color}"></span>${esc(s.label)}</span>`).join("")}</div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="bymodel">
+      <header><h2 id="bymodel">By model</h2></header>
+      <div class="panel scroll">
+        <table>
+          <thead><tr><th>Model</th><th class="n">Input</th><th class="n">Output</th><th class="n">Cache read</th><th class="n">Cost</th></tr></thead>
+          <tbody>
+            ${models.map((m) => `<tr><td>${m[0]}${m[2] ? "" : ` <span class="tag warn" title="Bundled price not yet checked against the provider">unverified price</span>`}</td><td class="n">${compact(tokens * m[1] * 0.08)}</td><td class="n">${compact(tokens * m[1] * 0.03)}</td><td class="n">${compact(tokens * m[1] * 0.89)}</td><td class="n">${money(total * m[1])}</td></tr>`).join("")}
+            <tr><td>qwen3-32b <span class="tag unk">unpriced</span></td><td class="n">${compact(tokens * 0.02)}</td><td class="n">${compact(tokens * 0.006)}</td><td class="n">0</td><td class="n muted">unknown</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>`;
+}
+
+function screenHosts() {
+  return `
+  <div class="screen">
+    <div class="head">
+      <h1>Hosts</h1>
+      <p>${HOSTS.length} collectors reporting · enrol another with <code>openvigie hub enrol-code</code></p>
+    </div>
+    <div class="hosts">
+      ${HOSTS.map((h) => {
+        const mine = AGENTS.filter((a) => a.host === h.id);
+        const high = mine.filter((a) => riskOf(a) === "high").length;
+        return `
+        <article class="host panel">
+          <header>
+            <h3>${esc(h.name)}</h3>
+            <span class="muted" style="font-size:.85rem">${esc(h.platform)}${h.parent ? " · " + esc(h.parent) : ""} · collector ${esc(h.collector)}</span>
+            <span style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:6px">
+              <span class="pill st-active"><span class="dot"></span>reported ${esc(h.last)}</span>
+              ${high ? `<span class="sev sev-high">▲ ${high} high-risk</span>` : `<span class="sev sev-none">✓ no high-risk agents</span>`}
+            </span>
+          </header>
+          <ul class="adapters">
+            ${h.adapters.map(([name, st, why]) => {
+              const a = mine.find((x) => x.type === name);
+              return `<li><span>${a ? `<a href="#${a.id}">${esc(name)}</a>` : esc(name)} ${a ? `<span class="muted">· ${a.status}</span>` : ""}</span>
+                <span>${st === "ok" ? `<span class="tag yes">adapter ok</span>` : `<span class="tag warn" title="${esc(why)}">degraded</span>`}</span></li>`;
+            }).join("")}
+          </ul>
+          ${h.note ? `<p class="note" style="margin:0">${esc(h.note)}</p>` : ""}
+        </article>`;
+      }).join("")}
+    </div>
+  </div>`;
+}
+
+// ---------- Router (plain #tokens only) ----------
+
+function route() {
+  const key = (location.hash || "#agents").slice(1);
+  const agent = AGENTS.find((a) => a.id === key);
+  const tab = agent ? "agents" : ["usage", "hosts"].includes(key) ? key : "agents";
+  const app = document.getElementById("app");
+  app.innerHTML = agent ? screenAgent(agent) : tab === "usage" ? screenUsage() : tab === "hosts" ? screenHosts() : screenAgents();
+  document.querySelectorAll("[data-nav]").forEach((el) => {
+    if (el.dataset.nav === tab) el.setAttribute("aria-current", "page"); else el.removeAttribute("aria-current");
+  });
+  document.title = (agent ? agent.type : tab[0].toUpperCase() + tab.slice(1)) + " · openvigie";
+}
+
+document.addEventListener("click", (e) => {
+  const f = e.target.closest("[data-filter]");
+  const r = e.target.closest("[data-range]");
+  if (f) { state.filter = f.dataset.filter; route(); document.getElementById("f-" + state.filter)?.focus(); }
+  if (r) { state.range = Number(r.dataset.range); route(); document.getElementById("r-" + state.range)?.focus(); }
+});
+window.addEventListener("hashchange", () => { route(); window.scrollTo(0, 0); });
+route();
+
+// Mimic the hub's 5 s refresh label.
+let ago = 3;
+setInterval(() => { ago = ago >= 5 ? 0 : ago + 1; document.getElementById("fresh").textContent = `updated ${ago} s ago`; }, 1000);
+</script>
+</body>
+</html>
