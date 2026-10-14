@@ -66,10 +66,10 @@ Requirements are numbered so issues and PRs can reference them. P0 is the MVP, P
 | --- | --- | --- |
 | FR-1 | Detect agents on a host from running processes, known config folders (`~/.claude`, `~/.codex`, `~/.hermes`, OpenClaw config) and listening ports | P0 |
 | FR-2 | Show each agent's status: active (activity in the last 5 minutes, configurable), idle, stopped | P0 |
-| FR-3 | Collect token usage per agent, model and session, from OpenTelemetry where the agent emits it and from logs or APIs otherwise | P0 |
-| FR-4 | Convert tokens to cost with an editable price table per model | P0 |
+| FR-3 | Collect token usage per agent, model and session, from OpenTelemetry where the agent emits it and from logs or APIs otherwise. MVP reads local session logs first, OTLP later (D3) | P0 |
+| FR-4 | Convert tokens to cost with an editable price table per model. MVP edits it through an override file (D4) | P0 |
 | FR-5 | Web UI: agent list, agent detail page, usage and cost charts, host view | P0 |
-| FR-6 | Send traces to Langfuse when configured, and link each agent and session to its traces | P0 |
+| FR-6 | Send traces to Langfuse when configured, and link each agent and session to its traces. The hub exports; metadata only by default (D5) | P0 |
 | FR-7 | Adapter plugin interface in Python so contributors can add new agent types | P0 |
 | FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets | P1 |
 | FR-9 | Score each agent's risk from its capabilities and sandbox state, with the reason for each flag | P1 |
@@ -94,7 +94,7 @@ openvigie can stop agents, change their sandboxes and rotate their secrets, so t
 
 **Access**
 
-- The hub listens on localhost only by default. Remote access goes through Tailscale, and Tailscale identity decides who is an admin.
+- The hub listens on localhost only by default. Remote access goes through Tailscale, and Tailscale identity decides who is an admin. In practice, `tailscale serve` proxies the tailnet to the hub on `127.0.0.1` (D6).
 - Collectors authenticate to the hub with a per-host token created at enrolment.
 - Read-only and admin roles. Write actions need the admin role.
 
@@ -140,15 +140,30 @@ The MVP succeeds when a new user sees their agents and their spend within minute
 
 Each phase ships on its own. Write actions start in phase 2 only once the audit log and roles are live, and secret rotation waits for an external review.
 
+## Decision log
+
+Decisions taken after this PRD was drafted. Each one is tracked in the roadmap ([#4](https://github.com/victorbonnet/openvigie/issues/4)).
+
+| ID | Date | Decision | Affects |
+| --- | --- | --- | --- |
+| D1 | 2026-10-14 | Web UI is server-rendered with FastAPI, Jinja2 (autoescape on) and HTMX. All assets are vendored; no CDN. | Open question *Web UI stack*, FR-5 |
+| D2 | 2026-10-14 | MVP detection uses running processes, known config folders and listening ports only. Hooks injected into agents are deferred until after the MVP. | Open question *Detection depth*, FR-1 |
+| D3 | 2026-10-14 | Claude Code and Codex usage is read from local session logs first (`~/.claude/projects`, `~/.codex/sessions`), so it works with no agent setup. An OTLP/HTTP receiver follows for users who enable agent telemetry. | FR-3 |
+| D4 | 2026-10-14 | The price table ships with the package and is edited through an override file. The UI shows it read-only; editing it from the web is a later write action. | FR-4 |
+| D5 | 2026-10-14 | The hub, not the collectors, exports traces to Langfuse, so the Langfuse key lives on one machine. Export is metadata only by default; prompt and output content is opt-in and redacted. | FR-6, Security |
+| D6 | 2026-10-14 | Remote access uses `tailscale serve` in front of a hub bound to `127.0.0.1`. The hub does not bind a tailnet or public interface unless the operator explicitly opts in. | Security → Access |
+| D7 | 2026-10-14 | Collectors push to the hub over HTTP JSON with a per-host bearer token from enrolment, even when hub and collector share a host. | Architecture, Security → Access |
+
 ## Open questions and risks
 
 **Open questions**
 
 - [ ] macOS sandboxing: OpenShell relies on Linux features (Landlock, seccomp, network namespaces). Do Mac agents run in a Linux VM or container, or stay monitor-only?
-- [ ] Detection depth: process and config scanning only, or also hooks injected into each agent (for example Claude Code hooks)?
+- [x] Detection depth: process and config scanning only, or also hooks injected into each agent (for example Claude Code hooks)? *Resolved for the MVP by D2; revisit after.*
 - [ ] Risk scoring rules: which capabilities count as high risk, and how are scores weighted?
-- [ ] Retention defaults for usage data and traces.
-- [ ] Web UI stack: server-rendered (FastAPI + HTMX) or a separate front end?
+- [ ] Retention defaults for usage data and traces. Proposal: 180 days for usage data, configurable.
+- [x] Web UI stack: server-rendered (FastAPI + HTMX) or a separate front end? *Resolved by D1.*
+- [ ] Collector user model: a dedicated system user (as the mitigations above require) cannot read agent folders in other users' homes by default. Grant read-only access with ACLs, or run the collector as each agent's user with weaker isolation (especially on macOS)?
 
 **Risks**
 
