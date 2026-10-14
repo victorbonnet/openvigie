@@ -1,0 +1,137 @@
+# Bundled price table (USD per million tokens). Override any entry, or add models, in
+# <config dir>/prices.toml using the same format; overrides win per provider + model id.
+#
+# cached_input_included: true when the provider counts cached tokens inside input_tokens
+# (OpenAI), false when cache reads/writes are reported separately (Anthropic).
+# Models missing from the table are "unpriced": their cost shows as unknown, never $0.
+
+[providers.anthropic]
+cached_input_included = false
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+
+[providers.openai]
+cached_input_included = true
+source = "https://openai.com/api/pricing/"
+
+# --- Anthropic: verified 2026-10-14 against Anthropic's published model table.
+# Cache writes are 1.25x input (5-minute TTL) and 2x input (1-hour TTL).
+
+[[models]]
+provider = "anthropic"
+id = "claude-fable-5-1"
+input = 10.0
+output = 50.0
+cache_read = 0.25
+cache_write_5m = 12.5
+cache_write_1h = 20.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-mythos-5-1"
+input = 10.0
+output = 50.0
+cache_read = 0.25
+cache_write_5m = 12.5
+cache_write_1h = 20.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-fable-5"
+aliases = ["claude-mythos-5"]
+input = 10.0
+output = 50.0
+cache_read = 1.0
+cache_write_5m = 12.5
+cache_write_1h = 20.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-opus-5-5"
+input = 4.0
+output = 20.0
+cache_read = 0.20
+cache_write_5m = 5.0
+cache_write_1h = 8.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-opus-5"
+aliases = ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5"]
+input = 5.0
+output = 25.0
+cache_read = 0.50
+cache_write_5m = 6.25
+cache_write_1h = 10.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-sonnet-5-5"
+aliases = ["claude-sonnet-5"]
+input = 2.0
+output = 10.0
+cache_read = 0.20
+cache_write_5m = 2.5
+cache_write_1h = 4.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-sonnet-4-6"
+aliases = ["claude-sonnet-4-5", "claude-sonnet-4"]
+input = 3.0
+output = 15.0
+cache_read = 0.30
+cache_write_5m = 3.75
+cache_write_1h = 6.0
+as_of = "2026-10-14"
+
+[[models]]
+provider = "anthropic"
+id = "claude-haiku-5-5"
+input = 0.10
+output = 0.50
+cache_read = 0.01
+cache_write_5m = 0.125
+cache_write_1h = 0.20
+as_of = "2026-10-14"
+# Prompts above 100K tokens are billed at the higher tier.
+above = { prompt_tokens = 100000, input = 0.50, output = 2.50, cache_read = 0.05, cache_write_5m = 0.625, cache_write_1h = 1.0 }
+
+[[models]]
+provider = "anthropic"
+id = "claude-haiku-4-5"
+input = 1.0
+output = 5.0
+cache_read = 0.10
+cache_write_5m = 1.25
+cache_write_1h = 2.0
+as_of = "2026-10-14"
+
+# --- OpenAI: from third-party price aggregators on 2026-10-14, NOT verified against
+# openai.com (unreachable from the build environment). Check before relying on them.
+# Cached input is a subset of input and is billed at cache_read instead of input.
+
+[[models]]
+provider = "openai"
+id = "gpt-5"
+aliases = ["gpt-5-codex", "gpt-5.1", "gpt-5.1-codex", "gpt-5.1-codex-max"]
+input = 1.25
+output = 10.0
+cache_read = 0.125
+as_of = "2026-10-14"
+unverified = true
+
+[[models]]
+provider = "openai"
+id = "gpt-5.2-codex"
+aliases = ["gpt-5.3-codex"]
+input = 1.75
+output = 14.0
+cache_read = 0.175
+as_of = "2026-10-14"
+unverified = true
