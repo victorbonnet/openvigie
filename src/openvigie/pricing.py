@@ -73,7 +73,11 @@ class Cost:
     reason: str | None = None  # why the amount is unknown or estimated
 
 
-def compute_cost(record: UsageRecord, table: PriceTable) -> Cost:
+def compute_cost(
+    record: UsageRecord, table: PriceTable, *, long_prompt: bool | None = None
+) -> Cost:
+    """Price one record. ``long_prompt`` overrides the tier choice when ``record`` sums several
+    requests (aggregation), since tiers depend on each request's own prompt size."""
     model = record.response_model or record.request_model
     price = table.find(record.provider, model)
     if price is None:
@@ -89,7 +93,9 @@ def compute_cost(record: UsageRecord, table: PriceTable) -> Cost:
     prompt = record.input_tokens if included else uncached + cache_read + written
 
     rates = price.rates
-    if price.above and price.above_prompt_tokens is not None and prompt > price.above_prompt_tokens:
+    if long_prompt is None:
+        long_prompt = price.above_prompt_tokens is not None and prompt > price.above_prompt_tokens
+    if price.above and long_prompt:
         rates = price.above
     quality = record.quality
     reason = None
