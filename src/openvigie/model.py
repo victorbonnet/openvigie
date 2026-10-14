@@ -1,16 +1,17 @@
 """Domain model shared by adapters, collector and hub: the collector ↔ hub wire format.
 
-Every type here is a frozen, strict Pydantic dataclass (PRD D12): building one validates it, so an
-invalid object can't exist. Strings, lists and integers are bounded, unknown fields are rejected,
-and validation errors never echo the input. ``to_dict`` / ``from_dict`` convert to and from the
-JSON wire format. Unknown token counts are ``None`` (JSON ``null``), never 0.
+Every type here is a frozen Pydantic dataclass (PRD D12): building one validates it, so an invalid
+object can't exist. Validation is strict where it matters: strings, numbers and booleans are never
+coerced, timestamps are ISO 8601 strings (or datetimes) with an offset, enums take their values;
+strings, lists and integers are bounded, unknown fields are rejected, and errors never echo the
+input. ``to_dict`` / ``from_dict`` convert to and from the JSON wire format. Unknown token counts
+are ``None`` (JSON ``null``), never 0.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import hashlib
-import json
 from dataclasses import field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -18,9 +19,12 @@ from typing import Annotated, Any, TypeVar, cast, dataclass_transform
 
 from pydantic import (
     AwareDatetime,
+    BeforeValidator,
     ConfigDict,
     Field,
     PlainSerializer,
+    Strict,
+    StrictFloat,
     TypeAdapter,
     ValidationError,
 )
@@ -67,22 +71,33 @@ class SpanStatus(StrEnum):
     ERROR = "error"
 
 
-CONFIG = ConfigDict(strict=True, extra="forbid", hide_input_in_errors=True)
+CONFIG = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
 
 @dataclass_transform(frozen_default=True, field_specifiers=(field, Field))
 def wire_type[C](cls: type[C]) -> type[C]:
-    """Decorator for a wire type: a frozen, strict Pydantic dataclass."""
+    """Decorator for a wire type: a frozen Pydantic dataclass that rejects unknown fields."""
     return cast(type[C], dataclass(frozen=True, slots=True, config=CONFIG)(cls))
 
 
+def _iso_string(value: object) -> object:
+    if isinstance(value, datetime) or (isinstance(value, str) and len(value) <= 64):
+        return value
+    raise ValueError("expected an ISO 8601 timestamp")  # not a number of seconds
+
+
 T = TypeVar("T")
-Id = Annotated[str, Field(max_length=MAX_ID)]
-Text = Annotated[str, Field(max_length=MAX_STR)]
-Count = Annotated[int, Field(ge=0, le=MAX_INT)]
+Id = Annotated[str, Strict(), Field(max_length=MAX_ID)]
+Text = Annotated[str, Strict(), Field(max_length=MAX_STR)]
+Count = Annotated[int, Strict(), Field(ge=0, le=MAX_INT)]
+Bool = Annotated[bool, Strict()]
 Items = Annotated[tuple[T, ...], Field(max_length=MAX_ITEMS)]
 # ISO 8601 with an explicit offset ("+00:00", not "Z"): the format of SCHEMA_VERSION 1.
-Timestamp = Annotated[AwareDatetime, PlainSerializer(datetime.isoformat, return_type=str)]
+Timestamp = Annotated[
+    AwareDatetime,
+    BeforeValidator(_iso_string),
+    PlainSerializer(datetime.isoformat, return_type=str),
+]
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -111,7 +126,7 @@ class AgentInstance:
     config_root: Text | None = None
     sandboxed: SandboxState = SandboxState.UNKNOWN
     sandbox_kind: Text | None = None
-    process_running: bool | None = None
+    process_running: Bool | None = None
     last_activity_at: Timestamp | None = None
     status: AgentStatus = AgentStatus.UNKNOWN
 
@@ -171,7 +186,7 @@ class UsageRecord:
         return {k: v for k, v in pairs if v is not None}
 
 
-AttrValue = Text | Annotated[int, Field(ge=-MAX_INT, le=MAX_INT)] | float | bool
+AttrValue = Text | Annotated[int, Strict(), Field(ge=-MAX_INT, le=MAX_INT)] | StrictFloat | Bool
 
 
 @wire_type
@@ -218,7 +233,7 @@ class McpServer:
     transport: Id  # "stdio" | "http" | "sse" | other
     command: Id | None = None  # first word only
     url_host: Id | None = None
-    pinned: bool | None = None  # package version pinned (npx pkg@1.2.3); None: not a package
+    pinned: Bool | None = None  # package version pinned (npx pkg@1.2.3); None: not a package
     secret_names: Items[Text] = ()  # env var names passed to it, never values
 
 
@@ -248,7 +263,7 @@ class Capabilities:
     writable_roots: Items[Text] = ()
     network: NetAccess = NetAccess.UNKNOWN
     network_allowlist: Items[Text] = ()
-    shell: bool | None = None  # can run shell commands
+    shell: Bool | None = None  # can run shell commands
     tools_allowed: Items[Text] = ()
     tools_denied: Items[Text] = ()
     mcp_servers: Items[McpServer] = ()
@@ -297,16 +312,13 @@ def from_dict[M](cls: type[M], data: Any) -> M:
     if not isinstance(data, dict):
         raise CodecError(f"{cls.__name__}: expected an object")
     try:
-        # Validating the JSON text applies JSON rules: ISO strings for timestamps, enum values.
-        result: M = _adapter(cls).validate_json(json.dumps(data))
-    except (ValidationError, TypeError, ValueError) as exc:
+        result: M = _adapter(cls).validate_python(data)
+    except ValidationError as exc:
         raise CodecError(_describe(cls, exc)) from None
     return result
 
 
-def _describe(cls: type[Any], exc: Exception) -> str:
-    if not isinstance(exc, ValidationError):
-        return f"{cls.__name__}: not JSON data"
+def _describe(cls: type[Any], exc: ValidationError) -> str:
     first = exc.errors(include_input=False, include_url=False, include_context=False)[0]
     where = ".".join([cls.__name__, *map(str, first["loc"])])
     message = {"missing": "missing", "unexpected_keyword_argument": "unknown field"}.get(

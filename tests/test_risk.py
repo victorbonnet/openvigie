@@ -135,7 +135,7 @@ def test_agents_api_exposes_risk(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     CapabilityStore(db).put([caps(approvals=ApprovalLevel.NEVER_ASK)], "h")
     client = TestClient(create_app(HubSettings(), db), base_url="http://127.0.0.1:7878")
     body = client.get("/api/v1/agents").json()
-    by_id = {a["agent_id"]: a for a in body["agents"]}
+    by_id = {a["agent"]["agent_id"]: a for a in body["agents"]}
     assert by_id["a1"]["risk"]["level"] == "high"
     assert [f["id"] for f in by_id["a1"]["risk"]["flags"]] == ["never-asks-unsandboxed",
                                                                 "macos-no-sandbox"]  # fmt: skip
