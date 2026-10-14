@@ -5,6 +5,20 @@
 <h1>{{ a.name }}</h1>
 
 {% include "_agent_status.html" %}
+{% if whoami(request).role == "admin" and a.process_running %}
+<div class="buttons">
+{% for kind, label in (("agent.stop", "Stop…"), ("agent.kill", "Kill…")) %}
+<form method="post" action="/actions/new" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token(request, 'propose') }}">
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <input type="hidden" name="agent_id" value="{{ a.agent_id }}">
+  <button type="submit">{{ label }}</button>
+</form>
+{% endfor %}
+</div>
+<p class="muted small">Stop and kill act on the processes openvigie found for this agent, after you
+  confirm, if the host allows <code>agent.stop</code> / <code>agent.kill</code>.</p>
+{% endif %}
 
 <h2>Details</h2>
 <dl class="meta">

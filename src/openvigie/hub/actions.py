@@ -9,7 +9,8 @@ A proposal stores the plan: the host, the name to type, the collector action and
 and the state before and after as text (the diff). It keeps ``before`` so the change can be
 undone: ``rollback`` asks the kind for the inverse change and proposes it, to be confirmed like
 any other. Kinds: ``noop`` checks the command channel end to end (nothing to undo);
-``sandbox.policy`` changes a sandbox's network rules (FR-12, D15), reviewed rule by rule.
+``sandbox.policy`` changes a sandbox's network rules (FR-12, D15), reviewed rule by rule;
+``agent.stop`` and ``agent.kill`` end an agent's processes (FR-13, D16), with nothing to undo.
 """
 
 from __future__ import annotations
@@ -108,9 +109,35 @@ def _policy_review(plan: Plan) -> list[str]:
     return lines
 
 
+SIGNALS = {
+    "agent.stop": ("Stop", "stopped: SIGTERM, then SIGKILL after 10 s for what is left"),
+    "agent.kill": ("Kill", "killed at once (SIGKILL): no chance to save its work"),
+}
+
+
+def _signal_plan(kind: str) -> Callable[[Database, Mapping[str, str]], Plan]:
+    verb, effect = SIGNALS[kind]
+
+    def plan(db: Database, params: Mapping[str, str]) -> Plan:
+        row = Inventory(db).agent(params.get("agent_id", ""))
+        if row is None:
+            raise ActionError("unknown agent")
+        agent = row.agent
+        if not agent.process_running:
+            raise ActionError("the agent has no running process")
+        name = f"{row.hostname}/{agent.agent_type}"
+        return Plan(agent.host_id, name, kind, {"agent_id": agent.agent_id},
+                    f"{verb} {agent.name} on {row.hostname}",
+                    before=f"{name}: running\n",
+                    after=f"{name}: its processes and their children {effect}\n")  # fmt: skip
+
+    return plan
+
+
 KINDS: dict[str, Kind] = {
     "noop": Kind(_noop_plan),
     "sandbox.policy": Kind(_policy_plan, _policy_undo, _policy_review),
+    **{kind: Kind(_signal_plan(kind)) for kind in SIGNALS},
 }
 
 
