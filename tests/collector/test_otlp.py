@@ -12,7 +12,13 @@ from openvigie.adapters.testing import fake_context
 from openvigie.collector.client import HubClient
 from openvigie.collector.daemon import Collector
 from openvigie.collector.otlp import MAX_BODY, OtlpReceiver, parse_logs
-from openvigie.config import CollectorSettings, ConfigError, OtlpSettings, load_collector_settings
+from openvigie.config import (
+    CollectorSettings,
+    ConfigError,
+    OtlpSettings,
+    UsageSource,
+    load_collector_settings,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "otlp"
 ADAPTERS = Path(__file__).parents[1] / "adapters"
@@ -109,7 +115,7 @@ class Hub:
         return sum(r["output_tokens"] or 0 for r in self.usage)
 
 
-def collector(tmp_path: Path, source: str = "auto") -> tuple[Collector, OtlpReceiver, Hub]:
+def collector(tmp_path: Path, source: UsageSource = "auto") -> tuple[Collector, OtlpReceiver, Hub]:
     shutil.copytree(CLAUDE, tmp_path / "home" / ".claude")
     settings = CollectorSettings(homes=(tmp_path / "home",), slow_tick_s=0.0, backfill_days=36500,
                                  otlp=OtlpSettings(usage_source=source))  # fmt: skip
@@ -138,7 +144,7 @@ def test_otlp_first_then_logs_counted_once(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("source", ["logs", "otlp"])
-def test_forced_source(tmp_path: Path, source: str) -> None:
+def test_forced_source(tmp_path: Path, source: UsageSource) -> None:
     c, receiver, hub = collector(tmp_path, source)
     receiver.handle("/v1/logs", JSON, claude_logs())
     c.tick()
