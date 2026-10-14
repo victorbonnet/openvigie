@@ -23,6 +23,7 @@ REQUIRED = (
     "openvigie/hub/static/vendor/htmx-LICENSE.txt",
     "openvigie/hub/store/migrations/0001_inventory.sql",
     "openvigie/hub/store/migrations/0006_openshell.sql",
+    "openvigie/hub/store/migrations/0007_audit.sql",
     "openvigie/openshell/starter.toml",
     "openvigie/hub/templates/base.html",
 )

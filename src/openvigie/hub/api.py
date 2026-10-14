@@ -16,6 +16,8 @@ from openvigie.hub.api_models import (
     Accepted,
     AgentOut,
     AgentsResponse,
+    AuditEntryOut,
+    AuditResponse,
     EnrolRequest,
     EnrolResponse,
     FlagOut,
@@ -29,6 +31,7 @@ from openvigie.hub.api_models import (
 )
 from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.riskview import agent_risks
+from openvigie.hub.store.audit import AuditLog
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.sandboxes import SandboxStore
@@ -179,6 +182,21 @@ def date_range(
     begin = datetime.combine(first, day_time.min, tzinfo=tz)
     finish = datetime.combine(last + timedelta(days=1), day_time.min, tzinfo=tz)
     return begin, finish
+
+
+@router.get("/audit")
+def audit(
+    request: Request,
+    before: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> AuditResponse:
+    """The audit log of admin actions, newest first (FR-17). Readable by every role."""
+    entries = AuditLog(request.app.state.db).entries(limit=limit, before_seq=before)
+    more = len(entries) == limit and entries[-1].seq > 1
+    return AuditResponse(
+        entries=[AuditEntryOut(**e.to_json()) for e in entries],
+        next_before=entries[-1].seq if more else None,
+    )
 
 
 @router.get("/sandboxes")

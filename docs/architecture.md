@@ -60,9 +60,10 @@ flowchart LR
 | `collector/state` | Cursors and the outbound spool | `StateStore` |
 | `collector/otlp` | Local OTLP receiver (optional) | `OtlpReceiver`, `Arbiter` |
 | `hub/app` | The FastAPI app and its hardening (hosts, body limit, headers) | `create_app` |
-| `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `SandboxesResponse`, `UsageResponse` |
+| `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `SandboxesResponse`, `UsageResponse`, `AuditResponse` |
 | `hub/ui` | The web UI (GET only) | routes, templates in `hub/templates` |
-| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials` |
+| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials`, `AuditLog` |
+| `hub/store/audit` | The audit log of admin actions (FR-17, D14): append-only, hash-chained, redacted | `AuditLog.record` (the only writer), `entries`, `all`, `verify` |
 | `hub/reports` | Usage and cost aggregation | `usage_report` |
 | `hub/riskview` | Risk of known agents | `agent_risks` |
 | `hub/langfuse` | Trace export (FR-6, opt-in) | `LangfuseExporter`, `trace_link` |
