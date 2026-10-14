@@ -67,7 +67,7 @@ Read [docs/threat-model.md](docs/threat-model.md) for the details and
 - [Troubleshooting](docs/troubleshooting.md)
 - [Running as a service](docs/services.md)
 - [Traces in Langfuse](docs/traces.md) · [Usage over OTLP](docs/otlp.md)
-- [Writing an adapter](docs/adapters.md) · [Product requirements](docs/PRD.md)
+- [Writing an adapter](docs/adapters.md) · [Architecture](docs/architecture.md) · [Product requirements](docs/PRD.md)
 
 ## License
 

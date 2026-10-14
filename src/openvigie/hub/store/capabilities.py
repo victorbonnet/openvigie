@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from openvigie.hub.store.db import Database, parse_ts, ts
-from openvigie.hub.store.usage import _owned_agents
+from openvigie.hub.store.db import Database, agents_of_host, parse_ts, ts
 from openvigie.model import Capabilities, from_dict, to_dict
 
 SCALARS = ("approvals", "approval_mode", "filesystem", "network", "shell")
@@ -73,7 +72,7 @@ class CapabilityStore:
         """Store this host's snapshots; returns how many differed from the previous one."""
         changed = 0
         with self.db.transaction() as conn:
-            owned = _owned_agents(conn, host_id)
+            owned = agents_of_host(conn, host_id)
             for caps in snapshots:
                 if caps.agent_id not in owned:
                     continue

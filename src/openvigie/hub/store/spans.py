@@ -7,8 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 
-from openvigie.hub.store.db import Database, ts
-from openvigie.hub.store.usage import _owned_agents
+from openvigie.hub.store.db import Database, agents_of_host, ts
 from openvigie.model import Span, from_dict, to_dict
 
 DROPPED = "spans_dropped"
@@ -37,7 +36,7 @@ class SpanQueue:
         """Queue spans of this host's agents; a re-sent span replaces the queued one."""
         queued = 0
         with self.db.transaction() as conn:
-            owned = _owned_agents(conn, host_id)
+            owned = agents_of_host(conn, host_id)
             for span in spans:
                 if span.agent_id not in owned:
                     continue

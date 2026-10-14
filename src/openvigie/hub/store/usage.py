@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-from datetime import datetime
 
-from openvigie.hub.store.db import Database, parse_ts, ts
+from openvigie.hub.store.db import Database, agents_of_host, parse_ts, required_ts, ts
 from openvigie.model import Session, UsageQuality, UsageRecord
 
 
@@ -18,7 +16,7 @@ class UsageStore:
         """Insert records for this host's agents; a replay only upgrades less precise data."""
         changed = 0
         with self.db.transaction() as conn:
-            owned = _owned_agents(conn, host_id)
+            owned = agents_of_host(conn, host_id)
             for r in records:
                 if r.agent_id not in owned:
                     continue
@@ -54,7 +52,7 @@ class UsageStore:
     def add_sessions(self, sessions: list[Session], host_id: str) -> int:
         changed = 0
         with self.db.transaction() as conn:
-            owned = _owned_agents(conn, host_id)
+            owned = agents_of_host(conn, host_id)
             for s in sessions:
                 if s.agent_id not in owned:
                     continue
@@ -91,7 +89,7 @@ class UsageStore:
         return [
             UsageRecord(
                 record_id=r["record_id"], agent_id=r["agent_id"],
-                timestamp=_dt(r["ts"]), session_id=r["session_id"], provider=r["provider"],
+                timestamp=required_ts(r["ts"]), session_id=r["session_id"], provider=r["provider"],
                 request_model=r["request_model"], response_model=r["response_model"],
                 input_tokens=r["input_tokens"], output_tokens=r["output_tokens"],
                 cache_read_input_tokens=r["cache_read_input_tokens"],
@@ -117,15 +115,3 @@ class UsageStore:
     def set_spool_dropped(self, host_id: str, dropped: int) -> None:
         with self.db.transaction() as conn:
             conn.execute("UPDATE hosts SET spool_dropped = ? WHERE host_id = ?", (dropped, host_id))
-
-
-def _owned_agents(conn: sqlite3.Connection, host_id: str) -> set[str]:
-    rows = conn.execute("SELECT agent_id FROM agents WHERE host_id = ?", (host_id,)).fetchall()
-    return {row[0] for row in rows}
-
-
-def _dt(value: str) -> datetime:
-    parsed = parse_ts(value)
-    if parsed is None:
-        raise ValueError("missing timestamp")
-    return parsed

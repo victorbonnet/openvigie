@@ -23,6 +23,11 @@ SECRET_NAME = re.compile(
 )
 
 
+def table(value: Any) -> dict[str, Any]:
+    """``value`` if it is a table (dict), else an empty one: config files are untrusted."""
+    return value if isinstance(value, dict) else {}
+
+
 def text(value: Any) -> str | None:
     return value[:MAX_TEXT] if isinstance(value, str) and value else None
 
