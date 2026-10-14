@@ -21,6 +21,12 @@
   {% include "_agent_rows.html" %}
 </table>
 
+{% if host_sandboxes %}
+{% from "_sandbox.html" import sandbox_card %}
+<h2>OpenShell sandboxes</h2>
+{% for box in host_sandboxes %}{{ sandbox_card(box, sandbox_changes.get(box.sandbox_id, []), agent_names) }}{% endfor %}
+{% endif %}
+
 <h2>Adapters</h2>
 {% if health %}
 <table>

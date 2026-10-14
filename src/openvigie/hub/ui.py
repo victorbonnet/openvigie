@@ -21,10 +21,11 @@ from openvigie.hub.reports import UsageRow, usage_report
 from openvigie.hub.riskview import AgentRisk, agent_risks
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
+from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.templating import render
-from openvigie.model import AgentStatus, HealthState, Session
+from openvigie.model import AgentStatus, HealthState, OpenShellSandbox, Session
 from openvigie.pricing import PriceTable
 
 router = APIRouter(include_in_schema=False)
@@ -57,6 +58,11 @@ def _filters(
 
 
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "unknown": 3, "none": 4}
+
+
+def sandbox_badges(request: Request) -> dict[str, OpenShellSandbox]:
+    """Agent id → the OpenShell sandbox it runs in, for the sandbox badges (FR-10)."""
+    return {a: box for box in SandboxStore(request.app.state.db).all() for a in box.agent_ids}
 
 
 def _with_risk(
@@ -95,6 +101,7 @@ def agents_page(
         hosts=sorted({(r.agent.host_id, r.hostname) for r in everything}, key=lambda h: h[1]),
         statuses=[s.value for s in AgentStatus],
         any_agents=bool(everything),
+        sandboxes=sandbox_badges(request),
     )
 
 
@@ -109,7 +116,8 @@ def agent_rows(
     filters = _filters(type, host, status, sort)
     rows, risks = _with_risk(request, _inventory(request).agents(
         host_id=host, agent_type=type, status=status), sort)  # fmt: skip
-    return render(request, "_agent_rows.html", rows=rows, risks=risks, query=urlencode(filters))
+    return render(request, "_agent_rows.html", rows=rows, risks=risks, query=urlencode(filters),
+                  sandboxes=sandbox_badges(request))  # fmt: skip
 
 
 AgentId = Annotated[str, Path(max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")]
@@ -127,6 +135,8 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
     row = _agent_or_404(request, agent_id)
     inventory = _inventory(request)
     capabilities = CapabilityStore(request.app.state.db)
+    sandboxes = SandboxStore(request.app.state.db)
+    sandbox = sandboxes.of_agent(agent_id, row.agent.host_id)
     health = [
         h for h in inventory.adapter_health(row.agent.host_id)
         if h.health.adapter == row.agent.agent_type
@@ -145,6 +155,9 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         usage=agent_usage(request, agent_id),
         money=money,
         compact=compact,
+        sandbox=sandbox,
+        sandbox_changes=sandboxes.changes(sandbox.sandbox_id, limit=10) if sandbox else [],
+        sandboxes={agent_id: sandbox} if sandbox else {},
     )
 
 
@@ -224,7 +237,9 @@ def prices_page(request: Request) -> HTMLResponse:
 @router.get("/agents/{agent_id}/status", response_class=HTMLResponse)
 def agent_status(request: Request, agent_id: AgentId) -> HTMLResponse:
     row = _agent_or_404(request, agent_id)
-    return render(request, "_agent_status.html", row=row)
+    sandbox = SandboxStore(request.app.state.db).of_agent(agent_id, row.agent.host_id)
+    return render(request, "_agent_status.html", row=row,
+                  sandboxes={agent_id: sandbox} if sandbox else {})  # fmt: skip
 
 
 STALE_AFTER = timedelta(seconds=20)  # about 3 collector ticks without a report
@@ -286,6 +301,8 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
                  if v.row.host.host_id == host_id), None)  # fmt: skip
     if view is None:
         raise HTTPException(404, "host not found")
+    store = SandboxStore(request.app.state.db)
+    host_boxes = store.all(host_id)
     return render(
         request,
         "host.html",
@@ -295,6 +312,10 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
         risks=risks,
         query=urlencode({"host": host_id}),
         health=inventory.adapter_health(host_id),
+        sandboxes=sandbox_badges(request),
+        host_sandboxes=host_boxes,
+        sandbox_changes={b.sandbox_id: store.changes(b.sandbox_id, limit=5) for b in host_boxes},
+        agent_names={r.agent.agent_id: r.agent.name for r in rows},
     )
 
 
