@@ -9,6 +9,7 @@ Credentials (``.credentials.json``) are never opened; env values are never kept,
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,7 @@ from openvigie.safeio import UnsafeFileError, load_json_bounded, resolve_within
 SETTINGS_MAX = 1024 * 1024
 STATE_MAX = 16 * 1024 * 1024  # ~/.claude.json grows with history
 MAX_PROJECTS = 50
+CACHE_TTL = timedelta(hours=1)
 MODES = {
     "default": ApprovalLevel.ASK,
     "plan": ApprovalLevel.ASK,
@@ -77,7 +79,7 @@ def _merge(*settings: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _mode_from_cmdline(procs: list[ProcessInfo]) -> str | None:
+def mode_from_cmdline(procs: list[ProcessInfo]) -> str | None:
     for proc in procs:
         args = list(proc.cmdline)
         if any(flag in args for flag in BYPASS_FLAGS):
@@ -115,7 +117,7 @@ def read_capabilities(
         _load(root / "settings.local.json", SETTINGS_MAX, read),
     )
     perms = settings["permissions"]
-    mode = _mode_from_cmdline(procs) or text(perms.get("defaultMode")) or "default"
+    mode = mode_from_cmdline(procs) or text(perms.get("defaultMode")) or "default"
     allow, deny = texts(perms.get("allow")), texts(perms.get("deny"))
     sandbox = _dict(settings.get("sandbox"))
     sandboxed = sandbox.get("enabled") is True
@@ -190,3 +192,20 @@ def _skills(folder: Path) -> list[str]:
     found = [p.name for p in folder.iterdir()
              if p.is_dir() and not p.is_symlink() and (p / "SKILL.md").is_file()]  # fmt: skip
     return sorted(found)[:MAX_ITEMS]
+
+
+def file_states(root: Path) -> tuple[tuple[str, int, int], ...]:
+    """(path, mtime, size) of the files capabilities come from, to skip unchanged re-reads.
+
+    Project ``.mcp.json`` files aren't part of the key; the adapter re-reads everything at
+    least every ``CACHE_TTL`` anyway, so their edits show up within that time.
+    """
+    state_file = root.parent / ".claude.json" if root.name == ".claude" else root / ".claude.json"
+    out = []
+    for path in (root / "settings.json", root / "settings.local.json", state_file, root / "skills"):
+        try:
+            st = path.lstat()
+        except OSError:
+            continue
+        out.append((path.name, st.st_mtime_ns, st.st_size))
+    return tuple(out)

@@ -2,6 +2,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -102,3 +103,29 @@ def test_broken_and_symlinked_files_are_skipped(tmp_path: Path) -> None:
 )
 def test_pinned(command: str, args: list[str], expected: bool | None) -> None:
     assert pinned(command, args) is expected
+
+
+def test_unchanged_files_are_not_parsed_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from openvigie.adapters.claude_code import capabilities as caps_module
+
+    home = home_copy(tmp_path)
+    ctx = fake_context(homes=[home])
+    adapter = ClaudeCodeAdapter()
+    (agent,) = adapter.detect(ctx)
+    calls: list[Path] = []
+    real_load = caps_module._load
+
+    def counting_load(path: Path, *args: Any) -> dict[str, Any]:
+        calls.append(path)
+        return real_load(path, *args)
+
+    monkeypatch.setattr(caps_module, "_load", counting_load)
+    first = adapter.capabilities(ctx, agent)
+    reads = len(calls)
+    assert adapter.capabilities(ctx, agent) == first and len(calls) == reads
+    settings = home / ".claude" / "settings.json"
+    settings.write_text(settings.read_text().replace("acceptEdits", "default") + " ")
+    adapter.capabilities(ctx, agent)
+    assert len(calls) == 2 * reads
