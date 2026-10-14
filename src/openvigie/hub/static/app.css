@@ -102,6 +102,12 @@ dl.meta dt { color: var(--muted); }
 dl.meta dd { margin: 0; }
 code { font-size: 13px; }
 pre { overflow-x: auto; font-size: 13px; line-height: 1.45; margin: 8px 0 0; }
+pre.diff span { display: block; }
+pre.diff .add { color: var(--ok); }
+pre.diff .del { color: var(--bad); }
+pre.diff .hunk { color: var(--muted); }
+form.inline { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.error-box { border: 1px solid var(--bad); color: var(--bad); padding: 8px 12px; border-radius: 6px; }
 
 /* --- charts: validated categorical palette (dataviz reference instance) --- */
 :root {

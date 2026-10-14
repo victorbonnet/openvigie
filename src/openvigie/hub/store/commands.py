@@ -55,10 +55,19 @@ class CommandQueue:
     def __init__(self, db: Database) -> None:
         self.db = db
 
-    def enqueue(self, host_id: str, action: str, args: dict[str, str], *, actor: str,
-                now: datetime, ttl: timedelta) -> StoredCommand:  # fmt: skip
+    def enqueue(
+        self,
+        host_id: str,
+        action: str,
+        args: dict[str, str],
+        *,
+        actor: str,
+        now: datetime,
+        ttl: timedelta,
+        command_id: str | None = None,
+    ) -> StoredCommand:
         """Queue a command; the wire type validates action and arguments first."""
-        command = Command(secrets.token_hex(16), action, now + ttl, dict(args))
+        command = Command(command_id or secrets.token_hex(16), action, now + ttl, dict(args))
         with self.db.transaction() as conn:
             conn.execute(
                 f"INSERT INTO commands ({COLUMNS}) "  # noqa: S608 - fixed names

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Actions</h1>
+<p class="muted">Changes proposed by admins. Nothing runs until an admin reviews the diff and
+  types the target's name to confirm, and the host allows the action. Every step is in the
+  <a href="/audit">audit log</a>.</p>
+{% if actions %}
+<table>
+  <thead><tr><th>Proposed</th><th>Action</th><th>By</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for a in actions %}
+    {% set status = a.current_status(now) %}
+    <tr>
+      <td>{{ a.proposed_at | ago }}</td>
+      <td><a href="/actions/{{ a.action_id }}">{{ a.plan.summary }}</a>{% if a.rollback_of %} <span class="muted">(rollback)</span>{% endif %}</td>
+      <td>{{ a.proposed_by }}</td>
+      <td><span class="badge {{ 'ok' if status == 'confirmed' else ('unknown' if status == 'proposed' else 'stopped') }}">{{ status }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No actions yet.</p>
+{% endif %}
+{% endblock %}

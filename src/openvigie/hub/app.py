@@ -11,6 +11,7 @@ Defences that apply to every route:
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, tzinfo
@@ -27,7 +28,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from openvigie import __version__
 from openvigie.config import ConfigError, HubSettings
-from openvigie.hub import api, ui
+from openvigie.hub import admin, api, ui
 from openvigie.hub.api_models import describe_invalid
 from openvigie.hub.langfuse import LangfuseExporter, export_lifespan
 from openvigie.hub.retention import retention_lifespan
@@ -147,6 +148,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.enrol_limiter = api.FailureLimiter()
     app.state.risk_rules = load_rules()
     app.state.refusals = RefusalBudget()
+    app.state.csrf_secret = secrets.token_bytes(32)  # new on each start: forms reload
     app.state.exporter = (
         LangfuseExporter(settings.langfuse, db, queue_hours=settings.retention.span_queue_hours)
         if settings.langfuse
@@ -160,6 +162,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
 
     app.include_router(api.router)
     app.include_router(ui.router)
+    app.include_router(admin.router)
     static = resources.files("openvigie.hub") / "static"
     app.mount("/static", StaticFiles(directory=str(static)), name="static")
 

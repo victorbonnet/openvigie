@@ -17,6 +17,7 @@
       <a href="/usage">Usage</a>
       <a href="/prices">Prices</a>
       <a href="/hosts">Hosts{% set alerts = adapter_alerts(request) %}{% if alerts %} <span class="badge degraded" title="adapters needing attention">{{ alerts }}</span>{% endif %}</a>
+      <a href="/actions">Actions</a>
       <a href="/audit">Audit</a>
       {% endblock %}
     </nav>
@@ -26,6 +27,6 @@
   <main>
     {% block content %}{% endblock %}
   </main>
-  <footer>openvigie {{ version }} · read-only · <a href="/settings">settings</a></footer>
+  <footer>openvigie {{ version }} · <a href="/settings">settings</a></footer>
 </body>
 </html>
