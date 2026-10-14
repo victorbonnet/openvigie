@@ -93,15 +93,18 @@ class Inventory:
                 changed += cur.rowcount
         return changed
 
-    def add_status_events(self, events: list[StatusEvent]) -> int:
+    def add_status_events(self, events: list[StatusEvent], host_id: str | None = None) -> int:
+        """Store events for known agents (of ``host_id`` when given); duplicates are ignored."""
         added = 0
         with self.db.transaction() as conn:
             for e in events:
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO agent_status_events (agent_id, old, new, at) "
-                    "SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM agents WHERE agent_id = ?)",
-                    (e.agent_id, e.old.value, e.new.value, ts(e.at), e.agent_id),
-                )
+                    "SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM agents WHERE agent_id = ? "
+                    "AND (? IS NULL OR host_id = ?))",
+                    (e.agent_id, e.old.value, e.new.value, ts(e.at), e.agent_id, host_id,
+                     host_id),
+                )  # fmt: skip
                 added += cur.rowcount
         return added
 
