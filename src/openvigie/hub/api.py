@@ -108,14 +108,17 @@ async def enrol(request: Request, body: JsonBody) -> JSONResponse:
     if not isinstance(code, str) or len(code) > 128 or not creds.code_usable(code, now):
         limiter.record()
         raise HTTPException(403, "invalid, expired or already used enrolment code")
-    if creds.has_active_token(host.host_id) and not creds.code_bound_to(code, host.host_id):
+    bound = creds.code_bound_to(code, host.host_id)
+    if (creds.has_active_token(host.host_id) or creds.is_revoked(host.host_id)) and not bound:
         raise HTTPException(
-            409, "this host is already enrolled; use `openvigie hub hosts rotate` to re-enrol it"
+            409, "this host is already enrolled or revoked; use `openvigie hub hosts rotate`"
         )
     if not creds.consume_enrol_code(code, host.host_id, now):
         limiter.record()
         raise HTTPException(403, "invalid, expired or already used enrolment code")
     request.app.state.inventory.upsert_host(host, now)
+    if bound:
+        creds.reinstate(host.host_id)
     token = creds.issue_token(host.host_id, now)
     return JSONResponse({"host_id": host.host_id, "token": token}, status_code=201)
 

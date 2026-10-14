@@ -91,6 +91,18 @@ def cmd_hub_enrol_code(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hub_hosts(args: argparse.Namespace) -> int:
+    from openvigie.config import ConfigError, load_hub_settings
+    from openvigie.hub.hosts_cli import run
+
+    try:
+        settings = load_hub_settings()
+    except ConfigError as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    return run(settings, args.hosts_command, getattr(args, "host", None), args.ttl)
+
+
 def cmd_enrol(args: argparse.Namespace) -> int:
     from openvigie.collector.client import HubError
     from openvigie.collector.enrol import enrol
@@ -172,6 +184,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     code.add_argument("--ttl", type=parse_duration, default=timedelta(minutes=15))
     code.set_defaults(func=cmd_hub_enrol_code)
+    hosts = hub_sub.add_parser("hosts", help="list, revoke or re-enrol collector hosts")
+    hosts_sub = hosts.add_subparsers(dest="hosts_command", required=True)
+    hosts_sub.add_parser("list", parents=[common], help="enrolled hosts and their tokens")
+    revoke = hosts_sub.add_parser("revoke", parents=[common], help="cut a host off now")
+    revoke.add_argument("host", help="host id, id prefix or hostname")
+    rotate = hosts_sub.add_parser(
+        "rotate", parents=[common], help="one-time code to re-enrol a host, keeping its history"
+    )
+    rotate.add_argument("host", help="host id, id prefix or hostname")
+    hosts.set_defaults(func=cmd_hub_hosts, ttl=timedelta(minutes=15))
 
     enrol = sub.add_parser("enrol", parents=[common], help="enrol this host with a hub")
     enrol.add_argument("hub_url", help="e.g. http://127.0.0.1:7878 or https://hub.tailnet.ts.net")
