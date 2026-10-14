@@ -41,6 +41,24 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hub_serve(args: argparse.Namespace) -> int:
+    import dataclasses
+
+    from openvigie.config import ConfigError, load_hub_settings, validate_hub
+
+    try:
+        settings = load_hub_settings()
+        overrides = {k: v for k, v in (("bind", args.bind), ("port", args.port)) if v is not None}
+        settings = validate_hub(dataclasses.replace(settings, **overrides))
+    except ConfigError as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    from openvigie.hub.server import serve
+
+    serve(settings)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openvigie", description="Control tower for AI agents on your own machines."
@@ -56,6 +74,13 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--json", action="store_true", help="machine-readable output")
     scan.add_argument("--adapter", metavar="TYPE", help="only run one adapter, e.g. codex")
     scan.set_defaults(func=cmd_scan)
+
+    hub = sub.add_parser("hub", help="run and manage the hub (store + web UI)")
+    hub_sub = hub.add_subparsers(dest="hub_command", required=True)
+    serve = hub_sub.add_parser("serve", parents=[common], help="serve the web UI and API")
+    serve.add_argument("--bind", help="address to bind (default 127.0.0.1)")
+    serve.add_argument("--port", type=int, help="port (default 7878)")
+    serve.set_defaults(func=cmd_hub_serve)
     return parser
 
 
