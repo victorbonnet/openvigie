@@ -296,4 +296,7 @@ def usage_page(
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request) -> HTMLResponse:
     state = request.app.state
-    return render(request, "settings.html", title="Settings", settings=state.settings, tz=state.tz)
+    exporter = state.exporter
+    queue = exporter.queue.stats() if exporter else None
+    return render(request, "settings.html", title="Settings", settings=state.settings,
+                  tz=state.tz, exporter=exporter, queue=queue)  # fmt: skip

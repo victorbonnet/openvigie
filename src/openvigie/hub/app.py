@@ -10,6 +10,8 @@ Defences that apply to every route:
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, tzinfo
 from importlib import resources
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -24,6 +26,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from openvigie import __version__
 from openvigie.config import ConfigError, HubSettings
 from openvigie.hub import api, ui
+from openvigie.hub.langfuse import LangfuseExporter, export_lifespan
 from openvigie.hub.retention import retention_lifespan
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
@@ -116,6 +119,12 @@ def display_timezone(settings: HubSettings) -> tzinfo:
     return datetime.now().astimezone().tzinfo or UTC
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async with retention_lifespan(app), export_lifespan(app):
+        yield
+
+
 def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> FastAPI:
     app = FastAPI(
         title="openvigie hub",
@@ -123,7 +132,7 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
         docs_url="/docs" if debug else None,
         redoc_url=None,
         openapi_url="/openapi.json" if debug else None,
-        lifespan=retention_lifespan,
+        lifespan=_lifespan,
     )
     app.state.settings = settings
     app.state.db = db
@@ -132,6 +141,11 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.tz = display_timezone(settings)
     app.state.templates = templates_env()
     app.state.enrol_limiter = api.FailureLimiter()
+    app.state.exporter = (
+        LangfuseExporter(settings.langfuse, db, queue_hours=settings.retention.span_queue_hours)
+        if settings.langfuse
+        else None
+    )
 
     app.add_middleware(StripIdentityHeaders)
     app.add_middleware(BodyLimit)

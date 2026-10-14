@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.store.credentials import Credentials
+from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.model import (
     SCHEMA_VERSION,
@@ -23,6 +24,7 @@ from openvigie.model import (
     CodecError,
     Host,
     Session,
+    Span,
     StatusEvent,
     UsageRecord,
     from_dict,
@@ -129,6 +131,7 @@ INGEST_LIMITS = {
     "adapter_health": 64,
     "usage": 5000,
     "sessions": 1000,
+    "spans": 2000,
 }
 KNOWN_SECTIONS = {"schema_version", "host", "sent_at", "collector", *INGEST_LIMITS}
 NEXT_PUSH_S = 5
@@ -167,6 +170,7 @@ async def ingest(
     health = _section(body, "adapter_health", AdapterHealth)
     usage = _section(body, "usage", UsageRecord)
     sessions = _section(body, "sessions", Session)
+    spans = _section(body, "spans", Span)
     collector = body.get("collector", {})
     dropped = collector.get("spool_dropped") if isinstance(collector, dict) else None
     if any(a.host_id != host_id for a in agents):
@@ -185,6 +189,11 @@ async def ingest(
     usage_store = UsageStore(request.app.state.db)
     accepted["usage"] = usage_store.add_records(usage, host_id)
     accepted["sessions"] = usage_store.add_sessions(sessions, host_id)
+    exporter = request.app.state.exporter
+    # spans are only queued when they will be exported; never stored otherwise
+    accepted["spans"] = (
+        SpanQueue(request.app.state.db).enqueue(spans, host_id, now) if exporter else 0
+    )
     if isinstance(dropped, int) and not isinstance(dropped, bool) and 0 <= dropped < 2**31:
         usage_store.set_spool_dropped(host_id, dropped)
     ignored = sorted(set(body) - KNOWN_SECTIONS)
@@ -193,6 +202,11 @@ async def ingest(
         "accepted": accepted,
         "ignored": ignored,
         "next_push_s": NEXT_PUSH_S,
+        # tells collectors whether to build and send spans (FR-6)
+        "traces": {
+            "wanted": exporter is not None,
+            "export_content": bool(exporter and exporter.settings.export_content),
+        },
     }
 
 

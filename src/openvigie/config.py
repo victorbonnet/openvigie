@@ -17,6 +17,7 @@ import types
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin, get_type_hints
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,28 @@ class Retention:
 
     usage_days: int = 0
     status_events_days: int = 0
+    # spans are only queued for export, never kept: unexported ones older than this are dropped
+    span_queue_hours: int = 24
+
+
+@dataclass(frozen=True)
+class LangfuseSettings:
+    """``[langfuse]`` in hub.toml. Absent: no trace export and no outbound connection at all."""
+
+    host: str = ""  # e.g. "https://cloud.langfuse.com" or a self-hosted URL
+    public_key: str = ""
+    # 0600 file holding the secret key; LANGFUSE_SECRET_KEY in the hub's environment also works
+    secret_key_file: Path | None = None
+    export_content: bool = False  # prompts/outputs/tool I/O; collectors must opt in too
+    project_id: str | None = None  # for trace links (#63)
+
+    def secret_key(self) -> str:
+        """The secret key; never log or display it."""
+        if secret := os.environ.get("LANGFUSE_SECRET_KEY", "").strip():
+            return secret
+        if self.secret_key_file is None:
+            raise ConfigError("langfuse: set secret_key_file or LANGFUSE_SECRET_KEY")
+        return read_private_file(self.secret_key_file)
 
 
 @dataclass(frozen=True)
@@ -63,6 +86,7 @@ class HubSettings:
     db_path: Path | None = None  # default: data_dir()/hub.db
     display_timezone: str | None = None  # default: hub local time
     retention: Retention = field(default_factory=Retention)
+    langfuse: LangfuseSettings | None = None
 
     def resolved_db_path(self) -> Path:
         return self.db_path or data_dir() / "hub.db"
@@ -99,6 +123,10 @@ def validate_hub(settings: HubSettings) -> HubSettings:
         raise ConfigError("hub.port must be between 1 and 65535")
     if settings.retention.usage_days < 0 or settings.retention.status_events_days < 0:
         raise ConfigError("retention days must be 0 (keep forever) or positive")
+    if settings.retention.span_queue_hours < 1:
+        raise ConfigError("retention.span_queue_hours must be at least 1")
+    if settings.langfuse is not None:
+        validate_langfuse(settings.langfuse)
     if not is_loopback(settings.bind):
         if not settings.allow_non_loopback:
             raise ConfigError(
@@ -110,6 +138,16 @@ def validate_hub(settings: HubSettings) -> HubSettings:
             settings.bind,
         )
     return settings
+
+
+def validate_langfuse(langfuse: LangfuseSettings) -> None:
+    parts = urlsplit(langfuse.host)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.username:
+        raise ConfigError("langfuse.host must be an http(s) URL without credentials")
+    if parts.scheme == "http" and not is_loopback(parts.hostname):
+        raise ConfigError("langfuse.host must use https unless Langfuse runs on this machine")
+    if not langfuse.public_key.startswith("pk-") or len(langfuse.public_key) > 256:
+        raise ConfigError("langfuse.public_key must be a Langfuse public key (pk-…)")
 
 
 def validate_collector(settings: CollectorSettings) -> CollectorSettings:

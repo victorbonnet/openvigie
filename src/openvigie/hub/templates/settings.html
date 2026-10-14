@@ -19,4 +19,23 @@
 [retention]
 usage_days = 180          # 0 keeps usage forever
 status_events_days = 90</code></pre>
+<h2>Trace export</h2>
+{% if exporter %}
+{% set lf = s.langfuse %}
+<dl class="meta">
+  <dt>Langfuse</dt><dd><code>{{ lf.host }}</code> (public key <code>{{ lf.public_key }}</code>)</dd>
+  <dt>Content</dt><dd>{% if lf.export_content %}prompts, outputs and tool I/O, redacted, if collectors also allow it{% else %}not exported{% endif %}</dd>
+  <dt>Queue</dt><dd>{{ queue.pending }} waiting · {{ queue.exported }} exported (last {{ s.retention.span_queue_hours }} h) · {{ queue.dropped }} dropped</dd>
+  <dt>Last export</dt><dd>{% if exporter.last_export_at %}{{ exporter.last_export_at | ago }}{% else %}never{% endif %}</dd>
+  {% if exporter.last_error %}<dt>Problem</dt><dd><span class="badge degraded">{{ exporter.last_error }}</span></dd>{% endif %}
+</dl>
+{% else %}
+<p class="muted">Off: no outbound connections. To send traces to Langfuse (cloud or self-hosted):</p>
+<pre class="panel"><code># hub.toml
+[langfuse]
+host = "https://cloud.langfuse.com"
+public_key = "pk-lf-…"
+secret_key_file = "~/.config/openvigie/langfuse-secret"   # chmod 600; or LANGFUSE_SECRET_KEY
+export_content = false    # prompts and outputs stay on your machines</code></pre>
+{% endif %}
 {% endblock %}
