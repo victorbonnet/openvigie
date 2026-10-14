@@ -291,3 +291,9 @@ def usage_page(
         money=money,
         compact=compact,
     )
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request) -> HTMLResponse:
+    state = request.app.state
+    return render(request, "settings.html", title="Settings", settings=state.settings, tz=state.tz)

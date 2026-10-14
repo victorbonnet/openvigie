@@ -47,6 +47,14 @@ def data_dir() -> Path:
 
 
 @dataclass(frozen=True)
+class Retention:
+    """Days to keep data; 0 keeps it forever (the default until a retention policy is chosen)."""
+
+    usage_days: int = 0
+    status_events_days: int = 0
+
+
+@dataclass(frozen=True)
 class HubSettings:
     bind: str = "127.0.0.1"
     port: int = 7878
@@ -54,6 +62,7 @@ class HubSettings:
     allowed_hosts: tuple[str, ...] = ("127.0.0.1", "localhost")
     db_path: Path | None = None  # default: data_dir()/hub.db
     display_timezone: str | None = None  # default: hub local time
+    retention: Retention = field(default_factory=Retention)
 
     def resolved_db_path(self) -> Path:
         return self.db_path or data_dir() / "hub.db"
@@ -88,6 +97,8 @@ def is_loopback(host: str) -> bool:
 def validate_hub(settings: HubSettings) -> HubSettings:
     if not 0 < settings.port < 65536:
         raise ConfigError("hub.port must be between 1 and 65535")
+    if settings.retention.usage_days < 0 or settings.retention.status_events_days < 0:
+        raise ConfigError("retention days must be 0 (keep forever) or positive")
     if not is_loopback(settings.bind):
         if not settings.allow_non_loopback:
             raise ConfigError(
