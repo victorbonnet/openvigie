@@ -107,11 +107,13 @@ def test_override_file_wins_and_adds(tmp_path: Path) -> None:
         '[[models]]\nprovider = "x"\nid = "y"\ninput = -1\noutput = 1\n',
         '[[models]]\nprovider = "x"\nid = "y"\ninput = 1\n',
         '[[models]]\nid = "y"\ninput = 1\noutput = 1\n',
+        '[[models]]\nprovider = "x"\nid = "y"\ninput = "1"\noutput = 1\n',
+        '[[models]]\nprovider = "x"\nid = "y"\ninput = 1\noutput = 1\ncahce_read = 1\n',
         "not = = toml",
     ],
 )
 def test_invalid_override_rejected(tmp_path: Path, text: str) -> None:
     path = tmp_path / "prices.toml"
     path.write_text(text)
-    with pytest.raises(ConfigError):
+    with pytest.raises(ConfigError, match=str(path)):
         load_price_table(path)

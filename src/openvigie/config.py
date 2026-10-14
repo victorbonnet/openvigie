@@ -74,6 +74,13 @@ def settings_type[C](cls: type[C]) -> type[C]:
     return cast(type[C], dataclass(frozen=True, config=SETTINGS)(cls))
 
 
+@dataclass_transform(frozen_default=True, kw_only_default=True, field_specifiers=(field, Field))
+def file_entry[C](cls: type[C]) -> type[C]:
+    """Decorator for an entry of a data file (prices, rules): like ``settings_type``, keyword-only
+    so entries can extend each other."""
+    return cast(type[C], dataclass(frozen=True, kw_only=True, config=SETTINGS)(cls))
+
+
 @settings_type
 class Retention:
     """Days to keep data; 0 keeps it forever (the default until a retention policy is chosen)."""
@@ -211,7 +218,7 @@ def describe(exc: ValidationError, where: str) -> str:
     if first["type"] == "tuple_type":
         return f"{key}: expected a list"
     message = first["msg"].removeprefix("Value error, ")
-    return message if first["type"] == "value_error" else f"{key}: {message}"
+    return f"{key}: {message}" if first["loc"] else message
 
 
 def _read_toml(path: Path) -> dict[str, Any]:

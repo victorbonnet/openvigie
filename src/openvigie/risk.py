@@ -3,8 +3,9 @@
 Rules are data (``risk.toml`` shipped with the package, plus ``<config dir>/risk.toml`` to add
 or replace rules by id). A rule matches a small set of *facts* about an agent through a tiny
 condition language: ``{field, equals}``, ``{field, in}``, ``{field, not_equals}``,
-``{field, nonempty}``, and ``all`` / ``any`` / ``not`` over those. Nothing in a rule file is ever
-evaluated as code. A broken override file is reported and ignored: the bundled rules stay.
+``{field, nonempty}``, and ``all`` / ``any`` / ``not`` over those. Rule files are parsed into the
+typed models below (PRD D12); nothing in them is ever evaluated as code. A broken override file
+is reported and ignored: the bundled rules stay.
 """
 
 from __future__ import annotations
@@ -16,9 +17,24 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Self
 
-from openvigie.config import config_dir
+from pydantic import (
+    BeforeValidator,
+    Discriminator,
+    Field,
+    Strict,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    StrictStr,
+    Tag,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
+
+from openvigie.config import config_dir, describe, file_entry
 from openvigie.model import AgentInstance, Capabilities, FsAccess
 from openvigie.safeio import UnsafeFileError, load_toml_bounded
 
@@ -27,7 +43,6 @@ log = logging.getLogger(__name__)
 MAX_RULES = 200
 MAX_DEPTH = 8
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
-OPERATORS = {"equals", "not_equals", "in", "nonempty"}
 
 
 class Severity(IntEnum):
@@ -40,13 +55,94 @@ class Severity(IntEnum):
         return self.name.lower()
 
 
-@dataclass(frozen=True)
+def _severity(value: object) -> object:
+    if isinstance(value, str):
+        if value not in ("low", "medium", "high"):
+            raise ValueError("severity must be low, medium or high")
+        return Severity[value.upper()]
+    return value
+
+
+# --- the rule file format ----------------------------------------------------------------------
+
+Scalar = StrictBool | StrictInt | StrictFloat | StrictStr
+
+
+@file_entry
+class Test:
+    """``{ field = "network", equals = "full" }``: one test of one fact."""
+
+    field: StrictStr
+    equals: Scalar | None = None
+    not_equals: Scalar | None = None
+    in_: tuple[Scalar, ...] | None = Field(default=None, alias="in")
+    nonempty: StrictBool | None = None
+
+    @model_validator(mode="after")
+    def _one_operator(self) -> Self:
+        given = (self.equals, self.not_equals, self.in_, self.nonempty)
+        if sum(v is not None for v in given) != 1:
+            raise ValueError("a test needs `field` and one of equals / not_equals / in / nonempty")
+        return self
+
+
+@file_entry
+class AllOf:
+    all: tuple[Condition, ...]
+
+
+@file_entry
+class AnyOf:
+    any: tuple[Condition, ...]
+
+
+@file_entry
+class Not:
+    not_: Condition = Field(alias="not")
+
+
+def _kind(value: Any) -> str | None:
+    """Which kind of condition a TOML table is, by its key."""
+    if isinstance(value, dict):
+        return next((k for k in ("all", "any", "not") if k in value), "test")
+    return {AllOf: "all", AnyOf: "any", Not: "not", Test: "test"}.get(type(value))
+
+
+Condition = Annotated[
+    Annotated[AllOf, Tag("all")]
+    | Annotated[AnyOf, Tag("any")]
+    | Annotated[Not, Tag("not")]
+    | Annotated[Test, Tag("test")],
+    Discriminator(_kind),
+]
+
+
+@file_entry
 class Rule:
-    rule_id: str
-    severity: Severity
-    title: str
-    reason: str
-    when: dict[str, Any]
+    """One ``[[rules]]`` entry. ``enabled = false`` with just an ``id`` turns a rule off."""
+
+    id: Annotated[str, Strict(), Field(pattern=r"^[a-z0-9-]{1,64}$")]
+    enabled: StrictBool = True
+    severity: Annotated[Severity, BeforeValidator(_severity)] = Severity.LOW
+    title: Annotated[str, Strict(), Field(max_length=120)] = ""
+    reason: Annotated[str, Strict(), Field(max_length=500)] = ""  # may quote facts as {name}
+    when: Condition | None = None
+
+    @model_validator(mode="after")
+    def _complete(self) -> Self:
+        if self.enabled and not (self.title and self.reason and self.when):
+            raise ValueError(f"rule {self.id}: severity, title, reason and when are required")
+        if self.when is not None and _depth(self.when) > MAX_DEPTH:
+            raise ValueError(f"rule {self.id}: conditions nest more than {MAX_DEPTH} levels")
+        return self
+
+
+@file_entry
+class RuleFile:
+    rules: Annotated[tuple[Rule, ...], Field(max_length=MAX_RULES)]
+
+
+# --- evaluation --------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -91,44 +187,45 @@ def facts(
     return out
 
 
-def _check(cond: Any, f: dict[str, Any], depth: int = 0) -> bool:
-    if not isinstance(cond, dict) or depth > MAX_DEPTH:
-        raise ValueError("a condition must be a table")
-    if "all" in cond:
-        return all(_check(c, f, depth + 1) for c in _list(cond["all"]))
-    if "any" in cond:
-        return any(_check(c, f, depth + 1) for c in _list(cond["any"]))
-    if "not" in cond:
-        return not _check(cond["not"], f, depth + 1)
-    name = cond.get("field")
-    ops = OPERATORS & set(cond)
-    if not isinstance(name, str) or len(ops) != 1:
-        raise ValueError("a test needs `field` and one of equals / not_equals / in / nonempty")
-    value = f.get(name)
-    (op,) = ops
-    if op == "equals":
-        return bool(value == cond["equals"])
-    if op == "not_equals":
-        return bool(value != cond["not_equals"])
-    if op == "in":
-        return value in _list(cond["in"])
-    return bool(value) is bool(cond["nonempty"])
+def matches(cond: Condition, f: dict[str, Any]) -> bool:
+    match cond:
+        case AllOf():
+            return all(matches(c, f) for c in cond.all)
+        case AnyOf():
+            return any(matches(c, f) for c in cond.any)
+        case Not():
+            return not matches(cond.not_, f)
+    value = f.get(cond.field)
+    if cond.equals is not None:
+        return bool(value == cond.equals)
+    if cond.not_equals is not None:
+        return bool(value != cond.not_equals)
+    if cond.in_ is not None:
+        return value in cond.in_
+    return bool(value) is cond.nonempty
 
 
-def _list(value: Any) -> list[Any]:
-    if not isinstance(value, list):
-        raise ValueError("expected a list")
-    return value
+def _fields(cond: Condition) -> set[str]:
+    """The facts a condition looks at."""
+    match cond:
+        case AllOf():
+            return set().union(*map(_fields, cond.all))
+        case AnyOf():
+            return set().union(*map(_fields, cond.any))
+        case Not():
+            return _fields(cond.not_)
+    return {cond.field}
 
 
-def _fields(cond: Any) -> set[str]:
-    if not isinstance(cond, dict):
-        return set()
-    found = {cond["field"]} if isinstance(cond.get("field"), str) else set()
-    for key in ("all", "any"):
-        for c in cond.get(key, []) if isinstance(cond.get(key), list) else []:
-            found |= _fields(c)
-    return found | _fields(cond.get("not"))
+def _depth(cond: Condition) -> int:
+    match cond:
+        case AllOf():
+            return 1 + max(map(_depth, cond.all), default=0)
+        case AnyOf():
+            return 1 + max(map(_depth, cond.any), default=0)
+        case Not():
+            return 1 + _depth(cond.not_)
+    return 1
 
 
 def _render(template: str, f: dict[str, Any]) -> str:
@@ -143,13 +240,9 @@ def evaluate(rules: RuleSet, f: dict[str, Any]) -> list[Flag]:
     """Matching flags, most severe first."""
     flags = []
     for rule in rules.rules.values():
-        try:
-            matched = _check(rule.when, f)
-        except (ValueError, KeyError, TypeError):
-            continue  # validated at load time; never let one rule break the page
-        if matched:
+        if rule.when is not None and matches(rule.when, f):
             looked_at = {k: f.get(k) for k in sorted(_fields(rule.when))}
-            flags.append(Flag(rule.rule_id, rule.severity, rule.title, _render(rule.reason, f),
+            flags.append(Flag(rule.id, rule.severity, rule.title, _render(rule.reason, f),
                               looked_at))  # fmt: skip
     return sorted(flags, key=lambda fl: (-fl.severity, fl.rule_id))
 
@@ -161,43 +254,36 @@ def level(flags: list[Flag], capabilities_known: bool) -> str:
     return "none" if capabilities_known else "unknown"
 
 
-def _parse(data: dict[str, Any], into: RuleSet, where: str) -> None:
-    rules = data.get("rules")
-    if not isinstance(rules, list) or len(rules) > MAX_RULES:
-        raise ValueError(f"{where}: expected [[rules]] (at most {MAX_RULES})")
-    for raw in rules:
-        if not isinstance(raw, dict):
-            raise ValueError(f"{where}: each rule must be a table")
-        rule_id, severity = raw.get("id"), raw.get("severity")
-        if not isinstance(rule_id, str) or not re.fullmatch(r"[a-z0-9-]{1,64}", rule_id):
-            raise ValueError(f"{where}: rule id must be lowercase letters, digits and '-'")
-        if raw.get("enabled") is False:
-            into.rules.pop(rule_id, None)
-            continue
-        if severity not in ("low", "medium", "high"):
-            raise ValueError(f"{where}: rule {rule_id}: severity must be low, medium or high")
-        title, reason, when = raw.get("title"), raw.get("reason"), raw.get("when")
-        if not isinstance(title, str) or not isinstance(reason, str):
-            raise ValueError(f"{where}: rule {rule_id}: title and reason are required")
-        if not isinstance(when, dict):
-            raise ValueError(f"{where}: rule {rule_id}: `when` must be a table")
-        _check(when, {})  # syntax check against empty facts
-        into.rules[rule_id] = Rule(rule_id, Severity[severity.upper()], title[:120], reason[:500],
-                                   when)  # fmt: skip
+# --- loading -----------------------------------------------------------------------------------
+
+
+def _apply(file: RuleFile, into: RuleSet) -> None:
+    for rule in file.rules:
+        if rule.enabled:
+            into.rules[rule.id] = rule
+        else:
+            into.rules.pop(rule.id, None)
 
 
 def load_rules(override: Path | None = None) -> RuleSet:
     rules = RuleSet()
+    parse = TypeAdapter(RuleFile).validate_python
     bundled = (resources.files("openvigie") / "risk.toml").read_text(encoding="utf-8")
-    _parse(tomllib.loads(bundled), rules, "bundled risk.toml")
+    _apply(parse(tomllib.loads(bundled)), rules)
     path = override or config_dir() / "risk.toml"
     if path.exists():
         candidate = RuleSet(dict(rules.rules))
         try:
-            _parse(load_toml_bounded(path, max_bytes=256 * 1024), candidate, str(path))
-        except (ValueError, OSError, UnsafeFileError) as exc:
-            rules.problems.append(f"{path} ignored: {exc}")
-            log.warning("risk rules: %s ignored: %s", path, exc)
+            _apply(parse(load_toml_bounded(path, max_bytes=256 * 1024)), candidate)
+        except ValidationError as exc:
+            _ignore(rules, path, describe(exc, "risk"))
+        except (ValueError, OSError, UnsafeFileError, RecursionError) as exc:
+            _ignore(rules, path, str(exc))
         else:
             rules.rules = candidate.rules
     return rules
+
+
+def _ignore(rules: RuleSet, path: Path, why: str) -> None:
+    rules.problems.append(f"{path} ignored: {why}")
+    log.warning("risk rules: %s ignored: %s", path, why)
