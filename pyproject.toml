@@ -1,6 +1,6 @@
 [project]
 name = "openvigie"
-version = "0.0.1"
+version = "0.1.0"
 description = "Control tower for AI agents on your own machines: discover, monitor, sandbox."
 readme = "README.md"
 license = "MIT"
