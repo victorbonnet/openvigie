@@ -7,6 +7,10 @@ Copies an allow-listed sample of the agent's files, then scrubs them: secrets ar
 the home path, user name, host name, e-mails and IPs are replaced by placeholders, and free text
 (prompts, outputs, tool I/O) is replaced by length-class placeholders. Structure, ids,
 timestamps, model names and usage numbers are kept. Credential files are never copied.
+
+It also writes SURVEY.md: every file under the source (path, size, age; no content), and the
+agent's running processes and listening ports, scrubbed the same way. That is what the adapter
+needs beyond the samples (process signature, ports, where usage lives).
 The output is checked a second time; if any secret pattern still matches, nothing is written.
 """
 
@@ -17,12 +21,14 @@ import datetime as dt
 import fnmatch
 import getpass
 import json
+import os
 import re
 import shutil
 import socket
 import sqlite3
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +38,21 @@ from openvigie.safeio import iter_jsonl, read_text_bounded, walk_bounded
 INCLUDE: dict[str, list[str]] = {
     "claude-code": ["settings.json", "projects/*/*.jsonl", "projects/*/*/subagents/*.jsonl"],
     "codex": ["config.toml", "sessions/*/*/*/rollout-*.jsonl"],
-    "hermes": ["config.yaml", "sessions/*", "logs/*.log", "*.db"],
-    "openclaw": ["openclaw.json", "agents/*/sessions/*.jsonl", "agents/*/agent.json"],
+    "hermes": ["config.yaml", "sessions/*", "sessions/*/*", "logs/*.log", "*.db"],
+    "openclaw": [
+        "openclaw.json",
+        "agents/*/sessions/*.jsonl",
+        "agents/*/sessions/*.json",
+        "agents/*/agent.json",
+        "logs/*.log",
+    ],
+}
+# process names / command-line words that identify each agent, for the survey
+SIGNATURES: dict[str, tuple[str, ...]] = {
+    "claude-code": ("claude",),
+    "codex": ("codex",),
+    "hermes": ("hermes",),
+    "openclaw": ("openclaw", "clawdbot", "moltbot"),
 }
 DENY = [
     ".env",
@@ -49,6 +68,9 @@ DENY = [
     "*token*",
     "*.keychain*",
     "*cookie*",
+    "auth*",
+    "*oauth*",
+    "*password*",
 ]
 # Every string below one of these keys is free text: replaced, except STRUCTURAL_KEYS.
 CONTENT_KEYS = {
@@ -78,6 +100,14 @@ CONTENT_KEYS = {
     "gitBranch",
 }
 STRUCTURAL_KEYS = {"type", "id", "name", "role", "model", "tool_use_id", "stop_reason"}
+# keys containing one of these words hold free text too (system_prompt, persona, soul_text…)
+CONTENT_WORDS = ("prompt", "instruction", "persona", "personality", "soul", "description",
+                 "message", "note", "memory")  # fmt: skip
+# recorder-only and deliberately broad: a secret-looking key anywhere on a line, any quoting
+LOOSE_SECRET = re.compile(
+    r"(?i)([\w-]*(?:key|token|secret|passw(?:or)?d|auth)[\w-]*[\"']?\s*[:=]\s*)"
+    r"(?:\"(?!\[REDACTED)[^\"]{4,}\"|'(?!\[REDACTED)[^']{4,}'|(?![\"'\[{])(?!\d+\b)[^\s,}\]]{4,})"
+)
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -92,7 +122,7 @@ class Scrubber:
             self.replacements.append((host, "host"))
 
     def text(self, value: str) -> str:
-        value = redact(value)
+        value = LOOSE_SECRET.sub(lambda m: f'{m.group(1)}"[REDACTED:key]"', redact(value))
         for old, new in self.replacements:
             value = value.replace(old, new)
         value = EMAIL.sub("user@example.com", value)
@@ -114,7 +144,11 @@ class Scrubber:
         return f"[scrubbed text <= {bucket} chars]"
 
     def value(self, value: Any, key: str | None = None, in_content: bool = False) -> Any:
-        in_content = in_content or key in CONTENT_KEYS
+        in_content = (
+            in_content
+            or key in CONTENT_KEYS
+            or (key is not None and any(word in key.lower() for word in CONTENT_WORDS))
+        )
         if isinstance(value, str):
             if key and is_sensitive_key(key) and value:
                 return "[REDACTED:key]"
@@ -157,14 +191,59 @@ def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
         dst.write_text("".join(json.dumps(scrubber.value(v)) + "\n" for v in values))
         return f"{len(values)} lines"
     if src.suffix == ".json":
-        data = json.loads(read_text_bounded(src))
+        text = read_text_bounded(src)
+        try:
+            data, kind = json.loads(text), "json"
+        except ValueError:  # JSON5 (OpenClaw): comments out, then YAML reads the rest
+            data, kind = json5_data(text), "JSON5, written as JSON (comments dropped)"
         dst.write_text(json.dumps(scrubber.value(data), indent=2) + "\n")
-        return "json"
+        return kind
+    if src.suffix in (".yaml", ".yml"):
+        import yaml
+
+        data = yaml.safe_load(read_text_bounded(src))
+        dst.write_text(yaml.safe_dump(scrubber.value(data), sort_keys=False))
+        return "yaml (comments dropped)"
     if src.suffix == ".db":
         return scrub_sqlite(src, dst, scrubber)
     lines = read_text_bounded(src).splitlines()[:max_lines]
     dst.write_text("".join(scrubber.text(line) + "\n" for line in lines))
-    return f"{len(lines)} lines"
+    return f"{len(lines)} lines, only pattern-redacted: **check it by hand**"
+
+
+def json5_data(text: str) -> Any:
+    """Parse JSON5 well enough for a fixture: drop // and /* */ comments outside strings, then
+    let YAML read it (it takes unquoted keys, single quotes and trailing commas)."""
+    import yaml
+
+    out, i, quote = [], 0, ""
+    while i < len(text):
+        c = text[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and i + 1 < len(text):
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote:
+                quote = ""
+        elif c in "\"'":
+            quote = c
+            out.append(c)
+        elif text.startswith("//", i):
+            i = text.find("\n", i)
+            i = len(text) if i < 0 else i
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        else:
+            out.append(c)
+        i += 1
+    try:
+        return yaml.safe_load("".join(out))
+    except yaml.YAMLError as exc:
+        raise SystemExit(f"could not read a JSON5 file: {exc.__class__.__name__}") from None
 
 
 def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
@@ -200,9 +279,83 @@ def leftover_secrets(root: Path) -> list[str]:
             text = path.read_bytes().decode("utf-8", errors="replace")
         else:
             text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
-        if redact(text) != text:
+        if redact(text) != text or LOOSE_SECRET.search(text):
             hits.append(str(path.relative_to(root)))
     return hits
+
+
+MAX_SURVEY_FILES = 400
+SENSITIVE_FLAG = re.compile(r"(?i)(key|token|secret|passw|auth|cookie|credential)")
+
+
+def scrub_args(args: list[str], scrubber: Scrubber) -> list[str]:
+    """A command line without secrets: values after --api-key-like flags and in KEY=value pairs
+    are dropped, the rest is redacted and home, user and host names replaced."""
+    out: list[str] = []
+    for i, arg in enumerate(args):
+        previous = args[i - 1] if i else ""
+        if previous.startswith("-") and SENSITIVE_FLAG.search(previous) and "=" not in previous:
+            out.append("[REDACTED]")
+        elif "=" in arg and SENSITIVE_FLAG.search(arg.split("=", 1)[0]):
+            out.append(arg.split("=", 1)[0] + "=[REDACTED]")
+        else:
+            text = scrubber.text(arg)
+            out.append(text if len(text) <= LONG_TEXT else text[:LONG_TEXT] + "…")
+    return out
+
+
+def survey_files(source: Path, chosen: set[Path], scrubber: Scrubber, now: float) -> list[str]:
+    lines = []
+    for n, path in enumerate(walk_bounded(source, "*", max_depth=6)):
+        if n >= MAX_SURVEY_FILES:
+            lines.append(f"- … more than {MAX_SURVEY_FILES} files")
+            break
+        rel = path.relative_to(source)
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        hours = max(0.0, (now - st.st_mtime) / 3600)
+        age = f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
+        mark = " (never copied)" if denied(path) else (" (copied)" if rel in chosen else "")
+        lines.append(f"- `{scrubber.path(rel)}`: {st.st_size:,} bytes, {age}{mark}")
+    return lines or ["- none"]
+
+
+def survey_processes(agent: str, scrubber: Scrubber, ps: Any) -> list[str]:
+    words = SIGNATURES[agent]
+    me = {os.getpid(), os.getppid()}
+    lines = []
+    for proc in ps.process_iter(["pid", "name", "cmdline"]):
+        name, cmd = proc.info.get("name") or "", proc.info.get("cmdline") or []
+        head = " ".join([name, *cmd[:3]]).lower()
+        if proc.info["pid"] in me or "record_fixture" in head:
+            continue
+        if not any(word in head for word in words):
+            continue
+        try:
+            ports = sorted({c.laddr.port for c in proc.net_connections(kind="inet")
+                            if c.status == ps.CONN_LISTEN})  # fmt: skip
+            listening = ", ".join(map(str, ports)) or "none"
+        except (ps.AccessDenied, ps.NoSuchProcess):
+            listening = "unknown (run as the agent's user)"
+        args = " ".join(scrub_args(list(cmd[:8]), scrubber))
+        lines.append(f"- `{scrubber.text(name)}`: `{args}`; listening on: {listening}")
+    return lines or ["- none running (start the agent and run the recorder again to see it)"]
+
+
+SURVEY = """# Survey: {agent} ({date})
+
+Written by `scripts/record_fixture.py`. File names, sizes and ages only, never content.
+
+## Files under the source directory
+
+{files}
+
+## Running processes that look like {agent}
+
+{processes}
+"""
 
 
 MANIFEST = """# Fixture: {agent} ({date})
@@ -217,14 +370,16 @@ Recorded with `scripts/record_fixture.py` from a real install, then scrubbed.
 
 {dropped}
 
-## To fill in by hand
+## To fill in by hand (SURVEY.md has the files, processes and ports seen)
 
-- Agent version:
+- Agent version (`<agent> --version`):
 - How it runs (CLI, gateway, systemd unit, Docker):
 - Process name / command-line signature:
 - Listening ports:
+- Config and state paths, and the environment variables that move them:
 - Where token usage is recorded (file, field names):
 - Expected totals per session (for contract tests):
+- Recorded while: idle / active session (record one of each if you can)
 
 ## Review checklist
 
@@ -244,6 +399,7 @@ def record(
     max_lines: int = 200,
     extra_include: list[str] | None = None,
     scrubber: Scrubber | None = None,
+    ps: Any = None,
 ) -> Path:
     if agent not in INCLUDE:
         raise SystemExit(f"unknown agent type {agent!r}; expected one of {sorted(INCLUDE)}")
@@ -259,6 +415,13 @@ def record(
             + scrub_file(source / rel, staging / scrubber.path(rel), scrubber, max_lines)
             for rel in chosen
         ]
+        import psutil
+
+        (staging / "SURVEY.md").write_text(SURVEY.format(
+            agent=agent, date=dt.date.today().isoformat(),
+            files="\n".join(survey_files(source, set(chosen), scrubber, time.time())),
+            processes="\n".join(survey_processes(agent, scrubber, ps or psutil)),
+        ))  # fmt: skip
         hits = leftover_secrets(staging)
         if hits:
             raise SystemExit(f"secret patterns still match after scrubbing: {hits}; not written")

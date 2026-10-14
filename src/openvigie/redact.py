@@ -89,6 +89,14 @@ PATTERNS: tuple[Pattern, ...] = (
         ),
         _keep_group("json"),
     ),
+    Pattern(  # JSON5 / YAML / INI: `apiKey: "…"`, `botToken: '…'`, `password = …`
+        "config-secret",
+        re.compile(
+            r"(?im)^(\s{0,40}[\"']?[a-z0-9_-]{0,32}(?:api[_-]?key|secret|password|passwd|token)"
+            r"[\"']?\s{0,8}[:=]\s{0,8}[\"']?)(?![^\n]{0,8}\[REDACTED)(?!\d+(?:[\s,}\"']|$))[^\s\"',}]{4,}"
+        ),
+        _keep_group("config"),
+    ),
 )
 
 _SENSITIVE_KEY = re.compile(

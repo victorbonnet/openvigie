@@ -71,6 +71,9 @@ def test_bearer_url_env_and_json() -> None:
         "claude-sonnet-4-5-20250929",
         "/home/pi/.claude/projects/-home-pi-src/abc.jsonl",
         "task-ant-like words and sk-short",
+        "  max_tokens: 4096",
+        "  input_token: 1234,",
+        "model: claude-opus-5-5",
     ],
 )
 def test_false_positive_guards(text: str) -> None:
@@ -150,3 +153,18 @@ def test_redact_is_idempotent(kind: str) -> None:
     for text in samples:
         once = redact(text)
         assert redact(once) == once
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ('  apiKey: "abcdefghijklmnopqrstuvwx",', '  apiKey: "[REDACTED:config]",'),
+        ("  botToken: '1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw',",
+         "  botToken: '[REDACTED:config]',"),
+        ("  password = hunter2hunter2", "  password = [REDACTED:config]"),
+        ("token: plain-looking-value", "token: [REDACTED:config]"),
+    ],
+)  # fmt: skip
+def test_config_style_secrets(line: str, expected: str) -> None:
+    """JSON5, YAML and INI write keys without JSON quotes (OpenClaw, Hermes configs)."""
+    assert redact(line) == expected

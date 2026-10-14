@@ -125,3 +125,106 @@ def test_sqlite_text_columns_scrubbed(tmp_path: Path) -> None:
 def test_unknown_agent_rejected(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         rf.record("nope", tmp_path, tmp_path / "out")
+
+
+TELEGRAM = "1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawxx"
+OPENCLAW_JSON5 = f"""{{
+  // OpenClaw config: JSON5, so comments and unquoted keys
+  agents: {{ defaults: {{ model: "anthropic/claude-opus-5-5" }} }},
+  channels: {{ telegram: {{ botToken: "{TELEGRAM}", allowFrom: ["alice@corp.com"] }} }},
+  gateway: {{ port: 18789, auth: {{ token: 'gw-0123456789abcdef' }} }},
+  apiKey: "{KEY}",
+  docs: "https://docs.example.org/a//b", /* a block
+  comment */ trailing: [1, 2,],
+}}
+"""
+
+
+def make_openclaw(root: Path) -> Path:
+    state = root / ".openclaw"
+    sessions = state / "agents" / "main" / "sessions"
+    sessions.mkdir(parents=True)
+    (state / "openclaw.json").write_text(OPENCLAW_JSON5)
+    (state / "agents" / "main" / "agent").mkdir()
+    (state / "agents" / "main" / "agent" / "auth-profiles.json").write_text(
+        json.dumps({"anthropic": {"apiKey": KEY}})
+    )
+    line = {"type": "message", "message": {"role": "assistant", "content": "hi alice",
+            "usage": {"input": 10, "output": 20, "cacheRead": 5}}}  # fmt: skip
+    (sessions / "s1.jsonl").write_text(json.dumps(line) + "\n")
+    return state
+
+
+class FakePs:
+    """psutil, as far as the survey uses it: two matching processes and the recorder itself."""
+
+    CONN_LISTEN = "LISTEN"
+    AccessDenied = PermissionError
+    NoSuchProcess = ProcessLookupError
+
+    class Proc:
+        def __init__(self, pid: int, name: str, cmdline: list[str], ports: list[int]) -> None:
+            self.info = {"pid": pid, "name": name, "cmdline": cmdline}
+            self.ports = ports
+
+        def net_connections(self, kind: str) -> list[object]:
+            from types import SimpleNamespace
+
+            return [SimpleNamespace(status="LISTEN", laddr=SimpleNamespace(port=p))
+                    for p in self.ports]  # fmt: skip
+
+    def process_iter(self, attrs: list[str]) -> list[object]:
+        return [
+            self.Proc(101, "node", ["node", "/usr/lib/node_modules/openclaw/dist/index.js",
+                                     "gateway", "--token", "gw-supersecret-value",
+                                     f"--config={HOME}/.openclaw/openclaw.json"], [18789]),
+            self.Proc(102, "openclaw", ["openclaw", "tui", "OPENAI_API_KEY=whatever"], []),
+            self.Proc(103, "python", ["python", "scripts/record_fixture.py", "openclaw"], []),
+            self.Proc(104, "bash", ["bash"], []),
+        ]  # fmt: skip
+
+
+def test_openclaw_json5_and_survey(tmp_path: Path) -> None:
+    source = make_openclaw(tmp_path / "home")
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    text = all_text(dest)
+    for secret in (KEY, TELEGRAM, "gw-0123456789abcdef", "gw-supersecret-value", "whatever",
+                   "alice", "corp.com"):  # fmt: skip
+        assert secret not in text, secret
+    assert not (dest / "agents/main/agent/auth-profiles.json").exists()
+    config = json.loads((dest / "openclaw.json").read_text())
+    assert config["gateway"]["port"] == 18789
+    assert config["channels"]["telegram"]["botToken"] == "[REDACTED:key]"
+    assert config["agents"]["defaults"]["model"] == "anthropic/claude-opus-5-5"
+    assert config["docs"] == "https://docs.example.org/a//b"  # "//" inside a string is kept
+    assert "JSON5, written as JSON" in (dest / "MANIFEST.md").read_text()
+    session = json.loads((dest / "agents/main/sessions/s1.jsonl").read_text())
+    assert session["message"]["usage"] == {"input": 10, "output": 20, "cacheRead": 5}
+
+    survey = (dest / "SURVEY.md").read_text()
+    assert "`agents/main/sessions/s1.jsonl`" in survey and "(copied)" in survey
+    assert "`agents/main/agent/auth-profiles.json`" in survey and "(never copied)" in survey
+    assert "gateway --token [REDACTED] --config=/home/user/.openclaw/openclaw.json" in survey
+    assert "listening on: 18789" in survey and "OPENAI_API_KEY=[REDACTED]" in survey
+    assert "`python`" not in survey and "`bash`" not in survey  # the recorder, unrelated
+
+
+def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(
+        "model:\n  default: anthropic/claude-opus-5-5\n  api_key: plainsecretvalue\n"
+        "agent:\n  system_prompt: You are Alice's private assistant for corp.com.\n"
+        "terminal:\n  backend: local\n  timeout: 180\n"
+    )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    import yaml
+
+    config = yaml.safe_load((dest / "config.yaml").read_text())
+    assert config["model"] == {"default": "anthropic/claude-opus-5-5",
+                               "api_key": "[REDACTED:key]"}  # fmt: skip
+    assert config["terminal"] == {"backend": "local", "timeout": 180}
+    assert "Alice" not in (dest / "config.yaml").read_text()
+    assert "none running" in (dest / "SURVEY.md").read_text()
