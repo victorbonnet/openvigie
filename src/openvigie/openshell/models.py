@@ -8,13 +8,15 @@ example, exceeds 2**53).
 
 from __future__ import annotations
 
-from typing import Annotated
+import json
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Name = Annotated[str, Field(max_length=256)]
 Text = Annotated[str, Field(max_length=4096)]
 Many = 1024  # bound on every list and map
+MAX_RAW_NETWORK = 64 * 1024
 
 
 class OpenShellModel(BaseModel):
@@ -70,6 +72,18 @@ class NetworkRule(OpenShellModel):
 
 class PolicyBody(OpenShellModel):
     network_policies: Annotated[dict[Name, NetworkRule], Field(max_length=Many)] = {}
+    # the network_policies exactly as OpenShell returned them, as canonical JSON, so the hub can
+    # show and restore them (FR-12); None when over MAX_RAW_NETWORK
+    raw_network: str | None = "{}"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_raw(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            raw = data.get("network_policies") or {}
+            text = json.dumps(raw, sort_keys=True, separators=(",", ":"))
+            data = {**data, "raw_network": text if len(text) <= MAX_RAW_NETWORK else None}
+        return data
 
 
 class Policy(OpenShellModel):

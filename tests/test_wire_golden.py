@@ -74,6 +74,8 @@ SAMPLES: dict[str, Any] = {
         (SandboxRule("github_readonly", (SandboxEndpoint("api.github.com", (443,), None, "rest",
                                                          "read-only", "enforce"),),
                      ("/usr/bin/curl",)),),
+        '{"github_readonly":{"binaries":[{"path":"/usr/bin/curl"}],"endpoints":[{"host":'
+        '"api.github.com","port":443}],"name":"github_readonly"}}',
     ),
 }  # fmt: skip
 

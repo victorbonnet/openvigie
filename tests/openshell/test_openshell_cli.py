@@ -71,6 +71,9 @@ def test_reads_network_rules() -> None:
     assert [e.host for e in rules["pypi"].endpoints] == ["pypi.org", "files.pythonhosted.org"]
     assert rules["pypi"].endpoints[0].enforcement is None  # OpenShell's default: audit
     assert rules["pypi"].binaries[0].path == "/usr/bin/python3*"
+    raw = json.loads(fixture("net-policy-base-v2.json"))["policy"]["network_policies"]
+    assert view.policy.policy.raw_network is not None
+    assert json.loads(view.policy.policy.raw_network) == raw  # exact, for editing (FR-12)
 
 
 def test_details_and_policies_are_fetched_again_only_when_they_change() -> None:

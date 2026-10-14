@@ -11,6 +11,7 @@ dependencies = [
     "jinja2>=3.1",
     "psutil>=6.0",
     "pydantic>=2.10",
+    "pyyaml>=6.0",
     "uvicorn>=0.30",
 ]
 
@@ -29,6 +30,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "types-psutil>=7.2.2.20260906",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]
