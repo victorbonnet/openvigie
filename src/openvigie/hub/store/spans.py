@@ -121,6 +121,20 @@ class SpanQueue:
                                (DROPPED,)).fetchone()  # fmt: skip
         return QueueStats(pending, exported, row[0] if row else 0)
 
+    def exported(self, trace_ids: list[str]) -> set[str]:
+        """Which of these traces reached Langfuse at least once."""
+        found: set[str] = set()
+        for i in range(0, len(trace_ids), 500):
+            chunk = trace_ids[i : i + 500]
+            marks = ",".join("?" * len(chunk))
+            with self.db.read() as conn:
+                rows = conn.execute(
+                    f"SELECT trace_id FROM trace_exports WHERE trace_id IN ({marks})",  # noqa: S608 - placeholders only
+                    chunk,
+                ).fetchall()
+            found.update(r[0] for r in rows)
+        return found
+
 
 def _count(conn: sqlite3.Connection, name: str, amount: int) -> None:
     if amount:

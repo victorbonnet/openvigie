@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
@@ -13,10 +13,13 @@ from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse
 from markupsafe import Markup
 
+from openvigie.adapters.spans import trace_id
 from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
+from openvigie.hub.langfuse import TraceLink, project_url, trace_link
 from openvigie.hub.reports import UsageRow, usage_report
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
+from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.templating import render
 from openvigie.model import AgentStatus, HealthState, Session
@@ -114,6 +117,7 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
 class SessionView:
     usage: UsageRow
     session: Session | None
+    trace: TraceLink | None = None  # None: trace export is off
 
 
 @dataclass(frozen=True)
@@ -122,6 +126,7 @@ class AgentUsage:
     chart: Markup
     models: list[UsageRow]
     sessions: list[SessionView]
+    langfuse_project: str | None = None
 
 
 def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
@@ -138,11 +143,25 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
     series = [Series(agent_id, "cost", 1, {r.key["day"]: r.cost for r in per_day.rows})]
     known = {s.session_id: s for s in UsageStore(state.db).sessions(agent_id)}
     sessions = sorted(report(group_by=["session"]).rows, key=lambda r: r.cost, reverse=True)
+    views = [SessionView(r, known.get(r.key["session"])) for r in sessions[:20]]
+    project = None
+    if state.exporter:
+        lf = state.exporter.settings
+        project = project_url(lf)
+        traces = {v.usage.key["session"]: trace_id(agent_id, v.usage.key["session"])
+                  for v in views if v.usage.key["session"]}  # fmt: skip
+        done = SpanQueue(state.db).exported(list(traces.values()))
+        views = [
+            replace(v, trace=trace_link(lf, traces[sid], traces[sid] in done))
+            if (sid := v.usage.key["session"]) in traces else v
+            for v in views
+        ]  # fmt: skip
     return AgentUsage(
         total=per_day.total,
         chart=stacked_bars(day_list, series),
         models=sorted(report(group_by=["model"]).rows, key=lambda r: r.cost, reverse=True),
-        sessions=[SessionView(r, known.get(r.key["session"])) for r in sessions[:20]],
+        sessions=views,
+        langfuse_project=project,
     )
 
 

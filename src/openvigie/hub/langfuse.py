@@ -25,8 +25,10 @@ import urllib.request
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import FastAPI
 
@@ -142,6 +144,31 @@ def otlp_payload(batch: list[QueuedSpan], *, export_content: bool) -> dict[str, 
             for host_id, spans in by_host.items()
         ]
     }
+
+
+# --- links (#63) -------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TraceLink:
+    url: str | None
+    reason: str | None = None
+
+
+def project_url(settings: LangfuseSettings) -> str | None:
+    if not settings.project_id:
+        return None
+    return f"{settings.host.rstrip('/')}/project/{quote(settings.project_id, safe='')}"
+
+
+def trace_link(settings: LangfuseSettings, trace: str, exported: bool) -> TraceLink:
+    """Where a trace lives in Langfuse: ``<host>/project/<project_id>/traces/<trace_id>``."""
+    if not exported:
+        return TraceLink(None, "not exported")
+    base = project_url(settings)
+    if base is None:
+        return TraceLink(None, "exported; set langfuse.project_id for links")
+    return TraceLink(f"{base}/traces/{trace}")
 
 
 # --- exporter ----------------------------------------------------------------------------------
