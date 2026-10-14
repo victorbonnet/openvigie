@@ -1,0 +1,17 @@
+{% from "_risk.html" import risk_badge %}
+<h2>Risk</h2>
+<p>{{ risk_badge(risk.level) }}{% if risk.level == "unknown" %} <span class="muted">This agent's capabilities haven't been reported, so its risk can't be assessed.</span>{% endif %}</p>
+{% if host and host.host.os == "darwin" and row.agent.sandboxed.value != "yes" %}
+<p class="notice">Agents running directly on macOS can't be sandboxed with OpenShell, which needs Linux.
+  To sandbox this one, run it in a Linux VM or container with a collector inside
+  (<a href="https://github.com/victorbonnet/openvigie/blob/main/docs/sandboxing.md#macos">how</a>).</p>
+{% endif %}
+{% if risk.flags %}
+<ul class="flags">
+{% for f in risk.flags %}
+  <li>{{ risk_badge(f.severity.label) }} <strong>{{ f.title }}</strong><br>{{ f.reason }}
+    <div class="facts muted">{% for k, v in f.facts.items() %}{{ k | replace("_", " ") }}: <code>{{ v | join(", ") if v is iterable and v is not string else v }}</code>{% if not loop.last %} · {% endif %}{% endfor %} <span class="muted">· rule <code>{{ f.rule_id }}</code></span></div>
+  </li>
+{% endfor %}
+</ul>
+{% endif %}

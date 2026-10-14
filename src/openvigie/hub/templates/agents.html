@@ -11,6 +11,7 @@
   </ol>
 </div>
 {% else %}
+{% for problem in rule_problems %}<p class="notice">Risk rules: {{ problem }}. The bundled rules are in use.</p>{% endfor %}
 <form class="filters" method="get" action="/">
   <label>Type
     <select name="type">
@@ -30,11 +31,12 @@
       {% for s in statuses %}<option value="{{ s }}" {% if filters.get('status') == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
     </select>
   </label>
+  {% if filters.get('sort') %}<input type="hidden" name="sort" value="{{ filters.get('sort') }}">{% endif %}
   <button type="submit">Filter</button>
 </form>
 <table>
   <thead>
-    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th>Sandboxed</th><th>Last activity</th></tr>
+    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th><a href="/?{{ sort_query }}" title="Most risky first">Risk{% if filters.get('sort') == 'risk' %} ↓{% endif %}</a></th><th>Sandboxed</th><th>Last activity</th></tr>
   </thead>
   {% include "_agent_rows.html" %}
 </table>

@@ -75,6 +75,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge.stopped, .badge.no { color: var(--stopped); }
 .badge.unknown { color: var(--muted); border-style: dashed; }
 .badge.error, .badge.stale { color: var(--bad); }
+.badge.risk-high { color: var(--bad); }
+.badge.risk-medium { color: var(--idle); }
+.badge.risk-low { color: var(--muted); }
+.badge.risk-none { color: var(--ok); }
+.badge.risk-unknown { color: var(--muted); border-style: dashed; }
+ul.flags { list-style: none; padding: 0; margin: 0; }
+ul.flags li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+ul.flags .facts { font-size: 13px; }
 
 .panel {
   background: var(--panel);

@@ -1,0 +1,4 @@
+{% macro risk_badge(level) -%}
+{%- set icons = {"high": "▲", "medium": "◆", "low": "●", "none": "✓", "unknown": "?"} -%}
+<span class="badge risk-{{ level }}"><span aria-hidden="true">{{ icons[level] }}</span> {{ "no flags" if level == "none" else level }}</span>
+{%- endmacro %}
