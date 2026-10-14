@@ -95,6 +95,7 @@
    "openvigie.agent": "claude-code"
   },
   "name": "ov-net",
+  "network_policy": "{\"github_readonly\":{\"binaries\":[{\"path\":\"/usr/bin/curl\"}],\"endpoints\":[{\"host\":\"api.github.com\",\"port\":443}],\"name\":\"github_readonly\"}}",
   "network_rules": [
    {
     "binaries": [

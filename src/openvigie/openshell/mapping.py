@@ -103,6 +103,7 @@ def _record(
         policy_version=policy.version if policy else sandbox.current_policy_version,
         policy_hash=policy_hash or None,
         network_rules=rules,
+        network_policy=policy.policy.raw_network if policy else None,
     )
 
 

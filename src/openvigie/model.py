@@ -318,6 +318,8 @@ class OpenShellSandbox:
     policy_version: Count | None = None
     policy_hash: Id | None = None
     network_rules: Items[SandboxRule] | None = None  # None: the policy couldn't be read
+    # the exact network_policies as canonical JSON, to edit and roll back (FR-12); None: unknown
+    network_policy: Annotated[str, Strict(), Field(max_length=64 * 1024)] | None = None
 
 
 # --- commands (D14) ----------------------------------------------------------------------------
