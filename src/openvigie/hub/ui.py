@@ -18,6 +18,7 @@ from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
 from openvigie.hub.reports import UsageRow, usage_report
+from openvigie.hub.riskview import AgentRisk, agent_risks
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
 from openvigie.hub.store.spans import SpanQueue
@@ -48,25 +49,48 @@ def _inventory(request: Request) -> Inventory:
     return inventory
 
 
-def _filters(type: str | None, host: str | None, status: str | None) -> dict[str, str]:
-    return {k: v for k, v in (("type", type), ("host", host), ("status", status)) if v}
+def _filters(
+    type: str | None, host: str | None, status: str | None, sort: str | None = None
+) -> dict[str, str]:
+    pairs = (("type", type), ("host", host), ("status", status), ("sort", sort))
+    return {k: v for k, v in pairs if v}
+
+
+SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "unknown": 3, "none": 4}
+
+
+def _with_risk(
+    request: Request, rows: list[AgentRow], sort: str | None
+) -> tuple[list[AgentRow], dict[str, AgentRisk]]:
+    risks = agent_risks(request.app.state.db, request.app.state.risk_rules, rows)
+    if sort == "risk":
+        rows = sorted(rows, key=lambda r: SEVERITY_ORDER[risks[r.agent.agent_id].level])
+    return rows, risks
 
 
 @router.get("/", response_class=HTMLResponse)
 def agents_page(
-    request: Request, type: Filter = None, host: Filter = None, status: Filter = None
+    request: Request,
+    type: Filter = None,
+    host: Filter = None,
+    status: Filter = None,
+    sort: Filter = None,
 ) -> HTMLResponse:
     inventory = _inventory(request)
-    rows = inventory.agents(host_id=host, agent_type=type, status=status)
+    rows, risks = _with_risk(request, inventory.agents(host_id=host, agent_type=type,
+                                                       status=status), sort)  # fmt: skip
     everything = inventory.agents()
-    filters = _filters(type, host, status)
+    filters = _filters(type, host, status, sort)
     return render(
         request,
         "agents.html",
         title="Agents",
         rows=rows,
+        risks=risks,
+        rule_problems=request.app.state.risk_rules.problems,
         filters=filters,
         query=urlencode(filters),
+        sort_query=urlencode({**_filters(type, host, status), "sort": "risk"}),
         types=sorted({r.agent.agent_type for r in everything}),
         hosts=sorted({(r.agent.host_id, r.hostname) for r in everything}, key=lambda h: h[1]),
         statuses=[s.value for s in AgentStatus],
@@ -76,11 +100,16 @@ def agents_page(
 
 @router.get("/agents/rows", response_class=HTMLResponse)
 def agent_rows(
-    request: Request, type: Filter = None, host: Filter = None, status: Filter = None
+    request: Request,
+    type: Filter = None,
+    host: Filter = None,
+    status: Filter = None,
+    sort: Filter = None,
 ) -> HTMLResponse:
-    filters = _filters(type, host, status)
-    rows = _inventory(request).agents(host_id=host, agent_type=type, status=status)
-    return render(request, "_agent_rows.html", rows=rows, query=urlencode(filters))
+    filters = _filters(type, host, status, sort)
+    rows, risks = _with_risk(request, _inventory(request).agents(
+        host_id=host, agent_type=type, status=status), sort)  # fmt: skip
+    return render(request, "_agent_rows.html", rows=rows, risks=risks, query=urlencode(filters))
 
 
 AgentId = Annotated[str, Path(max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")]
@@ -110,6 +139,8 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         health=health[0] if health else None,
         history=inventory.status_history(agent_id, limit=50),
         caps=capabilities.get(agent_id),
+        risk=agent_risks(request.app.state.db, request.app.state.risk_rules, [row])[agent_id],
+        host=inventory.host(row.agent.host_id),
         cap_changes=capabilities.changes(agent_id, limit=20),
         usage=agent_usage(request, agent_id),
         money=money,
@@ -208,11 +239,15 @@ class HostView:
     skewed: bool
     counts: dict[str, int]
     unhealthy: int
+    high_risk: int = 0
 
 
-def host_views(inventory: Inventory, now: datetime) -> list[HostView]:
+def host_views(
+    inventory: Inventory, now: datetime, risks: dict[str, AgentRisk] | None = None
+) -> list[HostView]:
     agents = inventory.agents()
     health = inventory.adapter_health()
+    risks = risks or {}
     views = []
     for row in inventory.hosts():
         mine = [a.agent for a in agents if a.agent.host_id == row.host.host_id]
@@ -227,6 +262,9 @@ def host_views(inventory: Inventory, now: datetime) -> list[HostView]:
                     h.host_id == row.host.host_id and h.health.state is not HealthState.OK
                     for h in health
                 ),
+                high_risk=sum(
+                    a.agent_id in risks and risks[a.agent_id].level == "high" for a in mine
+                ),
             )
         )
     return views
@@ -234,14 +272,17 @@ def host_views(inventory: Inventory, now: datetime) -> list[HostView]:
 
 @router.get("/hosts", response_class=HTMLResponse)
 def hosts_page(request: Request) -> HTMLResponse:
-    views = host_views(_inventory(request), datetime.now(UTC))
+    inventory = _inventory(request)
+    risks = agent_risks(request.app.state.db, request.app.state.risk_rules, inventory.agents())
+    views = host_views(inventory, datetime.now(UTC), risks)
     return render(request, "hosts.html", title="Hosts", views=views)
 
 
 @router.get("/hosts/{host_id}", response_class=HTMLResponse)
 def host_page(request: Request, host_id: HostId) -> HTMLResponse:
     inventory = _inventory(request)
-    view = next((v for v in host_views(inventory, datetime.now(UTC))
+    rows, risks = _with_risk(request, inventory.agents(host_id=host_id), None)
+    view = next((v for v in host_views(inventory, datetime.now(UTC), risks)
                  if v.row.host.host_id == host_id), None)  # fmt: skip
     if view is None:
         raise HTTPException(404, "host not found")
@@ -250,7 +291,8 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
         "host.html",
         title=view.row.host.hostname,
         view=view,
-        rows=inventory.agents(host_id=host_id),
+        rows=rows,
+        risks=risks,
         query=urlencode({"host": host_id}),
         health=inventory.adapter_health(host_id),
     )

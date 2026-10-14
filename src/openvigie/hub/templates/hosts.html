@@ -4,7 +4,7 @@
 {% if views %}
 <table>
   <thead>
-    <tr><th>Host</th><th>Platform</th><th>Collector</th><th>Last report</th><th>Agents</th><th>Adapters</th></tr>
+    <tr><th>Host</th><th>Platform</th><th>Collector</th><th>Last report</th><th>Agents</th><th>Risk</th><th>Adapters</th></tr>
   </thead>
   <tbody>
   {% for v in views %}
@@ -20,6 +20,7 @@
         {% if v.skewed %}<span class="badge degraded" title="collector clock is {{ v.row.clock_skew_s }}s off">clock skew</span>{% endif %}
       </td>
       <td>{% for status, n in v.counts.items() %}<span class="badge {{ status }}">{{ n }} {{ status }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+      <td>{% if v.high_risk %}<span class="badge risk-high"><span aria-hidden="true">▲</span> {{ v.high_risk }} high</span>{% else %}<span class="muted">no high-risk agents</span>{% endif %}</td>
       <td>{% if v.unhealthy %}<span class="badge degraded">{{ v.unhealthy }} need attention</span>{% else %}<span class="badge ok">ok</span>{% endif %}</td>
     </tr>
   {% endfor %}
