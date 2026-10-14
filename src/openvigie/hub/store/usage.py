@@ -26,14 +26,15 @@ class UsageStore:
                     """
                     INSERT INTO usage_records (record_id, agent_id, session_id, ts, provider,
                         request_model, response_model, input_tokens, output_tokens,
-                        cache_read_input_tokens, cache_creation_input_tokens, reasoning_tokens,
-                        quality)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        cache_read_input_tokens, cache_creation_input_tokens,
+                        cache_creation_1h_input_tokens, reasoning_tokens, quality)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (record_id) DO UPDATE SET
                         input_tokens = excluded.input_tokens,
                         output_tokens = excluded.output_tokens,
                         cache_read_input_tokens = excluded.cache_read_input_tokens,
                         cache_creation_input_tokens = excluded.cache_creation_input_tokens,
+                        cache_creation_1h_input_tokens = excluded.cache_creation_1h_input_tokens,
                         reasoning_tokens = excluded.reasoning_tokens,
                         quality = excluded.quality
                     WHERE usage_records.agent_id = excluded.agent_id
@@ -45,7 +46,7 @@ class UsageStore:
                     (r.record_id, r.agent_id, r.session_id, ts(r.timestamp), r.provider,
                      r.request_model, r.response_model, r.input_tokens, r.output_tokens,
                      r.cache_read_input_tokens, r.cache_creation_input_tokens,
-                     r.reasoning_tokens, r.quality.value),
+                     r.cache_creation_1h_input_tokens, r.reasoning_tokens, r.quality.value),
                 )  # fmt: skip
                 changed += cur.rowcount
         return changed
@@ -95,6 +96,7 @@ class UsageStore:
                 input_tokens=r["input_tokens"], output_tokens=r["output_tokens"],
                 cache_read_input_tokens=r["cache_read_input_tokens"],
                 cache_creation_input_tokens=r["cache_creation_input_tokens"],
+                cache_creation_1h_input_tokens=r["cache_creation_1h_input_tokens"],
                 reasoning_tokens=r["reasoning_tokens"], quality=UsageQuality(r["quality"]),
             )
             for r in rows

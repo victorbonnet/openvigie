@@ -39,6 +39,8 @@ def test_recorded_fixture_totals(tmp_path: Path) -> None:
         "cache_creation_input_tokens": 190288,
     }
     assert {r.response_model for r in batch.usage} == {"claude-opus-5-5"}
+    # main thread writes with the 1-hour TTL, the subagent with 5 minutes; pricing needs the split
+    assert sum(r.cache_creation_1h_input_tokens or 0 for r in batch.usage) == 54784
     assert all(r.quality is UsageQuality.EXACT and r.provider == "anthropic" for r in batch.usage)
     (session,) = batch.sessions
     assert session.session_id == SESSION and session.models == ("claude-opus-5-5",)
