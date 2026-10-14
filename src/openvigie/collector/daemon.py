@@ -28,15 +28,15 @@ import sys
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from openvigie.adapters.base import Adapter, AdapterState, HostContext, TraceOptions
+from openvigie.adapters.base import Adapter, AdapterState, HostContext, ProcessInfo, TraceOptions
 from openvigie.adapters.registry import Discovery, run_capabilities, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
-from openvigie.collector.commands import CommandRunner
+from openvigie.collector.commands import ACTIONS, CommandRunner, agent_actions
 from openvigie.collector.otlp import Arbiter, OtlpReceiver, OtlpUsage
 from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
@@ -124,7 +124,8 @@ class Collector:
         self.openshell_inventory = Inventory("not_installed")
         self.sandboxes_sent: str | None = None  # digest of the last list sent; None: never
         self.sandboxes_sent_at = float("-inf")
-        self.commands = CommandRunner(settings.allow_actions, store)
+        actions = {**ACTIONS, **agent_actions(self.processes_of)}
+        self.commands = CommandRunner(settings.allow_actions, store, actions=actions)
         self.command_results: list[dict[str, Any]] = []  # waiting for the next push
 
     # --- one tick ---------------------------------------------------------------------------
@@ -213,6 +214,18 @@ class Collector:
             log.info("trace export %s%s", "on" if wanted else "off",
                      " (with content)" if content else "")  # fmt: skip
             self.ctx.traces = options
+
+    def processes_of(self, agent_id: str) -> Sequence[ProcessInfo]:
+        """The processes this tick's detection attributed to the agent (FR-13)."""
+        for adapter in self.discovery.adapters:
+            try:
+                procs = adapter.processes(agent_id)
+            except Exception:  # a third-party adapter's bug must not stop the loop
+                log.warning("%s: processes() failed", adapter.agent_type)
+                continue
+            if procs:
+                return procs
+        return ()
 
     def _run_commands(self, reply: dict[str, Any]) -> None:
         results = self.commands.run_all(reply.get("commands"))

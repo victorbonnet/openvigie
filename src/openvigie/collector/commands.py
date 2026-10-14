@@ -6,17 +6,20 @@ expired, when its id was seen before, or when it is malformed. Seen ids are kept
 command expires, in the state store when there is one, so a restart doesn't allow a replay.
 
 Actions: ``noop`` does nothing, to check the channel end to end; ``sandbox.policy.set`` applies
-network rules to an OpenShell sandbox, reverting if they don't load (FR-12, D15). It can take
-two minutes, during which this loop doesn't push.
+network rules to an OpenShell sandbox, reverting if they don't load (FR-12, D15); ``agent.stop``
+and ``agent.kill`` signal an agent's processes (FR-13, D16, see ``agent_actions``). An action can
+take up to two minutes, during which this loop doesn't push.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
+from openvigie.adapters.base import ProcessInfo
+from openvigie.collector.lifecycle import LifecycleError, signal_agent
 from openvigie.collector.state import StateStore
 from openvigie.model import CodecError, Command, CommandResult, CommandStatus, from_dict
 from openvigie.openshell.apply import WAIT_S, ApplyError, apply_network
@@ -45,6 +48,24 @@ def sandbox_policy_set(args: Mapping[str, str]) -> str:
 
 
 ACTIONS: dict[str, Action] = {"noop": noop, "sandbox.policy.set": sandbox_policy_set}
+
+
+def agent_actions(processes_of: Callable[[str], Sequence[ProcessInfo]]) -> dict[str, Action]:
+    """``agent.stop`` and ``agent.kill`` (FR-13, D16): on the processes the adapters attributed
+    to the agent named in the command, never on a PID from the hub."""
+
+    def make(mode: Literal["stop", "kill"]) -> Action:
+        def action(args: Mapping[str, str]) -> str:
+            agent_id = args.get("agent_id")
+            if not agent_id:
+                raise LifecycleError("missing argument agent_id")
+            return signal_agent(processes_of(agent_id), mode)
+
+        return action
+
+    return {"agent.stop": make("stop"), "agent.kill": make("kill")}
+
+
 MAX_DETAIL = 500
 
 
@@ -94,7 +115,7 @@ class CommandRunner:
         log.warning("running %s for the hub (command %s)", command.action, command.command_id)
         try:
             detail = action(command.args)
-        except ApplyError as exc:  # says what happened and the state the sandbox is in
+        except (ApplyError, LifecycleError) as exc:  # says what happened and what state is left
             return self._result(command.command_id, CommandStatus.FAILED, str(exc))
         except Exception as exc:  # any failure is reported, never raised
             return self._result(command.command_id, CommandStatus.FAILED,

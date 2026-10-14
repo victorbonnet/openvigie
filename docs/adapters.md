@@ -43,6 +43,10 @@ Unknown stays unknown (`UNKNOWN`, `None`), and secrets are reported **by name on
 (`SecretRef`): never read a secret's value into the result. The collector sends a snapshot
 when it changes; the hub keeps the latest one and a log of what changed.
 
+`processes(agent_id)` returns the processes your last `detect` attributed to that agent (keep
+them from `ctx.processes()`). An admin's *Stop* and *Kill* act on these and their children only
+(FR-13). The default returns none, so the agent can't be stopped from the hub.
+
 ## Rules
 
 - **Touch the host only through `HostContext`**: `ctx.homes`, `ctx.processes()`, `ctx.ports()`,
