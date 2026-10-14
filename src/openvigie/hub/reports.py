@@ -37,6 +37,8 @@ class UsageRow:
     unknown: int = 0
     unpriced_tokens: int = 0
     cost: Decimal = Decimal(0)
+    # models whose bundled price is marked unverified: their cost is shown, with a caveat
+    unverified_models: set[str] = field(default_factory=set)
 
     @property
     def tokens(self) -> int:
@@ -67,6 +69,7 @@ class UsageRow:
             },
             "cost_usd": str(self.cost.quantize(Decimal("0.000001"))),
             "cost_complete": self.cost_complete,
+            "unverified_price_models": sorted(self.unverified_models),
         }
 
 
@@ -180,3 +183,6 @@ def _add(row: UsageRow, g: Any, prices: PriceTable) -> None:
         row.unpriced_tokens += (g["input"] or 0) + (g["output"] or 0)
     else:
         row.cost += cost.amount
+        price = prices.find(g["provider"], g["model"])
+        if price is not None and price.unverified:
+            row.unverified_models.add(price.model_id)

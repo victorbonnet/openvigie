@@ -154,6 +154,7 @@ Decisions taken after this PRD was drafted. Each one is tracked in the roadmap (
 | D6 | 2026-10-14 | Remote access uses `tailscale serve` in front of a hub bound to `127.0.0.1`. The hub does not bind a tailnet or public interface unless the operator explicitly opts in. | Security → Access |
 | D7 | 2026-10-14 | Collectors push to the hub over HTTP JSON with a per-host bearer token from enrolment, even when hub and collector share a host. | Architecture, Security → Access |
 | D8 | 2026-10-14 | Collector user model. Linux: a dedicated `openvigie` system user with `CAP_DAC_READ_SEARCH`, confined by systemd to read-only bind mounts of the agent folders (homes otherwise hidden). Read ACLs were rejected: agents create `0600` files, which get an empty ACL mask. macOS (and simple Linux setups): a per-user service, documented as weaker isolation. | Open question *Collector user model*, Security → Mitigations |
+| D9 | 2026-10-14 | Usage data and status history are kept forever by default; retention is opt-in per data type in `hub.toml` (`[retention]`). Spans are never kept: unexported ones leave the export queue after `span_queue_hours` (24 by default). Bundled prices not yet checked against the provider are shipped flagged `unverified`, and the UI says so wherever they are used. | Open question *Retention defaults*, FR-4, Security → Mitigations |
 
 ## Open questions and risks
 
@@ -162,7 +163,7 @@ Decisions taken after this PRD was drafted. Each one is tracked in the roadmap (
 - [ ] macOS sandboxing: OpenShell relies on Linux features (Landlock, seccomp, network namespaces). Do Mac agents run in a Linux VM or container, or stay monitor-only?
 - [x] Detection depth: process and config scanning only, or also hooks injected into each agent (for example Claude Code hooks)? *Resolved for the MVP by D2; revisit after.*
 - [ ] Risk scoring rules: which capabilities count as high risk, and how are scores weighted?
-- [ ] Retention defaults for usage data and traces. Proposal: 180 days for usage data, configurable.
+- [x] Retention defaults for usage data and traces. *Resolved by D9: kept forever by default, configurable.*
 - [x] Web UI stack: server-rendered (FastAPI + HTMX) or a separate front end? *Resolved by D1.*
 - [x] Collector user model: a dedicated system user (as the mitigations above require) cannot read agent folders in other users' homes by default. Grant read-only access with ACLs, or run the collector as each agent's user with weaker isolation (especially on macOS)? *Resolved by D8.*
 

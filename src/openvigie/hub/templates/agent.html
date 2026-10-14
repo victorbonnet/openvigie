@@ -30,6 +30,11 @@
   <div class="tile"><div class="k">Calls</div><div class="v">{{ t.records }}</div>
     <div class="s">{{ t.exact }} exact · {{ t.estimated }} estimated · {{ t.unknown }} unknown</div></div>
 </div>
+{% if t.unverified_models %}
+<p class="notice">Costs for {{ t.unverified_models | sort | join(", ") }} use bundled prices that
+  haven't been checked against the provider's price list yet (see <a href="/prices">Prices</a>;
+  override them in <code>prices.toml</code>).</p>
+{% endif %}
 {{ usage.chart }}
 <h2>By model</h2>
 <table>

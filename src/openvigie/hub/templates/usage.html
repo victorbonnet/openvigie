@@ -39,6 +39,11 @@
 <p class="notice">Some usage could not be priced (unknown token counts or a model missing from the
   <a href="/prices">price table</a>), so costs marked ≥ are lower bounds, not totals.</p>
 {% endif %}
+{% if total.unverified_models %}
+<p class="notice">Costs for {{ total.unverified_models | sort | join(", ") }} use bundled prices that
+  haven't been checked against the provider's price list yet (see <a href="/prices">Prices</a>;
+  override them in <code>prices.toml</code>).</p>
+{% endif %}
 <p class="notice">Costs are the <strong>list-price equivalent</strong> of the tokens used. Subscription
   plans (Claude Pro/Max, ChatGPT plans) are billed differently.</p>
 
