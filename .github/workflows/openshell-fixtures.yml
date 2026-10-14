@@ -1,0 +1,39 @@
+name: openshell-fixtures
+
+# Records real OpenShell outputs for openvigie's fixture tests (decision D13): installs the
+# supported OpenShell release, creates a throwaway sandbox and prints what openvigie parses.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/openshell-fixtures.yml
+      - scripts/record_openshell.sh
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-24.04-arm # closest hosted runner to a Raspberry Pi
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Supported version
+        run: |
+          version=$(sed -n 's/^MIN_SUPPORTED = "\(.*\)"$/\1/p' src/openvigie/openshell/versions.py)
+          echo "OPENSHELL_VERSION=v$version" >> "$GITHUB_ENV"
+      - name: Let the runner user run a systemd user manager (the gateway is a user service)
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          for _ in $(seq 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 1; done
+          docker version --format '{{.Server.Version}}'
+      - name: Install OpenShell (installer from the release tag, packages checksum-verified)
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/NVIDIA/OpenShell/${OPENSHELL_VERSION}/install.sh" -o install.sh
+          sh install.sh
+      - name: Record
+        run: scripts/record_openshell.sh
+      - name: Gateway logs on failure
+        if: failure()
+        run: journalctl --user -u openshell-gateway --no-pager -n 200 || true

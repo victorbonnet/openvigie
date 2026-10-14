@@ -1,0 +1,9 @@
+# exit 1
+Error:   × client error (Connect)
+  ├─▶ tcp connect error
+  ╰─▶ Connection refused (os error 111)
+
+Error:   × transport error
+  ├─▶ tcp connect error
+  ├─▶ tcp connect error
+  ╰─▶ Connection refused (os error 111)

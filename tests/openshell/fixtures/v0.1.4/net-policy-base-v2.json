@@ -1,0 +1,85 @@
+{
+  "active_version": 3,
+  "config_revision": 9135614929488924856,
+  "hash": "4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba",
+  "policy": {
+    "filesystem_policy": {
+      "include_workdir": true,
+      "read_only": [
+        "/usr",
+        "/lib",
+        "/etc",
+        "/var/log",
+        "/proc",
+        "/dev/urandom"
+      ],
+      "read_write": [
+        "/tmp",
+        "/dev/null"
+      ]
+    },
+    "landlock": {
+      "compatibility": "best_effort"
+    },
+    "network_policies": {
+      "github_readonly": {
+        "binaries": [
+          {
+            "path": "/usr/bin/curl"
+          }
+        ],
+        "endpoints": [
+          {
+            "access": "read-only",
+            "enforcement": "enforce",
+            "host": "api.github.com",
+            "port": 443,
+            "protocol": "rest"
+          }
+        ],
+        "name": "github_readonly"
+      },
+      "ov_probe": {
+        "binaries": [
+          {
+            "path": "/usr/bin/curl"
+          }
+        ],
+        "endpoints": [
+          {
+            "access": "read-only",
+            "enforcement": "enforce",
+            "host": "example.com",
+            "port": 443,
+            "protocol": "rest"
+          }
+        ],
+        "name": "ov_probe"
+      },
+      "pypi": {
+        "binaries": [
+          {
+            "path": "/usr/bin/python3*"
+          }
+        ],
+        "endpoints": [
+          {
+            "host": "pypi.org",
+            "port": 443
+          },
+          {
+            "host": "files.pythonhosted.org",
+            "port": 443
+          }
+        ],
+        "name": "pypi"
+      }
+    },
+    "version": 1
+  },
+  "policy_source": "sandbox",
+  "sandbox": "ov-net",
+  "scope": "sandbox",
+  "status": "effective",
+  "version": 3
+}
