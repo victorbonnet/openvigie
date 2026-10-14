@@ -129,8 +129,12 @@ def cmd_collect(args: argparse.Namespace) -> int:
     except (ConfigError, ValueError) as exc:
         print(f"openvigie: {exc}", file=sys.stderr)
         return 2
+    from openvigie.collector.state import StateStore
+    from openvigie.config import state_dir
+
     discovery = discover(settings.enable_plugins, settings.disable_adapters)
-    collector = Collector(settings, build_context(settings), discovery, client)
+    store = StateStore(state_dir() / "collector.db", settings.spool_limit_mb * 1024 * 1024)
+    collector = Collector(settings, build_context(settings), discovery, client, store=store)
     if args.once:
         return 0 if collector.tick() else 1
     stop = threading.Event()

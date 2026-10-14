@@ -10,6 +10,7 @@
     {% if view.row.revoked_at %}<span class="badge error">revoked</span>{% elif view.stale %}<span class="badge stale">stale</span>{% endif %}</dd>
   <dt>Clock</dt><dd>{% if view.row.clock_skew_s is none %}unknown{% elif view.skewed %}<span class="badge degraded">{{ view.row.clock_skew_s }}s off</span>{% else %}in sync{% endif %}</dd>
   <dt>First seen</dt><dd>{{ view.row.first_seen | ago }}</dd>
+  {% if view.row.spool_dropped %}<dt>Data loss</dt><dd><span class="badge degraded">{{ view.row.spool_dropped }} payloads dropped</span> <span class="muted">the collector's offline spool overflowed while the hub was unreachable</span></dd>{% endif %}
 </dl>
 
 <h2>Agents</h2>
