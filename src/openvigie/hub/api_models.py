@@ -16,6 +16,8 @@ from openvigie.model import (
     AdapterHealth,
     AgentInstance,
     Capabilities,
+    Command,
+    CommandResult,
     Host,
     Id,
     OpenShellSandbox,
@@ -74,6 +76,8 @@ class IngestRequest(ApiModel):
     capabilities: Annotated[list[Capabilities], Field(max_length=500)] = []
     # the host's full set of OpenShell sandboxes; absent: not reported, []: none any more
     sandboxes: Annotated[list[OpenShellSandbox], Field(max_length=500)] | None = None
+    # what became of commands sent in earlier replies (D14)
+    command_results: Annotated[list[CommandResult], Field(max_length=100)] = []
 
 
 class Accepted(ApiModel):
@@ -86,6 +90,7 @@ class Accepted(ApiModel):
     sessions: int
     capabilities: int
     sandboxes: int = 0
+    command_results: int = 0
     spans: int
 
 
@@ -102,6 +107,7 @@ class IngestResponse(ApiModel):
     ignored: list[str]
     next_push_s: int
     traces: TracesWanted
+    commands: list[Command] = []  # for the collector to run, if its allowlist permits (D14)
 
 
 # --- GET /api/v1/agents ------------------------------------------------------------------------

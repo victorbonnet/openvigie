@@ -14,7 +14,7 @@ import os
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS spool (
     id INTEGER PRIMARY KEY, created_at REAL NOT NULL, payload TEXT NOT NULL, size INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS seen_commands (command_id TEXT PRIMARY KEY, expires_at TEXT NOT NULL);
 """
 
 
@@ -113,6 +114,19 @@ class StateStore:
             ).fetchone()
         return int(count), int(size)
 
+    # --- commands --------------------------------------------------------------------------
+
+    def first_sight(self, command_id: str, expires_at: datetime, now: datetime) -> bool:
+        """Remember a command id until it expires; False if it was seen before (a replay).
+        Once expired, a command is refused anyway, so its id can be forgotten."""
+        with self.lock, self.conn:
+            self.conn.execute("DELETE FROM seen_commands WHERE expires_at < ?", (_fixed(now),))
+            inserted = self.conn.execute(
+                "INSERT OR IGNORE INTO seen_commands (command_id, expires_at) VALUES (?, ?)",
+                (command_id, _fixed(expires_at)),
+            ).rowcount
+        return bool(inserted)
+
     def dropped(self) -> int:
         with self.lock:
             row = self.conn.execute("SELECT value FROM meta WHERE key = 'dropped'").fetchone()
@@ -124,6 +138,11 @@ class StateStore:
             "ON CONFLICT (key) DO UPDATE SET value = value + excluded.value",
             (n,),
         )
+
+
+def _fixed(when: datetime) -> str:
+    """Fixed-width UTC, so string order is time order."""
+    return when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")
 
 
 class PersistentAdapterState(AdapterState):

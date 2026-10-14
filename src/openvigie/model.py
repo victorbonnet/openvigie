@@ -15,7 +15,7 @@ import hashlib
 from dataclasses import field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Any, TypeVar, cast, dataclass_transform
+from typing import Annotated, Any, Self, TypeVar, cast, dataclass_transform
 
 from pydantic import (
     AwareDatetime,
@@ -27,6 +27,7 @@ from pydantic import (
     StrictFloat,
     TypeAdapter,
     ValidationError,
+    model_validator,
 )
 from pydantic.dataclasses import dataclass
 
@@ -317,6 +318,46 @@ class OpenShellSandbox:
     policy_version: Count | None = None
     policy_hash: Id | None = None
     network_rules: Items[SandboxRule] | None = None  # None: the policy couldn't be read
+
+
+# --- commands (D14) ----------------------------------------------------------------------------
+
+MAX_COMMAND_ARGS_CHARS = 64 * 1024  # all of one command's argument values together
+CommandId = Annotated[str, Strict(), Field(pattern=r"^[0-9a-f]{32}$")]
+ActionName = Annotated[str, Strict(), Field(pattern=r"^[a-z][a-z0-9_.-]{0,63}$")]
+CommandArg = Annotated[str, Strict(), Field(max_length=MAX_COMMAND_ARGS_CHARS)]
+
+
+class CommandStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUSED = "refused"  # not run: not allowed here, expired, replayed or invalid
+
+
+@wire_type
+class Command:
+    """An action the hub asks one collector to run, sent in the ingest reply (D14)."""
+
+    command_id: CommandId
+    action: ActionName
+    expires_at: Timestamp
+    args: Annotated[dict[Id, CommandArg], Field(max_length=8)] = field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _bounded(self) -> Self:
+        if sum(len(v) for v in self.args.values()) > MAX_COMMAND_ARGS_CHARS:
+            raise ValueError(f"arguments over {MAX_COMMAND_ARGS_CHARS} characters in all")
+        return self
+
+
+@wire_type
+class CommandResult:
+    """What became of a command, reported by the collector in its next push."""
+
+    command_id: CommandId
+    status: CommandStatus
+    finished_at: Timestamp
+    detail: Text = ""
 
 
 # --- codec -------------------------------------------------------------------------------------

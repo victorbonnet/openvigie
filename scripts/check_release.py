@@ -24,6 +24,7 @@ REQUIRED = (
     "openvigie/hub/store/migrations/0001_inventory.sql",
     "openvigie/hub/store/migrations/0006_openshell.sql",
     "openvigie/hub/store/migrations/0007_audit.sql",
+    "openvigie/hub/store/migrations/0008_commands.sql",
     "openvigie/openshell/starter.toml",
     "openvigie/hub/templates/base.html",
 )
