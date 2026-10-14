@@ -66,6 +66,7 @@ Seconds = Annotated[float, Strict(), Field(gt=0)]
 UserPath = Annotated[Path, AfterValidator(Path.expanduser)]
 # a Tailscale login as `tailscale status` shows it, e.g. alice@example.com or octocat@github
 Login = Annotated[str, Strict(), Field(pattern=r"^[A-Za-z0-9._%+@:-]{1,256}$")]
+ActionName = Annotated[str, Strict(), Field(pattern=r"^[a-z][a-z0-9_.-]{0,63}$")]  # as model
 UsageSource = Literal["auto", "logs", "otlp"]
 SETTINGS = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
@@ -188,6 +189,8 @@ class CollectorSettings:
     # allow prompts/outputs/tool I/O in spans when the hub also asks for them (FR-6, #62)
     export_content: StrictBool = False
     otlp: OtlpSettings = field(default_factory=OtlpSettings)
+    # actions this host runs when the hub asks (D14); anything else is refused. Empty: none.
+    allow_actions: Annotated[tuple[ActionName, ...], Field(max_length=64)] = ()
 
     def resolved_token_file(self) -> Path:
         return self.token_file or state_dir() / "token"

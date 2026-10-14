@@ -12,6 +12,9 @@ is acknowledged or spooled (at-least-once; the hub deduplicates).
 Spans (FR-6) are built and sent only while the hub says it exports traces (``traces.wanted``
 in its ingest reply). Content goes into them only if both the hub and this collector's
 ``export_content`` allow it.
+
+Commands (D14) arrive in the ingest reply too. ``CommandRunner`` runs only the actions this
+host allows, and the results go out with the next inventory push.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from typing import Any
 from openvigie.adapters.base import Adapter, AdapterState, HostContext, TraceOptions
 from openvigie.adapters.registry import Discovery, run_capabilities, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
+from openvigie.collector.commands import CommandRunner
 from openvigie.collector.otlp import Arbiter, OtlpReceiver, OtlpUsage
 from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
@@ -53,6 +57,7 @@ SPOOL_FLUSH_PER_TICK = 20
 MAX_BACKOFF_S = 60.0
 UNAUTHORIZED_RETRY_S = 300.0
 CAPABILITIES_REFRESH_S = 3600.0
+MAX_PENDING_RESULTS = 100
 
 
 def rss_mib() -> float:
@@ -119,6 +124,8 @@ class Collector:
         self.openshell_inventory = Inventory("not_installed")
         self.sandboxes_sent: str | None = None  # digest of the last list sent; None: never
         self.sandboxes_sent_at = float("-inf")
+        self.commands = CommandRunner(settings.allow_actions, store)
+        self.command_results: list[dict[str, Any]] = []  # waiting for the next push
 
     # --- one tick ---------------------------------------------------------------------------
 
@@ -149,7 +156,7 @@ class Collector:
             health_dicts = {
                 k: v for k, v in health_dicts.items() if self.state.sent_health.get(k) != v
             }
-        return {
+        payload = {
             "schema_version": SCHEMA_VERSION,
             "host": to_dict(self.ctx.host),
             "sent_at": self.ctx.now().isoformat(),
@@ -157,6 +164,9 @@ class Collector:
             "status_events": [to_dict(e) for e in self.state.pending_events],
             "adapter_health": list(health_dicts.values()),
         }
+        if self.command_results:
+            payload["command_results"] = list(self.command_results)
+        return payload
 
     def tick(self) -> bool:
         """Observe and push; then, when due, collect and push usage.
@@ -189,6 +199,7 @@ class Collector:
             return False
         self._succeeded(payload, full, now)
         self._apply_traces(reply)
+        self._run_commands(reply)
         return True
 
     def _apply_traces(self, reply: dict[str, Any]) -> None:
@@ -202,6 +213,11 @@ class Collector:
             log.info("trace export %s%s", "on" if wanted else "off",
                      " (with content)" if content else "")  # fmt: skip
             self.ctx.traces = options
+
+    def _run_commands(self, reply: dict[str, Any]) -> None:
+        results = self.commands.run_all(reply.get("commands"))
+        self.command_results.extend(to_dict(r) for r in results)
+        del self.command_results[:-MAX_PENDING_RESULTS]
 
     # --- usage (slow tick) --------------------------------------------------------------------
 
@@ -416,6 +432,7 @@ class Collector:
             self.state.sent_health[item["adapter"]] = item
         for _ in payload["status_events"]:
             self.state.pending_events.popleft()
+        del self.command_results[: len(payload.get("command_results", ()))]
         if full:
             self.state.last_full_push = now
         if self.state.failures or self.state.unauthorized:

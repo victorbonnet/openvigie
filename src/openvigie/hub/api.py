@@ -33,11 +33,12 @@ from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.riskview import agent_risks
 from openvigie.hub.store.audit import AuditLog
 from openvigie.hub.store.capabilities import CapabilityStore
+from openvigie.hub.store.commands import CommandQueue, StoredCommand
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
-from openvigie.model import SCHEMA_VERSION
+from openvigie.model import SCHEMA_VERSION, Command
 
 router = APIRouter(prefix="/api/v1")
 
@@ -155,7 +156,10 @@ async def ingest(
     )
     if body.collector.spool_dropped is not None:
         usage_store.set_spool_dropped(host_id, body.collector.spool_dropped)
+    commands, results = exchange_commands(request, body, now)
+    accepted = accepted.model_copy(update={"command_results": results})
     return IngestResponse(
+        commands=commands,
         schema_version=SCHEMA_VERSION,
         accepted=accepted,
         ignored=sorted(body.model_extra or {}),
@@ -165,6 +169,30 @@ async def ingest(
             export_content=bool(exporter and exporter.settings.export_content),
         ),
     )
+
+
+def exchange_commands(
+    request: Request, body: IngestRequest, now: datetime
+) -> tuple[list[Command], int]:
+    """Store the collector's command results and hand it its due commands; audit every step.
+    Returns the commands for the reply and how many results were stored."""
+    queue, audit = CommandQueue(request.app.state.db), AuditLog(request.app.state.db)
+    host = body.host
+
+    def log(command: StoredCommand, result: str, after: object = None) -> None:
+        audit.record(at=now, actor=f"host:{host.hostname}", role="collector",
+                     action=f"command.{command.action}", target=host.host_id, result=result,
+                     request_id=command.command_id, after=after)  # fmt: skip
+
+    finished = queue.record_results(host.host_id, body.command_results, now)
+    for done in finished:
+        log(done, done.status, {"detail": done.detail})
+    due, expired = queue.deliver(host.host_id, now)
+    for command in expired:
+        log(command, "expired")
+    for command in due:
+        log(command, "delivered")
+    return [command.wire() for command in due], len(finished)
 
 
 DateParam = Annotated[str | None, Query(max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")]

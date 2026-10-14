@@ -37,13 +37,14 @@ flowchart LR
    - Pushes are chunked.
    - A push that fails goes to the durable spool.
    - Cursors are committed only after the hub has the data, or the spool does (at-least-once delivery; the hub deduplicates).
-3. **The hub** validates every push against the typed models and stores it. It computes cost and risk when they are read, not when data is stored, so editing prices or rules re-prices and re-flags history.
+3. **Commands (D14).** The ingest reply can carry commands for the pushing host, each delivered at most once. The collector runs only the actions its `allow_actions` lists (none by default) and reports results in its next push. The hub audits delivery and results.
+4. **The hub** validates every push against the typed models and stores it. It computes cost and risk when they are read, not when data is stored, so editing prices or rules re-prices and re-flags history.
 
 ## Modules and what they own
 
 | Module | Owns | Public interface |
 |---|---|---|
-| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `OpenShellSandbox`; `to_dict` / `from_dict`; `stable_id` |
+| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `OpenShellSandbox`, `Command`, `CommandResult`; `to_dict` / `from_dict`; `stable_id` |
 | `config` | Settings files and private files | `HubSettings`, `CollectorSettings` (and sections); `load_hub_settings`, `load_collector_settings`; `config_dir` / `state_dir` / `data_dir`; `read_private_file`, `write_private_file` |
 | `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `FileCursor`, `ReadStats` |
 | `redact` | Removing secrets from anything that leaves the process | `redact`, `redact_obj` |
@@ -57,13 +58,14 @@ flowchart LR
 | `adapters/claude_code`, `codex` | One agent type each | an `Adapter` subclass, registered as an entry point |
 | `collector/daemon` | The collector loop | `Collector.tick`, `Collector.run` |
 | `collector/client` | HTTP to the hub (stdlib) | `HubClient.post`, `HubError` |
-| `collector/state` | Cursors and the outbound spool | `StateStore` |
+| `collector/state` | Cursors, the outbound spool, command ids already seen | `StateStore` |
+| `collector/commands` | Running the hub's commands, only actions on the local allowlist (D14) | `CommandRunner.run_all`, `ACTIONS` |
 | `collector/otlp` | Local OTLP receiver (optional) | `OtlpReceiver`, `Arbiter` |
 | `hub/app` | The FastAPI app and its hardening (hosts, body limit, headers) | `create_app` |
 | `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `SandboxesResponse`, `UsageResponse`, `AuditResponse` |
 | `hub/ui` | The web UI (GET only) | routes, templates in `hub/templates` |
 | `hub/roles` | Who makes a request: viewer or admin (D14) | `IdentityMiddleware`, `identity(request)`, `Admin` (dependency for write routes) |
-| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials`, `AuditLog` |
+| `hub/store/*` | SQLite persistence, one repository per concern | `Database`, `Inventory`, `UsageStore`, `CapabilityStore`, `SandboxStore`, `SpanQueue`, `Credentials`, `AuditLog`, `CommandQueue` |
 | `hub/store/audit` | The audit log of admin actions (FR-17, D14): append-only, hash-chained, redacted | `AuditLog.record` (the only writer), `entries`, `all`, `verify` |
 | `hub/reports` | Usage and cost aggregation | `usage_report` |
 | `hub/riskview` | Risk of known agents | `agent_risks` |
