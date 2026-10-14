@@ -6,12 +6,14 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import time as day_time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.usage import UsageStore
 from openvigie.model import (
@@ -188,4 +190,46 @@ async def ingest(
         "accepted": accepted,
         "ignored": ignored,
         "next_push_s": NEXT_PUSH_S,
+    }
+
+
+DateParam = Annotated[str | None, Query(max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")]
+
+
+def date_range(
+    tz: tzinfo, start: str | None, end: str | None, default_days: int = 30
+) -> tuple[datetime, datetime]:
+    """[start, end] as local calendar days, returned as an aware [start, end + 1 day) range."""
+    today = datetime.now(tz).date()
+    last = date.fromisoformat(end) if end else today
+    first = date.fromisoformat(start) if start else last - timedelta(days=default_days - 1)
+    if first > last or (last - first).days > 366:
+        raise HTTPException(422, "date range must be ascending and at most 366 days")
+    begin = datetime.combine(first, day_time.min, tzinfo=tz)
+    finish = datetime.combine(last + timedelta(days=1), day_time.min, tzinfo=tz)
+    return begin, finish
+
+
+@router.get("/usage")
+def usage(
+    request: Request,
+    group_by: Annotated[str, Query(max_length=64)] = "",
+    start: Annotated[DateParam, Query(alias="from")] = None,
+    end: Annotated[DateParam, Query(alias="to")] = None,
+) -> dict[str, Any]:
+    dims = [d for d in group_by.split(",") if d]
+    unknown = sorted(set(dims) - set(DIMENSIONS))
+    if unknown:
+        raise HTTPException(422, f"unknown group_by dimension(s); use {', '.join(DIMENSIONS)}")
+    begin, finish = date_range(request.app.state.tz, start, end)
+    report = usage_report(
+        request.app.state.db, request.app.state.prices,
+        start=begin, end=finish, group_by=dims, tz=request.app.state.tz,
+    )  # fmt: skip
+    return {
+        "from": begin.isoformat(),
+        "to": finish.isoformat(),
+        "group_by": dims,
+        "rows": [row.to_json() for row in report.rows],
+        "total": report.total.to_json(),
     }

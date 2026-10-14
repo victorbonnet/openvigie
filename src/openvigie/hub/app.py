@@ -10,7 +10,9 @@ Defences that apply to every route:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, tzinfo
 from importlib import resources
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
@@ -20,11 +22,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from openvigie import __version__
-from openvigie.config import HubSettings
+from openvigie.config import ConfigError, HubSettings
 from openvigie.hub import api, ui
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.templating import render, templates_env
+from openvigie.pricing import load_price_table
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 CSP = (
@@ -101,6 +104,16 @@ async def _too_large(scope: Scope, receive: Receive, send: Send) -> None:
     await response(scope, receive, send)
 
 
+def display_timezone(settings: HubSettings) -> tzinfo:
+    """Days are bucketed in this zone: the configured IANA name, else the hub's local zone."""
+    if settings.display_timezone:
+        try:
+            return ZoneInfo(settings.display_timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ConfigError(f"unknown display_timezone {settings.display_timezone!r}") from None
+    return datetime.now().astimezone().tzinfo or UTC
+
+
 def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> FastAPI:
     app = FastAPI(
         title="openvigie hub",
@@ -112,6 +125,8 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.state.settings = settings
     app.state.db = db
     app.state.inventory = Inventory(db)
+    app.state.prices = load_price_table()
+    app.state.tz = display_timezone(settings)
     app.state.templates = templates_env()
     app.state.enrol_limiter = api.FailureLimiter()
 
