@@ -1,13 +1,19 @@
 name: release
 
 # Tag vX.Y.Z → build → install-test on every target platform → publish to PyPI (after a
-# maintainer approves the `pypi` environment). Manual runs publish to TestPyPI instead.
+# maintainer approves the `pypi` environment). Manual runs publish to TestPyPI instead. PRs
+# that touch packaging run the build and smoke jobs only.
 # Publishing uses PyPI Trusted Publishing (OIDC): no token is stored in this repository.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/check_release.py
+      - pyproject.toml
 
 permissions:
   contents: read
