@@ -40,7 +40,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T1 | A hostile or corrupted agent file crashes or exhausts the collector (huge lines, symlinks to `/etc`, FIFOs) | Bounded readers, no symlink following outside the agent root, malformed lines skipped and counted | #25 |
 | T2 | Agent data executes as code | No `eval`, no `shell=True`, `yaml.safe_load` only, agent binaries are never executed | #25, #30, #31 |
 | T3 | Secrets leak through logs, the hub or `scan --json` | One redaction module applied to every outbound payload and to the root logger; process command lines are never serialized | #24, #28 |
-| T4 | An agent on the same host reads the collector token and writes fake data or, later, loosens its own sandbox | Token file `0600` owned by the collector user; per-host tokens, revocable; collector runs as its own user | #23, #36, #54, #65 |
+| T4 | An agent on the same host reads the collector token and writes fake data or, later, loosens its own sandbox | Token file `0600` owned by the collector user; per-host tokens, revocable; collector runs as its own user; HTTP clients never follow redirects, so the token only goes to the configured hub | #23, #36, #54, #65 |
 | T5 | A web page performs DNS rebinding against the hub on `127.0.0.1` | `TrustedHostMiddleware` with an allow-list, strict CSP, no CORS | #35 |
 | T6 | Stored XSS through agent names, versions or error messages | Jinja2 autoescape, no inline scripts, values escaped in every template | #35, #39 |
 | T7 | The hub is reached from the LAN or the internet | Loopback bind by default; a non-loopback bind needs an explicit opt-in; remote access only via `tailscale serve` | #23, #53 |
