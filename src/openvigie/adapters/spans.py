@@ -41,7 +41,7 @@ def content(value: Any) -> str:
     else:
         text = json.dumps(redact_obj(value), ensure_ascii=False, default=str)
     if len(text) > CONTENT_MAX_CHARS:
-        text = text[:CONTENT_MAX_CHARS] + TRUNCATED
+        text = text[: CONTENT_MAX_CHARS - len(TRUNCATED)] + TRUNCATED  # fits the wire limit
     return text
 
 

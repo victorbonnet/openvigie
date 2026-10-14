@@ -120,7 +120,7 @@ def test_content_is_redacted_and_truncated(tmp_path: Path) -> None:
     (tool,) = [s for s in spans if s.name == "execute_tool Bash"]
     assert tool.status is SpanStatus.ERROR and tool.attributes[semconv.ERROR_TYPE] == "tool_error"
     result = str(tool.attributes[semconv.GEN_AI_TOOL_CALL_RESULT])
-    assert len(result) < CONTENT_MAX_CHARS + 20 and result.endswith("[truncated]")
+    assert len(result) <= CONTENT_MAX_CHARS and result.endswith("[truncated]")
     assert semconv.GEN_AI_TOOL_CALL_ARGUMENTS in tool.attributes
     (chat,) = [s for s in spans if s.name.startswith("chat ")]
     assert "key is" in str(chat.attributes[semconv.GEN_AI_OUTPUT_MESSAGES])

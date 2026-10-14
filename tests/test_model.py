@@ -3,9 +3,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from openvigie import semconv
 from openvigie.model import (
+    EPOCH,
     MAX_ID,
     AdapterHealth,
     AgentInstance,
@@ -146,3 +148,15 @@ def test_stable_id_is_deterministic_and_separates_parts() -> None:
     )
     assert stable_id("ab", "c") != stable_id("a", "bc")
     assert len(stable_id("x")) == 32
+
+
+def test_building_a_wire_type_validates_it() -> None:
+    # An invalid object can't exist, so it fails in the adapter, not as a rejected push.
+    with pytest.raises(ValidationError):
+        UsageRecord("r", "a", EPOCH, input_tokens=-1)
+    with pytest.raises(ValidationError):
+        Host("h" * (MAX_ID + 1), "pi5", "linux", "aarch64", "0.1.0")
+    with pytest.raises(ValidationError):
+        Session("s", "a", datetime(2026, 10, 14))  # no timezone
+    with pytest.raises(ValidationError):
+        Session("s", "a", models=["m"])  # type: ignore[arg-type]  # a list, not a tuple
