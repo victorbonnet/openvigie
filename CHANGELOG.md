@@ -4,7 +4,7 @@ All notable changes to openvigie. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-10-14
 
 First release: the read-only MVP (P0).
 
@@ -19,4 +19,12 @@ First release: the read-only MVP (P0).
 - Enrolment with one-time codes, per-host tokens, revoke and rotate.
 - Optional trace export to Langfuse over OTLP, metadata only by default, with trace links
   from the UI (FR-6).
-- Configurable retention, redaction of secrets everywhere, footprint benchmark in CI.
+- Configurable retention (data is kept until you opt in), redaction of secrets everywhere,
+  footprint benchmark in CI.
+- Service definitions for systemd (dedicated user) and launchd: `openvigie service print`.
+
+### Known limitations
+
+- Hermes and OpenClaw adapters are not in this release.
+- OpenAI (Codex) prices are bundled but not yet verified against OpenAI's price list; the UI
+  says so wherever they are used. Override them in `prices.toml` if needed.
