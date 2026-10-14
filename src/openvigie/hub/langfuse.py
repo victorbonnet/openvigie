@@ -37,6 +37,7 @@ from openvigie.config import LangfuseSettings
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.spans import QueuedSpan, SpanQueue
 from openvigie.model import AttrValue, Span, SpanStatus
+from openvigie.netutil import opener
 from openvigie.redact import redact
 
 log = logging.getLogger(__name__)
@@ -59,16 +60,10 @@ STATUS_CODES = {SpanStatus.UNSET: 0, SpanStatus.OK: 1, SpanStatus.ERROR: 2}
 Transport = Callable[[str, bytes, dict[str, str], float], int]
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
-        return None  # urllib then raises HTTPError with the 3xx status
-
-
 def urllib_post(url: str, body: bytes, headers: dict[str, str], timeout: float) -> int:
-    opener = urllib.request.build_opener(_NoRedirect)
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310 - scheme checked in config
     try:
-        with opener.open(request, timeout=timeout) as response:
+        with opener().open(request, timeout=timeout) as response:
             response.read(MAX_RESPONSE)
             return int(response.status)
     except urllib.error.HTTPError as exc:

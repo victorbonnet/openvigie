@@ -2,6 +2,7 @@
 
 Plain ``http://`` is only allowed to a loopback hub; anything else must be ``https://`` with
 certificate verification (e.g. ``tailscale serve``), so tokens never travel in clear text.
+Redirects are not followed: urllib would replay the bearer token to wherever they point.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from openvigie.config import is_loopback
+from openvigie.netutil import opener
 
 MAX_RESPONSE = 1024 * 1024
 Transport = Callable[[str, str, bytes | None, dict[str, str], float], tuple[int, bytes]]
@@ -45,7 +47,7 @@ def urllib_transport(
 ) -> tuple[int, bytes]:
     request = urllib.request.Request(url, data=body, headers=headers, method=method)  # noqa: S310 - scheme checked
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with opener().open(request, timeout=timeout) as response:
             return response.status, response.read(MAX_RESPONSE)
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read(MAX_RESPONSE)
