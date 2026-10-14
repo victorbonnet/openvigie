@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Hosts</h1>
+{% if views %}
+<table>
+  <thead>
+    <tr><th>Host</th><th>Platform</th><th>Collector</th><th>Last report</th><th>Agents</th><th>Adapters</th></tr>
+  </thead>
+  <tbody>
+  {% for v in views %}
+    {% set h = v.row.host %}
+    <tr>
+      <td><a href="/hosts/{{ h.host_id }}">{{ h.hostname }}</a></td>
+      <td>{{ h.os }}/{{ h.arch }}</td>
+      <td>{{ h.collector_version }}</td>
+      <td>
+        {{ v.row.last_seen | ago }}
+        {% if v.row.revoked_at %}<span class="badge error">revoked</span>
+        {% elif v.stale %}<span class="badge stale">stale</span>{% endif %}
+        {% if v.skewed %}<span class="badge degraded" title="collector clock is {{ v.row.clock_skew_s }}s off">clock skew</span>{% endif %}
+      </td>
+      <td>{% for status, n in v.counts.items() %}<span class="badge {{ status }}">{{ n }} {{ status }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+      <td>{% if v.unhealthy %}<span class="badge degraded">{{ v.unhealthy }} need attention</span>{% else %}<span class="badge ok">ok</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No hosts have reported yet. Enrol one with <code>openvigie hub enrol-code</code>.</p>
+{% endif %}
+{% endblock %}

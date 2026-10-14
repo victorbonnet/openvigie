@@ -21,7 +21,16 @@ def templates_env() -> jinja2.Environment:
     )
     env.globals["version"] = __version__
     env.filters["ago"] = ago
+    env.globals["adapter_alerts"] = adapter_alerts
     return env
+
+
+def adapter_alerts(request: Request) -> int:
+    """Number of adapters, across hosts, that are degraded or failing (nav badge)."""
+    from openvigie.model import HealthState
+
+    health = request.app.state.inventory.adapter_health()
+    return sum(h.health.state is not HealthState.OK for h in health)
 
 
 def render(request: Request, template: str, **context: Any) -> HTMLResponse:

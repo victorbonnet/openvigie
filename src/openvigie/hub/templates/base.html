@@ -14,6 +14,7 @@
     <nav>
       {% block nav %}
       <a href="/">Agents</a>
+      <a href="/hosts">Hosts{% set alerts = adapter_alerts(request) %}{% if alerts %} <span class="badge degraded" title="adapters needing attention">{{ alerts }}</span>{% endif %}</a>
       {% endblock %}
     </nav>
   </header>
