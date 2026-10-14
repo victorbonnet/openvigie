@@ -35,3 +35,32 @@ page names the key and the hub ignores the file until it's fixed.
 An alert is raised once per budget, period and level: when a budget reaches `warn_at`, and
 again when it goes over its limit. The *Budgets* link in the menu counts the alerts from the
 last 24 hours, and the page lists recent ones. Alerts are kept.
+
+## Webhook
+
+To get alerts outside the UI, give the hub a webhook in `hub.toml`. Nothing is sent unless you
+do.
+
+```toml
+[alerts.webhook]
+url = "https://ntfy.sh/your-private-topic"   # https, or http to this machine only
+token_file = "~/.config/openvigie/webhook-token"  # optional, chmod 600: "Authorization: Bearer …"
+```
+
+Each alert is POSTed once as JSON:
+
+```json
+{"source": "openvigie", "id": 12, "at": "2026-10-14T15:00:00+00:00", "level": "exceeded",
+ "title": "Budget claude-daily is over its limit today",
+ "detail": "type claude-code: $6.10 of $5.00",
+ "text": "[openvigie] Budget claude-daily is over its limit today: type claude-code: $6.10 of $5.00",
+ "content": "…same as text…"}
+```
+
+- **Works as is with:** Slack and Discord incoming webhooks (they read `text` and `content`),
+  and anything that accepts a JSON POST (ntfy, Home Assistant, n8n…).
+- **Keep `hub.toml` private.** A Slack or Discord webhook URL is itself a secret. openvigie never
+  logs or shows the URL or the token.
+- **Failed deliveries** are retried with growing pauses, five times in all. The *Budgets* page
+  shows an alert that couldn't be delivered, and why.
+- **Redirects** are not followed.

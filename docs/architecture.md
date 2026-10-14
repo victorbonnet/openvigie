@@ -71,6 +71,7 @@ flowchart LR
 | `hub/store/audit` | The audit log of admin actions (FR-17, D14): append-only, hash-chained, redacted | `AuditLog.record` (the only writer), `entries`, `all`, `verify` |
 | `hub/reports` | Usage and cost aggregation | `usage_report` |
 | `hub/budgets` | Budgets from `budgets.toml` and their alerts (FR-14, D17) | `load_budgets`, `evaluate`, `check`, `budgets_lifespan` |
+| `hub/notify` | Sending alerts to a webhook (FR-14, D17; off unless configured) | `WebhookNotifier.run_once`, `notify_lifespan` |
 | `hub/riskview` | Risk of known agents | `agent_risks` |
 | `hub/langfuse` | Trace export (FR-6, opt-in) | `LangfuseExporter`, `trace_link` |
 

@@ -20,8 +20,6 @@ import asyncio
 import base64
 import json
 import logging
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -37,7 +35,7 @@ from openvigie.config import LangfuseSettings
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.spans import QueuedSpan, SpanQueue
 from openvigie.model import AttrValue, Span, SpanStatus
-from openvigie.netutil import opener
+from openvigie.netutil import post
 from openvigie.redact import redact
 
 log = logging.getLogger(__name__)
@@ -51,23 +49,12 @@ MAX_ATTEMPTS = 8
 FIRST_BACKOFF = timedelta(seconds=10)
 MAX_BACKOFF = timedelta(minutes=10)
 AUTH_PAUSE = timedelta(minutes=10)
-MAX_RESPONSE = 64 * 1024
 
 KIND_INTERNAL, KIND_CLIENT = 1, 3
 STATUS_CODES = {SpanStatus.UNSET: 0, SpanStatus.OK: 1, SpanStatus.ERROR: 2}
 
 # (url, body, headers, timeout) -> HTTP status; raises OSError on network failure
 Transport = Callable[[str, bytes, dict[str, str], float], int]
-
-
-def urllib_post(url: str, body: bytes, headers: dict[str, str], timeout: float) -> int:
-    request = urllib.request.Request(url, data=body, headers=headers, method="POST")  # noqa: S310 - scheme checked in config
-    try:
-        with opener().open(request, timeout=timeout) as response:
-            response.read(MAX_RESPONSE)
-            return int(response.status)
-    except urllib.error.HTTPError as exc:
-        return exc.code
 
 
 # --- OTLP JSON ---------------------------------------------------------------------------------
@@ -176,7 +163,7 @@ class LangfuseExporter:
         db: Database,
         *,
         queue_hours: int = 24,
-        transport: Transport = urllib_post,
+        transport: Transport = post,
     ) -> None:
         self.settings = settings
         self.url = settings.host.rstrip("/") + ENDPOINT
