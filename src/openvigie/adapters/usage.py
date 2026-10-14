@@ -48,8 +48,10 @@ def tail_files(
     budget: TailBudget,
     *,
     max_depth: int = 6,
-) -> Iterator[Any]:
-    """Yield new JSON values from every matching file, staging a cursor per file.
+) -> Iterator[tuple[str, Any]]:
+    """Yield ``(file key, JSON value)`` for new lines in every matching file.
+
+    A cursor is staged per file once its new lines have been consumed.
 
     Files untouched since their cursor are skipped with a ``stat`` only. On a first read, files
     last modified before ``state.backfill_since`` are skipped entirely (cursor set to the end).
@@ -82,5 +84,6 @@ def tail_files(
         start = 0 if result.reset or cursor is None else cursor.offset
         budget.remaining -= max(0, result.cursor.offset - start)
         batch.stats.add(result.stats)
-        yield from result.values
+        for value in result.values:
+            yield key, value
         state.stage(key, result.cursor.to_dict())
