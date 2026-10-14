@@ -1,0 +1,1 @@
+"""hub package (MVP scaffolding)."""
