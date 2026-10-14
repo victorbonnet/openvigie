@@ -107,6 +107,9 @@ def _usage(**overrides: Any) -> dict[str, Any]:
         {"record_id": "x" * (MAX_ID + 1)},
         {"timestamp": "2026-10-14T12:00:00"},  # no timezone
         {"timestamp": "yesterday"},
+        {"timestamp": 1760000000},  # seconds are not a timestamp on the wire
+        {"input_tokens": 12.0},
+        {"provider": 7},
         {"agent_id": None},
         {"surprise": 1},
     ],
@@ -159,4 +162,4 @@ def test_building_a_wire_type_validates_it() -> None:
     with pytest.raises(ValidationError):
         Session("s", "a", datetime(2026, 10, 14))  # no timezone
     with pytest.raises(ValidationError):
-        Session("s", "a", models=["m"])  # type: ignore[arg-type]  # a list, not a tuple
+        AgentInstance("a", "h", "codex", "Codex", process_running="yes")  # type: ignore[arg-type]

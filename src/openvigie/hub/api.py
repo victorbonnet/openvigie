@@ -1,4 +1,5 @@
-"""Collector-facing JSON API: enrolment and (later) ingest. Bodies are untrusted input."""
+"""The hub's JSON API (``/api/v1``): enrolment and ingest for collectors, agents and usage for
+scripts. Bodies are untrusted input, validated by the models in ``api_models``."""
 
 from __future__ import annotations
 
@@ -7,40 +8,33 @@ import time
 from collections import deque
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from datetime import time as day_time
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 
+from openvigie.hub.api_models import (
+    Accepted,
+    AgentOut,
+    AgentsResponse,
+    EnrolRequest,
+    EnrolResponse,
+    FlagOut,
+    IngestRequest,
+    IngestResponse,
+    RiskOut,
+    TracesWanted,
+    UsageResponse,
+    UsageRowOut,
+)
 from openvigie.hub.reports import DIMENSIONS, usage_report
 from openvigie.hub.riskview import agent_risks
 from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
-from openvigie.model import (
-    SCHEMA_VERSION,
-    AdapterHealth,
-    AgentInstance,
-    Capabilities,
-    CodecError,
-    Host,
-    Session,
-    Span,
-    StatusEvent,
-    Timestamp,
-    UsageRecord,
-    from_dict,
-    to_dict,
-    wire_type,
-)
+from openvigie.model import SCHEMA_VERSION
 
 router = APIRouter(prefix="/api/v1")
-
-
-@wire_type
-class _SentAt:
-    at: Timestamp
 
 
 FAILURE_WINDOW_S = 60.0
@@ -75,19 +69,6 @@ def credentials(request: Request) -> Credentials:
     return Credentials(request.app.state.db)
 
 
-async def json_body(request: Request) -> dict[str, Any]:
-    try:
-        body = await request.json()
-    except ValueError:
-        raise HTTPException(422, "body must be JSON") from None
-    if not isinstance(body, dict):
-        raise HTTPException(422, "body must be a JSON object")
-    return body
-
-
-JsonBody = Annotated[dict[str, Any], Depends(json_body)]
-
-
 def require_host(request: Request) -> str:
     """Resolve ``Authorization: Bearer <token>`` to a host id, or 401."""
     header = request.headers.get("authorization", "")
@@ -100,19 +81,15 @@ def require_host(request: Request) -> str:
     return host_id
 
 
-@router.post("/enrol")
-async def enrol(request: Request, body: JsonBody) -> JSONResponse:
+@router.post("/enrol", status_code=201)
+async def enrol(request: Request, body: EnrolRequest) -> EnrolResponse:
     limiter: FailureLimiter = request.app.state.enrol_limiter
     if limiter.blocked():
         raise HTTPException(429, "too many failed enrolments, try again in a minute")
-    code = body.get("code")
-    try:
-        host = from_dict(Host, body.get("host"))
-    except CodecError as exc:
-        raise HTTPException(422, str(exc)) from None
+    code, host = body.code, body.host
     now = now_utc()
     creds = credentials(request)
-    if not isinstance(code, str) or len(code) > 128 or not creds.code_usable(code, now):
+    if not creds.code_usable(code, now):
         limiter.record()
         raise HTTPException(403, "invalid, expired or already used enrolment code")
     bound = creds.code_bound_to(code, host.host_id)
@@ -126,96 +103,56 @@ async def enrol(request: Request, body: JsonBody) -> JSONResponse:
     request.app.state.inventory.upsert_host(host, now)
     if bound:
         creds.reinstate(host.host_id)
-    token = creds.issue_token(host.host_id, now)
-    return JSONResponse({"host_id": host.host_id, "token": token}, status_code=201)
+    return EnrolResponse(host_id=host.host_id, token=creds.issue_token(host.host_id, now))
 
 
-INGEST_LIMITS = {
-    "agents": 500,
-    "status_events": 5000,
-    "adapter_health": 64,
-    "usage": 5000,
-    "sessions": 1000,
-    "spans": 2000,
-    "capabilities": 500,
-}
-KNOWN_SECTIONS = {"schema_version", "host", "sent_at", "collector", *INGEST_LIMITS}
 NEXT_PUSH_S = 5
-
-
-def _section[T](body: dict[str, Any], name: str, cls: type[T]) -> list[T]:
-    items = body.get(name, [])
-    if not isinstance(items, list):
-        raise HTTPException(422, f"{name} must be a list")
-    if len(items) > INGEST_LIMITS[name]:
-        raise HTTPException(413, f"{name}: at most {INGEST_LIMITS[name]} items per push")
-    try:
-        return [from_dict(cls, item) for item in items]
-    except CodecError as exc:
-        raise HTTPException(422, f"{name}: {exc}") from None
 
 
 @router.post("/ingest")
 async def ingest(
-    request: Request, body: JsonBody, host_id: Annotated[str, Depends(require_host)]
-) -> dict[str, Any]:
-    version = body.get("schema_version")
-    if version != SCHEMA_VERSION:
+    request: Request, body: IngestRequest, host_id: Annotated[str, Depends(require_host)]
+) -> IngestResponse:
+    if body.schema_version != SCHEMA_VERSION:
         raise HTTPException(
             422, f"unsupported schema_version (this hub speaks {SCHEMA_VERSION}); upgrade openvigie"
         )
-    try:
-        host = from_dict(Host, body.get("host"))
-        sent_at = from_dict(_SentAt, {"at": body.get("sent_at")}).at
-    except CodecError as exc:
-        raise HTTPException(422, str(exc)) from None
-    if host.host_id != host_id:
+    if body.host.host_id != host_id:
         raise HTTPException(403, "token does not belong to this host")
-    agents = _section(body, "agents", AgentInstance)
-    events = _section(body, "status_events", StatusEvent)
-    health = _section(body, "adapter_health", AdapterHealth)
-    usage = _section(body, "usage", UsageRecord)
-    sessions = _section(body, "sessions", Session)
-    spans = _section(body, "spans", Span)
-    capabilities = _section(body, "capabilities", Capabilities)
-    collector = body.get("collector", {})
-    dropped = collector.get("spool_dropped") if isinstance(collector, dict) else None
-    if any(a.host_id != host_id for a in agents):
+    if any(a.host_id != host_id for a in body.agents):
         raise HTTPException(403, "agents must belong to the authenticated host")
 
     now = now_utc()
-    skew = round((sent_at - now).total_seconds(), 1)
+    skew = round((body.sent_at - now).total_seconds(), 1)
     inventory = request.app.state.inventory
-    inventory.upsert_host(host, now, clock_skew_s=skew)
-    accepted = {
-        "agents": inventory.upsert_agents(agents, now),
-        "status_events": inventory.add_status_events(events, host_id),
-        "adapter_health": len(health),
-    }
-    inventory.set_adapter_health(host_id, health, now)
+    inventory.upsert_host(body.host, now, clock_skew_s=skew)
+    agents = inventory.upsert_agents(body.agents, now)
+    events = inventory.add_status_events(body.status_events, host_id)
+    inventory.set_adapter_health(host_id, body.adapter_health, now)
     usage_store = UsageStore(request.app.state.db)
-    accepted["usage"] = usage_store.add_records(usage, host_id)
-    accepted["sessions"] = usage_store.add_sessions(sessions, host_id)
-    accepted["capabilities"] = CapabilityStore(request.app.state.db).put(capabilities, host_id)
     exporter = request.app.state.exporter
-    # spans are only queued when they will be exported; never stored otherwise
-    accepted["spans"] = (
-        SpanQueue(request.app.state.db).enqueue(spans, host_id, now) if exporter else 0
+    accepted = Accepted(
+        agents=agents,
+        status_events=events,
+        adapter_health=len(body.adapter_health),
+        usage=usage_store.add_records(body.usage, host_id),
+        sessions=usage_store.add_sessions(body.sessions, host_id),
+        capabilities=CapabilityStore(request.app.state.db).put(body.capabilities, host_id),
+        # spans are only queued when they will be exported; never stored otherwise
+        spans=SpanQueue(request.app.state.db).enqueue(body.spans, host_id, now) if exporter else 0,
     )
-    if isinstance(dropped, int) and not isinstance(dropped, bool) and 0 <= dropped < 2**31:
-        usage_store.set_spool_dropped(host_id, dropped)
-    ignored = sorted(set(body) - KNOWN_SECTIONS)
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "accepted": accepted,
-        "ignored": ignored,
-        "next_push_s": NEXT_PUSH_S,
-        # tells collectors whether to build and send spans (FR-6)
-        "traces": {
-            "wanted": exporter is not None,
-            "export_content": bool(exporter and exporter.settings.export_content),
-        },
-    }
+    if body.collector.spool_dropped is not None:
+        usage_store.set_spool_dropped(host_id, body.collector.spool_dropped)
+    return IngestResponse(
+        schema_version=SCHEMA_VERSION,
+        accepted=accepted,
+        ignored=sorted(body.model_extra or {}),
+        next_push_s=NEXT_PUSH_S,
+        traces=TracesWanted(
+            wanted=exporter is not None,
+            export_content=bool(exporter and exporter.settings.export_content),
+        ),
+    )
 
 
 DateParam = Annotated[str | None, Query(max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")]
@@ -236,28 +173,24 @@ def date_range(
 
 
 @router.get("/agents")
-def agents(request: Request) -> dict[str, Any]:
+def agents(request: Request) -> AgentsResponse:
     """Every agent with its status and risk flags (FR-2, FR-9)."""
     rows = request.app.state.inventory.agents()
     risks = agent_risks(request.app.state.db, request.app.state.risk_rules, rows)
-    return {
-        "agents": [
-            {
-                **to_dict(row.agent),
-                "hostname": row.hostname,
-                "risk": {
-                    "level": risks[row.agent.agent_id].level,
-                    "flags": [
-                        {"id": f.rule_id, "severity": f.severity.label, "title": f.title,
-                         "reason": f.reason}
-                        for f in risks[row.agent.agent_id].flags
-                    ],
-                },
-            }
+    return AgentsResponse(
+        agents=[
+            AgentOut(
+                agent=row.agent,
+                hostname=row.hostname,
+                risk=RiskOut(
+                    level=risks[row.agent.agent_id].level,
+                    flags=[FlagOut.of(f) for f in risks[row.agent.agent_id].flags],
+                ),
+            )
             for row in rows
         ],
-        "rule_problems": request.app.state.risk_rules.problems,
-    }  # fmt: skip
+        rule_problems=request.app.state.risk_rules.problems,
+    )
 
 
 @router.get("/usage")
@@ -266,7 +199,7 @@ def usage(
     group_by: Annotated[str, Query(max_length=64)] = "",
     start: Annotated[DateParam, Query(alias="from")] = None,
     end: Annotated[DateParam, Query(alias="to")] = None,
-) -> dict[str, Any]:
+) -> UsageResponse:
     dims = [d for d in group_by.split(",") if d]
     unknown = sorted(set(dims) - set(DIMENSIONS))
     if unknown:
@@ -276,10 +209,10 @@ def usage(
         request.app.state.db, request.app.state.prices,
         start=begin, end=finish, group_by=dims, tz=request.app.state.tz,
     )  # fmt: skip
-    return {
-        "from": begin.isoformat(),
-        "to": finish.isoformat(),
-        "group_by": dims,
-        "rows": [row.to_json() for row in report.rows],
-        "total": report.total.to_json(),
-    }
+    return UsageResponse(
+        start=begin,
+        end=finish,
+        group_by=dims,
+        rows=[UsageRowOut.of(row) for row in report.rows],
+        total=UsageRowOut.of(report.total),
+    )

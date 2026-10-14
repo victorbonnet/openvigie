@@ -17,6 +17,7 @@ from importlib import resources
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -26,6 +27,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from openvigie import __version__
 from openvigie.config import ConfigError, HubSettings
 from openvigie.hub import api, ui
+from openvigie.hub.api_models import describe_invalid
 from openvigie.hub.langfuse import LangfuseExporter, export_lifespan
 from openvigie.hub.retention import retention_lifespan
 from openvigie.hub.store.db import Database
@@ -167,6 +169,11 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
                       else "Error", status=exc.status_code, detail=str(exc.detail))  # fmt: skip
         page.status_code = exc.status_code
         return page
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> Response:
+        status, detail = describe_invalid(list(exc.errors()))  # never echoes the input
+        return await http_error(request, StarletteHTTPException(status, detail))
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:

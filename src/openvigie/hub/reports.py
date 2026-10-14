@@ -50,27 +50,10 @@ class UsageRow:
         """False when part of the usage could not be priced: ``cost`` is then a lower bound."""
         return self.unknown == 0 and self.unpriced_tokens == 0
 
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "key": self.key,
-            "labels": self.labels,
-            "records": self.records,
-            "tokens": {
-                "input": self.input_tokens,
-                "output": self.output_tokens,
-                "cache_read": self.cache_read_tokens,
-                "cache_write": self.cache_write_tokens,
-            },
-            "coverage": {
-                "exact": self.exact,
-                "estimated": self.estimated,
-                "unknown": self.unknown,
-                "unpriced_tokens": self.unpriced_tokens,
-            },
-            "cost_usd": str(self.cost.quantize(Decimal("0.000001"))),
-            "cost_complete": self.cost_complete,
-            "unverified_price_models": sorted(self.unverified_models),
-        }
+    @property
+    def cost_usd(self) -> str:
+        """The cost as a decimal string, to the micro-dollar."""
+        return str(self.cost.quantize(Decimal("0.000001")))
 
 
 @dataclass
