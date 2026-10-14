@@ -162,6 +162,75 @@ class Span:
     attributes: Mapping[str, AttrValue] = field(default_factory=dict)
 
 
+class ApprovalLevel(StrEnum):
+    """How much an agent asks before acting, normalised across agents (FR-8)."""
+
+    ASK = "ask"  # asks before edits and commands
+    AUTO_EDIT = "auto_edit"  # edits files without asking, asks for commands
+    NEVER_ASK = "never_ask"  # runs anything without asking (bypass / yolo modes)
+    UNKNOWN = "unknown"
+
+
+class FsAccess(StrEnum):
+    READ_ONLY = "read_only"
+    WORKSPACE = "workspace"  # writes limited to the project / writable roots
+    FULL = "full"
+    UNKNOWN = "unknown"
+
+
+class NetAccess(StrEnum):
+    NONE = "none"
+    ALLOWLIST = "allowlist"
+    FULL = "full"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class McpServer:
+    name: str = _id()
+    transport: str = _id()  # "stdio" | "http" | "sse" | other
+    command: str | None = field(default=None, metadata={"max_len": MAX_ID})  # first word only
+    url_host: str | None = field(default=None, metadata={"max_len": MAX_ID})
+    pinned: bool | None = None  # package version pinned (npx pkg@1.2.3); None: not a package
+    secret_names: tuple[str, ...] = ()  # env var names passed to it, never values
+
+
+@dataclass(frozen=True, slots=True)
+class Hook:
+    event: str = _id()
+    command: str | None = field(default=None, metadata={"max_len": MAX_ID})  # first word only
+
+
+@dataclass(frozen=True, slots=True)
+class SecretRef:
+    """A secret an agent's tools can reach, by name only: values are never read into the model."""
+
+    name: str = _id()
+    where: str = _id()  # e.g. "settings.json env", "mcp:github"
+
+
+@dataclass(frozen=True, slots=True)
+class Capabilities:
+    """What an agent can access (FR-8). ``None`` and ``UNKNOWN`` mean unknown, never "none"."""
+
+    agent_id: str = _id()
+    observed_at: datetime = field(default_factory=lambda: datetime.fromtimestamp(0).astimezone())
+    approvals: ApprovalLevel = ApprovalLevel.UNKNOWN
+    approval_mode: str | None = field(default=None, metadata={"max_len": MAX_ID})  # agent's term
+    filesystem: FsAccess = FsAccess.UNKNOWN
+    writable_roots: tuple[str, ...] = ()
+    network: NetAccess = NetAccess.UNKNOWN
+    network_allowlist: tuple[str, ...] = ()
+    shell: bool | None = None  # can run shell commands
+    tools_allowed: tuple[str, ...] = ()
+    tools_denied: tuple[str, ...] = ()
+    mcp_servers: tuple[McpServer, ...] = ()
+    skills: tuple[str, ...] = ()
+    hooks: tuple[Hook, ...] = ()
+    secrets: tuple[SecretRef, ...] = ()
+    sources: tuple[str, ...] = ()  # config files read, as display paths
+
+
 @dataclass(frozen=True, slots=True)
 class AdapterHealth:
     adapter: str = _id()
@@ -190,6 +259,8 @@ def to_dict(obj: Any) -> dict[str, Any]:
 
 
 def _encode(value: Any) -> Any:
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return to_dict(value)
     if isinstance(value, StrEnum):
         return value.value
     if isinstance(value, datetime):
@@ -251,6 +322,8 @@ def _decode(tp: Any, value: Any, where: str, max_len: int) -> Any:
         }
     if value is None:
         raise CodecError(f"{where}: must not be null")
+    if dataclasses.is_dataclass(tp) and isinstance(tp, type) and tp.__module__ == __name__:
+        return from_dict(tp, value)
     return _decode_scalar(tp, value, where, max_len)
 
 

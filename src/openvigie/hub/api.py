@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from openvigie.hub.reports import DIMENSIONS, usage_report
+from openvigie.hub.store.capabilities import CapabilityStore
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
@@ -21,6 +22,7 @@ from openvigie.model import (
     SCHEMA_VERSION,
     AdapterHealth,
     AgentInstance,
+    Capabilities,
     CodecError,
     Host,
     Session,
@@ -132,6 +134,7 @@ INGEST_LIMITS = {
     "usage": 5000,
     "sessions": 1000,
     "spans": 2000,
+    "capabilities": 500,
 }
 KNOWN_SECTIONS = {"schema_version", "host", "sent_at", "collector", *INGEST_LIMITS}
 NEXT_PUSH_S = 5
@@ -171,6 +174,7 @@ async def ingest(
     usage = _section(body, "usage", UsageRecord)
     sessions = _section(body, "sessions", Session)
     spans = _section(body, "spans", Span)
+    capabilities = _section(body, "capabilities", Capabilities)
     collector = body.get("collector", {})
     dropped = collector.get("spool_dropped") if isinstance(collector, dict) else None
     if any(a.host_id != host_id for a in agents):
@@ -189,6 +193,7 @@ async def ingest(
     usage_store = UsageStore(request.app.state.db)
     accepted["usage"] = usage_store.add_records(usage, host_id)
     accepted["sessions"] = usage_store.add_sessions(sessions, host_id)
+    accepted["capabilities"] = CapabilityStore(request.app.state.db).put(capabilities, host_id)
     exporter = request.app.state.exporter
     # spans are only queued when they will be exported; never stored otherwise
     accepted["spans"] = (

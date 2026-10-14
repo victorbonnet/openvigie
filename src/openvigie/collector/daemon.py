@@ -31,7 +31,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from openvigie.adapters.base import Adapter, AdapterState, HostContext, TraceOptions
-from openvigie.adapters.registry import Discovery, run_collect, run_detect
+from openvigie.adapters.registry import Discovery, run_capabilities, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
 from openvigie.collector.otlp import Arbiter, OtlpReceiver, OtlpUsage
 from openvigie.collector.state import StateStore
@@ -50,6 +50,7 @@ SPAN_CHUNK_BYTES = 1024 * 1024  # the hub refuses request bodies over 2 MiB
 SPOOL_FLUSH_PER_TICK = 20
 MAX_BACKOFF_S = 60.0
 UNAUTHORIZED_RETRY_S = 300.0
+CAPABILITIES_REFRESH_S = 3600.0
 
 
 def rss_mib() -> float:
@@ -98,6 +99,8 @@ class Collector:
         self.last_slow = float("-inf")
         self.adapter_states: dict[str, AdapterState] = {}
         self.otlp = otlp
+        self.capabilities_sent: dict[str, str] = {}
+        self.capabilities_sent_at = float("-inf")
         self.arbiter = Arbiter(settings.otlp.usage_source)
 
     # --- one tick ---------------------------------------------------------------------------
@@ -194,7 +197,11 @@ class Collector:
         return self.adapter_states[adapter.agent_type]
 
     def usage_payload(
-        self, usage: list[Any], sessions: list[Any], spans: list[Any] | None = None
+        self,
+        usage: list[Any],
+        sessions: list[Any],
+        spans: list[Any] | None = None,
+        capabilities: list[Any] | None = None,
     ) -> dict[str, Any]:
         payload = {
             "schema_version": SCHEMA_VERSION,
@@ -205,6 +212,8 @@ class Collector:
         }
         if spans:
             payload["spans"] = spans
+        if capabilities:
+            payload["capabilities"] = capabilities
         if self.store:
             payload["collector"] = {"spool_dropped": self.store.dropped()}
         return payload
@@ -233,7 +242,8 @@ class Collector:
             spans += [to_dict(s) for s in batch.spans]
             touched.append(state)
         spans += self._otlp_spans()
-        if not touched:
+        capabilities = self._changed_capabilities(by_type, now)
+        if not touched and not capabilities:
             return
         payloads = [
             self.usage_payload(usage[i : i + USAGE_CHUNK], sessions if i == 0 else [])
@@ -242,6 +252,8 @@ class Collector:
         if not usage and not sessions:
             payloads = []
         payloads += [self.usage_payload([], [], chunk) for chunk in _span_chunks(spans)]
+        if capabilities:
+            payloads.append(self.usage_payload([], [], capabilities=capabilities))
         delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
         if not delivered:
             if self.store is None:
@@ -252,6 +264,24 @@ class Collector:
                 self.store.spool_put(redact_obj(p))
         for state in touched:
             state.commit()  # data is now with the hub or in the durable spool
+
+    def _changed_capabilities(self, by_type: dict[str, Adapter], now: float) -> list[Any]:
+        """Capability snapshots that changed, plus a refresh of all of them every so often."""
+        refresh = now - self.capabilities_sent_at >= CAPABILITIES_REFRESH_S
+        out = []
+        for agent in self.agents:
+            adapter = by_type.get(agent.agent_type)
+            caps = run_capabilities(adapter, self.ctx, agent) if adapter else None
+            if caps is None:
+                continue
+            body = to_dict(caps)
+            key = json.dumps({k: v for k, v in body.items() if k != "observed_at"}, sort_keys=True)
+            if refresh or self.capabilities_sent.get(agent.agent_id) != key:
+                self.capabilities_sent[agent.agent_id] = key
+                out.append(body)
+        if refresh:
+            self.capabilities_sent_at = now
+        return out
 
     def _otlp_spans(self) -> list[dict[str, Any]]:
         """Agent-emitted spans, credited like OTLP usage; dropped unless the hub wants traces."""
