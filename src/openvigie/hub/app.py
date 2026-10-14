@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from importlib import resources
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -23,7 +24,7 @@ from openvigie.config import HubSettings
 from openvigie.hub import api, ui
 from openvigie.hub.store.db import Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.hub.templating import templates_env
+from openvigie.hub.templating import render, templates_env
 
 MAX_BODY_BYTES = 2 * 1024 * 1024
 CSP = (
@@ -122,6 +123,15 @@ def create_app(settings: HubSettings, db: Database, *, debug: bool = False) -> F
     app.include_router(ui.router)
     static = resources.files("openvigie.hub") / "static"
     app.mount("/static", StaticFiles(directory=str(static)), name="static")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException) -> Response:
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": exc.detail}, exc.status_code, headers=exc.headers)
+        page = render(request, "error.html", title="Not found" if exc.status_code == 404
+                      else "Error", status=exc.status_code, detail=str(exc.detail))  # fmt: skip
+        page.status_code = exc.status_code
+        return page
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, str]:
