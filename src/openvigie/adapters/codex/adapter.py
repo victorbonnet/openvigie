@@ -15,6 +15,7 @@ When traces are enabled the same pass builds GenAI spans (``spans.py``, FR-6).
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -104,6 +105,9 @@ class CodexAdapter(Adapter):
                 )
             )
         return found
+
+    def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
+        return tuple(self.procs.get(agent_id, ()))
 
     def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
         root = self.roots.get(agent.agent_id)

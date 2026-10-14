@@ -11,6 +11,7 @@ The ``claude`` binary is never executed and credential files are never opened.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from pathlib import Path, PurePath
 from typing import Any
 
@@ -110,6 +111,9 @@ class ClaudeCodeAdapter(Adapter):
         except (OSError, UnsafeFileError):
             self.notes.append("could not read newest transcript")
         return None
+
+    def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
+        return tuple(self.procs.get(agent_id, ()))
 
     def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
         root = self.roots.get(agent.agent_id)

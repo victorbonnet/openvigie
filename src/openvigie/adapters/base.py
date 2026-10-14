@@ -193,6 +193,11 @@ class Adapter(ABC):
         """
         return None
 
+    def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
+        """The processes the latest ``detect`` attributed to this agent (FR-13: stop and kill
+        act on these only). Default: none, so the agent can't be stopped from the hub."""
+        return ()
+
     def health(self) -> AdapterHealth:
         """Default: degraded when files had to be skipped, with the first note as reason."""
         degraded = self.stats.parse_errors or self.stats.oversized or self.notes

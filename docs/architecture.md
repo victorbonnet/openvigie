@@ -52,14 +52,15 @@ flowchart LR
 | `pricing` | Prices and cost (FR-4) | `load_price_table`, `PriceTable.find`, `compute_cost`; file format `PriceFile` |
 | `risk` | Risk rules and flags (FR-9) | `load_rules`, `facts`, `evaluate`, `level`; file format `RuleFile` / `Rule` / `Condition` |
 | `openshell` | Everything about NVIDIA OpenShell; the only module that talks to it (D13) | `cli.Reader(cli_runner()).read()` → `Inventory` (state, sandboxes with their policy); models of the CLI's JSON in `models`; `mapping.OpenShellProbe` (which sandbox a process runs in), `labelled_agent_type`; `starter.generate` (a starter policy, as text); `policy.parse_yaml` / `to_yaml` / `to_json` / `diff` (network rules an admin writes, D15); `apply.apply_network` (its only write: set network rules, revert if they do not load); `versions.MIN_SUPPORTED`, `is_supported` |
-| `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `health`), `HostContext`, `AdapterState`, `ActivityBatch` |
+| `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `processes`, `health`), `HostContext`, `AdapterState`, `ActivityBatch` |
 | `adapters/registry` | Loading adapters and running them safely | `discover`, `run_detect`, `run_collect`, `run_capabilities` |
 | `adapters/usage`, `spans`, `caps` | Helpers shared by adapters | incremental JSONL tailing; span ids and content; capability parsing |
 | `adapters/claude_code`, `codex` | One agent type each | an `Adapter` subclass, registered as an entry point |
 | `collector/daemon` | The collector loop | `Collector.tick`, `Collector.run` |
 | `collector/client` | HTTP to the hub (stdlib) | `HubClient.post`, `HubError` |
 | `collector/state` | Cursors, the outbound spool, command ids already seen | `StateStore` |
-| `collector/commands` | Running the hub's commands, only actions on the local allowlist (D14) | `CommandRunner.run_all`, `ACTIONS` |
+| `collector/commands` | Running the hub's commands, only actions on the local allowlist (D14) | `CommandRunner.run_all`, `ACTIONS`, `agent_actions` |
+| `collector/lifecycle` | Stopping and killing an agent's attributed processes (FR-13, D16) | `signal_agent` |
 | `collector/otlp` | Local OTLP receiver (optional) | `OtlpReceiver`, `Arbiter` |
 | `hub/app` | The FastAPI app and its hardening (hosts, body limit, headers) | `create_app` |
 | `hub/api` + `hub/api_models` | The JSON API | `EnrolRequest`/`Response`, `IngestRequest`/`Response`, `AgentsResponse`, `SandboxesResponse`, `UsageResponse`, `AuditResponse` |

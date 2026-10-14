@@ -54,6 +54,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T13 | Someone forges `Tailscale-User-Login` to become admin | Identity is ignored unless `trust_tailscale_identity` is on; then only on loopback requests addressed to the MagicDNS name; `Tailscale-*` headers removed before handlers. Residual risk: any local user on the hub host can forge it, so trust requires a single-user hub host | #162 |
 | T14 | Admin actions are denied or hidden after the fact | Hash-chained audit log, kept forever, redacted, verified by `openvigie hub audit verify`; keep the printed head hash elsewhere to detect truncation | #161 |
 | T15 | A compromised hub, or a forged reply, makes collectors run actions | Each collector runs only actions on its own `allow_actions` (empty by default); commands expire, ids are never accepted twice (kept across restarts), the hub delivers each at most once; replies come only over the authenticated push, and collectors never follow redirects | #163 |
+| T16 | A compromised hub stops or kills processes on a host | Each host allows `agent.stop` / `agent.kill` separately (off by default); the hub names an agent, never a PID; the collector signals only processes it attributed to that agent and their children, re-checked by start time, never PID 1 or itself, and without privilege escalation | #174 |
 
 ## Rules for every change
 
