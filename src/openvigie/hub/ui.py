@@ -11,13 +11,16 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse
+from markupsafe import Markup
 
 from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
-from openvigie.hub.reports import usage_report
+from openvigie.hub.reports import UsageRow, usage_report
 from openvigie.hub.store.inventory import AgentRow, HostRow, Inventory
+from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.templating import render
-from openvigie.model import AgentStatus, HealthState
+from openvigie.model import AgentStatus, HealthState, Session
+from openvigie.pricing import PriceTable
 
 router = APIRouter(include_in_schema=False)
 
@@ -101,6 +104,66 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         row=row,
         health=health[0] if health else None,
         history=inventory.status_history(agent_id, limit=50),
+        usage=agent_usage(request, agent_id),
+        money=money,
+        compact=compact,
+    )
+
+
+@dataclass(frozen=True)
+class SessionView:
+    usage: UsageRow
+    session: Session | None
+
+
+@dataclass(frozen=True)
+class AgentUsage:
+    total: UsageRow
+    chart: Markup
+    models: list[UsageRow]
+    sessions: list[SessionView]
+
+
+def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
+    state = request.app.state
+    begin, finish = date_range(state.tz, None, None, default_days=days)
+    report = partial(usage_report, state.db, state.prices, start=begin, end=finish,
+                     tz=state.tz, agent_id=agent_id)  # fmt: skip
+    per_day = report(group_by=["day"])
+    day_list = []
+    day = begin.date()
+    while day < finish.date():
+        day_list.append(day.isoformat())
+        day += timedelta(days=1)
+    series = [Series(agent_id, "cost", 1, {r.key["day"]: r.cost for r in per_day.rows})]
+    known = {s.session_id: s for s in UsageStore(state.db).sessions(agent_id)}
+    sessions = sorted(report(group_by=["session"]).rows, key=lambda r: r.cost, reverse=True)
+    return AgentUsage(
+        total=per_day.total,
+        chart=stacked_bars(day_list, series),
+        models=sorted(report(group_by=["model"]).rows, key=lambda r: r.cost, reverse=True),
+        sessions=[SessionView(r, known.get(r.key["session"])) for r in sessions[:20]],
+    )
+
+
+@router.get("/prices", response_class=HTMLResponse)
+def prices_page(request: Request) -> HTMLResponse:
+    state = request.app.state
+    table: PriceTable = state.prices
+    begin, finish = date_range(state.tz, None, None, default_days=90)
+    seen = usage_report(state.db, table, start=begin, end=finish, group_by=["model"], tz=state.tz)
+    unpriced = [r for r in seen.rows if r.unpriced_tokens]
+    prices = sorted(table.models.values(), key=lambda p: (p.provider, p.model_id))
+    return render(
+        request,
+        "prices.html",
+        title="Prices",
+        prices=prices,
+        sources=table.sources,
+        included=table.cached_input_included,
+        unpriced=unpriced,
+        override_path=str(table.override_path or "prices.toml"),
+        compact=compact,
     )
 
 

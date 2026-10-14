@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Prices</h1>
+<p class="muted">USD per million tokens. Cost is computed from this table when you view it, so a change
+  re-prices history. Models missing from the table are <strong>unpriced</strong>: their cost shows as
+  unknown, never $0.</p>
+
+{% if unpriced %}
+<h2>Seen in the last 90 days but unpriced</h2>
+<table>
+  <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Unpriced tokens</th></tr></thead>
+  <tbody>
+  {% for r in unpriced %}
+    <tr><td>{{ r.labels.model }}</td><td class="num">{{ r.records }}</td><td class="num">{{ compact(r.unpriced_tokens) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Price table</h2>
+<table>
+  <thead>
+    <tr><th>Provider</th><th>Model</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th>
+      <th class="num">Cache write 5m</th><th class="num">Cache write 1h</th><th>As of</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+  {% for p in prices %}
+    <tr>
+      <td>{{ p.provider }}</td>
+      <td>{{ p.model_id }}{% if p.aliases %}<br><span class="muted">also {{ p.aliases | join(", ") }}</span>{% endif %}
+        {% if p.above %}<br><span class="muted">above {{ compact(p.above_prompt_tokens) }} prompt tokens: {{ p.above.input }} / {{ p.above.output }}</span>{% endif %}</td>
+      <td class="num">{{ p.rates.input }}</td>
+      <td class="num">{{ p.rates.output }}</td>
+      <td class="num">{{ p.rates.cache_read if p.rates.cache_read is not none else "—" }}</td>
+      <td class="num">{{ p.rates.cache_write_5m if p.rates.cache_write_5m is not none else "—" }}</td>
+      <td class="num">{{ p.rates.cache_write_1h if p.rates.cache_write_1h is not none else "—" }}</td>
+      <td>{{ p.as_of or "" }}</td>
+      <td>{% if p.overridden %}<span class="badge ok">your override</span>
+        {% elif p.unverified %}<span class="badge degraded">bundled · unverified</span>
+        {% else %}bundled{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">{% for name, included in included.items() %}{{ name }}: cached input is {% if included %}part of{% else %}separate from{% endif %} input tokens{% if sources.get(name) %} (<a href="{{ sources[name] }}" rel="noopener noreferrer">pricing page</a>){% endif %}. {% endfor %}</p>
+
+<h2>Change a price</h2>
+<p>Create or edit <code>{{ override_path }}</code> on the hub. Entries there win over the bundled table,
+  per provider and model id. Restart the hub to load it.</p>
+<pre class="panel"><code>[[models]]
+provider = "anthropic"
+id = "claude-opus-5-5"
+input = 4.0
+output = 20.0
+cache_read = 0.20
+cache_write_5m = 5.0
+cache_write_1h = 8.0
+as_of = "2026-10-14"</code></pre>
+{% endblock %}
