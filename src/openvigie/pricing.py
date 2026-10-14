@@ -10,27 +10,81 @@ from __future__ import annotations
 import re
 import tomllib
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from openvigie.config import ConfigError, config_dir
+from pydantic import (
+    BeforeValidator,
+    Field,
+    Strict,
+    StrictBool,
+    StrictStr,
+    TypeAdapter,
+    ValidationError,
+)
+
+from openvigie.config import ConfigError, config_dir, describe, file_entry
 from openvigie.model import UsageQuality, UsageRecord
 from openvigie.safeio import load_toml_bounded
 
 MILLION = Decimal(1_000_000)
 DATE_SUFFIX = re.compile(r"-(?:\d{8}|\d{4}-\d{2}-\d{2})$")
-PRICE_FIELDS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 
 
-@dataclass(frozen=True)
+def _price(value: object) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError("a price must be a number")
+    return Decimal(str(value))
+
+
+Price = Annotated[Decimal, BeforeValidator(_price), Field(ge=0)]  # USD per million tokens
+
+
+@file_entry
 class Rates:
-    input: Decimal
-    output: Decimal
-    cache_read: Decimal | None = None
-    cache_write_5m: Decimal | None = None
-    cache_write_1h: Decimal | None = None
+    input: Price
+    output: Price
+    cache_read: Price | None = None
+    cache_write_5m: Price | None = None
+    cache_write_1h: Price | None = None
+
+
+@file_entry
+class Tier(Rates):
+    """``above = { prompt_tokens = N, ... }``: rates for prompts longer than N tokens."""
+
+    prompt_tokens: Annotated[int, Strict(), Field(gt=0)]
+
+
+@file_entry
+class ModelEntry(Rates):
+    """One ``[[models]]`` entry of a price file."""
+
+    provider: Annotated[str, Strict(), Field(min_length=1)]
+    id: Annotated[str, Strict(), Field(min_length=1)]
+    aliases: tuple[StrictStr, ...] = ()
+    above: Tier | None = None
+    as_of: StrictStr | date | None = None
+    unverified: StrictBool = False
+
+
+@file_entry
+class ProviderEntry:
+    """``[providers.<name>]``: true when the provider counts cached tokens inside input_tokens."""
+
+    cached_input_included: StrictBool = False
+    source: StrictStr | None = None
+
+
+@file_entry
+class PriceFile:
+    providers: dict[StrictStr, ProviderEntry] = field(default_factory=dict)
+    models: tuple[ModelEntry, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -122,53 +176,44 @@ def compute_cost(
 # --- loading ---------------------------------------------------------------------------------
 
 
-def _decimal(value: Any, where: str) -> Decimal:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ConfigError(f"{where}: price must be a non-negative number")
-    return Decimal(str(value))
-
-
-def _rates(data: dict[str, Any], where: str) -> Rates:
-    for required in ("input", "output"):
-        if required not in data:
-            raise ConfigError(f"{where}: missing {required}")
-    values = {k: _decimal(data[k], f"{where}.{k}") for k in PRICE_FIELDS if k in data}
-    return Rates(**values)
-
-
-def _parse(data: dict[str, Any], table: PriceTable, *, overridden: bool, where: str) -> None:
-    for name, provider in (data.get("providers") or {}).items():
-        if not isinstance(provider, dict):
-            raise ConfigError(f"{where}: providers.{name} must be a table")
-        if "cached_input_included" in provider:
-            table.cached_input_included[name] = bool(provider["cached_input_included"])
-        if isinstance(provider.get("source"), str):
-            table.sources[name] = provider["source"]
-    for index, entry in enumerate(data.get("models") or []):
-        here = f"{where}: models[{index}]"
-        if not isinstance(entry, dict) or not entry.get("provider") or not entry.get("id"):
-            raise ConfigError(f"{here}: needs provider and id")
-        above = entry.get("above")
-        threshold = above.get("prompt_tokens") if isinstance(above, dict) else None
-        price = ModelPrice(
-            provider=str(entry["provider"]),
-            model_id=str(entry["id"]),
-            rates=_rates(entry, here),
-            aliases=tuple(str(a) for a in entry.get("aliases", [])),
-            above_prompt_tokens=int(threshold) if threshold is not None else None,
-            above=_rates(above, here + ".above") if isinstance(above, dict) else None,
-            as_of=str(entry["as_of"]) if entry.get("as_of") else None,
-            unverified=bool(entry.get("unverified", False)),
-            overridden=overridden,
+def _add(file: PriceFile, table: PriceTable, *, overridden: bool) -> None:
+    for name, provider in file.providers.items():
+        table.cached_input_included[name] = provider.cached_input_included
+        if provider.source:
+            table.sources[name] = provider.source
+    for entry in file.models:
+        rates = Rates(
+            input=entry.input,
+            output=entry.output,
+            cache_read=entry.cache_read,
+            cache_write_5m=entry.cache_write_5m,
+            cache_write_1h=entry.cache_write_1h,
         )
-        table.models[(price.provider, price.model_id)] = price
+        table.models[(entry.provider, entry.id)] = ModelPrice(
+            provider=entry.provider,
+            model_id=entry.id,
+            rates=rates,
+            aliases=entry.aliases,
+            above_prompt_tokens=entry.above.prompt_tokens if entry.above else None,
+            above=entry.above,
+            as_of=str(entry.as_of) if entry.as_of else None,
+            unverified=entry.unverified,
+            overridden=overridden,
+        )  # fmt: skip
+
+
+def _parse(data: dict[str, Any], where: str) -> PriceFile:
+    try:
+        return TypeAdapter(PriceFile).validate_python(data)
+    except ValidationError as exc:
+        raise ConfigError(f"{where}: {describe(exc, 'prices')}") from None
 
 
 def load_price_table(override: Path | None = None) -> PriceTable:
     """Bundled prices, then the user's override file (default ``<config dir>/prices.toml``)."""
     table = PriceTable()
     bundled = (resources.files("openvigie") / "prices.toml").read_text(encoding="utf-8")
-    _parse(tomllib.loads(bundled), table, overridden=False, where="bundled prices.toml")
+    _add(_parse(tomllib.loads(bundled), "bundled prices.toml"), table, overridden=False)
     path = override or config_dir() / "prices.toml"
     table.override_path = path
     if path.exists():
@@ -176,5 +221,5 @@ def load_price_table(override: Path | None = None) -> PriceTable:
             data = load_toml_bounded(path, max_bytes=256 * 1024)
         except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
             raise ConfigError(f"{path}: invalid TOML ({exc})") from None
-        _parse(data, table, overridden=True, where=str(path))
+        _add(_parse(data, str(path)), table, overridden=True)
     return table
