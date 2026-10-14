@@ -59,6 +59,54 @@ def cmd_hub_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse_duration(text: str) -> timedelta:
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    if not text or text[-1] not in units or not text[:-1].isdigit():
+        raise argparse.ArgumentTypeError("use a number with s, m, h or d, e.g. 15m")
+    return timedelta(seconds=int(text[:-1]) * units[text[-1]])
+
+
+def cmd_hub_enrol_code(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime
+
+    from openvigie.config import ConfigError, load_hub_settings
+    from openvigie.hub.store.credentials import Credentials
+    from openvigie.hub.store.db import Database
+
+    try:
+        settings = load_hub_settings()
+    except ConfigError as exc:
+        print(f"openvigie: {exc}", file=sys.stderr)
+        return 2
+    db = Database(settings.resolved_db_path())
+    try:
+        code = Credentials(db).create_enrol_code(datetime.now(UTC), args.ttl)
+    finally:
+        db.close()
+    minutes = int(args.ttl.total_seconds() // 60)
+    print(f"Enrolment code (single use, valid {minutes} min):\n\n  {code}\n")
+    print("On the host to enrol, run:")
+    print(f"  openvigie enrol http://127.0.0.1:{settings.port} {code}   # same machine")
+    print(f"  openvigie enrol https://<hub>.<tailnet>.ts.net {code}    # over Tailscale")
+    return 0
+
+
+def cmd_enrol(args: argparse.Namespace) -> int:
+    from openvigie.collector.client import HubError
+    from openvigie.collector.enrol import enrol
+    from openvigie.collector.probes import load_host
+    from openvigie.config import ConfigError, load_collector_settings, state_dir
+
+    try:
+        settings = load_collector_settings()
+        token_file = enrol(args.hub_url, args.code, load_host(state_dir()), settings)
+    except (ConfigError, HubError, ValueError) as exc:
+        print(f"openvigie: enrolment failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Enrolled. Token saved to {token_file} (mode 0600). Start `openvigie collect`.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openvigie", description="Control tower for AI agents on your own machines."
@@ -81,6 +129,16 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--bind", help="address to bind (default 127.0.0.1)")
     serve.add_argument("--port", type=int, help="port (default 7878)")
     serve.set_defaults(func=cmd_hub_serve)
+    code = hub_sub.add_parser(
+        "enrol-code", parents=[common], help="create a one-time code to enrol a collector"
+    )
+    code.add_argument("--ttl", type=parse_duration, default=timedelta(minutes=15))
+    code.set_defaults(func=cmd_hub_enrol_code)
+
+    enrol = sub.add_parser("enrol", parents=[common], help="enrol this host with a hub")
+    enrol.add_argument("hub_url", help="e.g. http://127.0.0.1:7878 or https://hub.tailnet.ts.net")
+    enrol.add_argument("code", help="one-time code from `openvigie hub enrol-code`")
+    enrol.set_defaults(func=cmd_enrol)
     return parser
 
 
