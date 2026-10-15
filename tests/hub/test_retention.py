@@ -27,26 +27,27 @@ NOW = datetime(2026, 10, 14, 12, tzinfo=UTC)
 PI = Host("h-pi", "pi5", "linux", "aarch64", "0.0.1")
 
 
-def seeded() -> Database:
+def seeded(now: datetime = NOW) -> Database:
+    """Usage every 10 days back from ``now``, and status events 1, 50 and 200 days back."""
     db = Database(MEMORY)
     inv = Inventory(db)
-    inv.upsert_host(PI, NOW)
-    inv.upsert_agents([AgentInstance("a1", "h-pi", "codex", "Codex")], NOW)
+    inv.upsert_host(PI, now)
+    inv.upsert_agents([AgentInstance("a1", "h-pi", "codex", "Codex")], now)
     store = UsageStore(db)
     store.add_records(
-        [UsageRecord(f"r{d}", "a1", NOW - timedelta(days=d), session_id=f"s{d}",
+        [UsageRecord(f"r{d}", "a1", now - timedelta(days=d), session_id=f"s{d}",
                      provider="anthropic", response_model="claude-opus-5-5",
                      input_tokens=1_000_000, output_tokens=0, quality=UsageQuality.EXACT)
          for d in range(0, 400, 10)],
         "h-pi",
     )  # fmt: skip
     store.add_sessions(
-        [Session(f"s{d}", "a1", NOW - timedelta(days=d), NOW - timedelta(days=d))
+        [Session(f"s{d}", "a1", now - timedelta(days=d), now - timedelta(days=d))
          for d in range(0, 400, 10)],
         "h-pi",
     )  # fmt: skip
     inv.add_status_events(
-        [StatusEvent("a1", AgentStatus.IDLE, AgentStatus.ACTIVE, NOW - timedelta(days=d))
+        [StatusEvent("a1", AgentStatus.IDLE, AgentStatus.ACTIVE, now - timedelta(days=d))
          for d in (1, 50, 200)]
     )  # fmt: skip
     return db
@@ -86,7 +87,7 @@ def test_retention_config(tmp_path: Path) -> None:
 
 
 def test_runs_at_startup_and_settings_page() -> None:
-    db = seeded()
+    db = seeded(datetime.now(UTC))  # the startup run prunes against the real clock
     settings = HubSettings(retention=Retention(usage_days=1))
     with TestClient(create_app(settings, db), base_url="http://127.0.0.1:7878") as client:
         html = client.get("/settings").text
