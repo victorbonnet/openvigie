@@ -56,6 +56,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T15 | A compromised hub, or a forged reply, makes collectors run actions | Each collector runs only actions on its own `allow_actions` (empty by default); commands expire, ids are never accepted twice (kept across restarts), the hub delivers each at most once; replies come only over the authenticated push, and collectors never follow redirects | #163 |
 | T16 | A compromised hub stops or kills processes on a host | Each host allows `agent.stop` / `agent.kill` separately (off by default); the hub names an agent, never a PID; the collector signals only processes it attributed to that agent and their children, re-checked by start time, never PID 1 or itself, and without privilege escalation | #174 |
 | T17 | Alerts leak data, or the webhook leaks its secret | Off unless configured; https only (http to loopback); no redirects; the URL and token are never logged or shown; the payload holds budget ids, scopes and amounts, no prompts or secrets | #179 |
+| T18 | Anyone who can message an agent through a shared channel (group chat, open bot) instructs it with the agent's access | Capabilities list each agent's channels and who can reach it; a risk flag, high when combined with broad access outside a sandbox (FR-8, FR-9) | #183 |
 
 ## Rules for every change
 
