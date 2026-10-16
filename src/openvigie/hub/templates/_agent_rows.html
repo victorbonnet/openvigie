@@ -11,9 +11,15 @@
     <td><span class="badge {{ a.status.value }}">{{ a.status.value }}</span></td>
     <td>{{ risk_badge(risks[a.agent_id].level) }}</td>
     <td>{{ sandbox_badge(a, sandboxes) }}</td>
+    {% set u = spend.get(a.agent_id) %}
+    {% if u %}
+    <td class="num"><a href="/agents/{{ a.agent_id }}#usage" title="Estimated list-price cost{% if not u.cost_complete %}, a lower bound: part of the usage is unpriced or not read yet{% endif %}">{% if not u.cost_complete %}≥ {% endif %}{{ money(u.cost) }}</a><br><span class="muted">{% if not u.history_complete %}≥ {% endif %}{{ compact(u.tokens) }} tokens</span></td>
+    {% else %}
+    <td class="num muted" title="No usage recorded in the last {{ spend_days }} days">—</td>
+    {% endif %}
     <td>{{ a.last_activity_at | ago }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="8" class="muted">No agents match these filters.</td></tr>
+  <tr><td colspan="9" class="muted">No agents match these filters.</td></tr>
   {% endfor %}
 </tbody>

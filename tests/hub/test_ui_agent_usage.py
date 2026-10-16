@@ -77,3 +77,12 @@ def test_override_path_is_shown_home_relative(monkeypatch: pytest.MonkeyPatch,
     html = setup(monkeypatch, config).get("/prices").text
     assert "<code>~/.config/openvigie/prices.toml</code>" in html
     assert str(tmp_path) not in html
+
+
+def test_agent_list_shows_usage_and_cost(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = setup(monkeypatch, tmp_path)
+    for html in (client.get("/").text, client.get("/agents/rows").text,
+                 client.get("/hosts/h-pi").text):  # fmt: skip
+        assert "≥ $1.25</a>" in html  # one call is unpriced, so the cost is a lower bound
+        assert "1M tokens" in html
+        assert 'title="No usage recorded in the last 30 days">—</td>' in html  # not $0

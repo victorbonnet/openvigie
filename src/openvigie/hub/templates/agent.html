@@ -65,7 +65,7 @@
 {% endif %}
 
 {% set t = usage.total %}
-<h2>Usage · last 30 days</h2>
+<h2 id="usage">Usage · last 30 days</h2>
 {% with reading = usage.reading %}{% include "_reading.html" %}{% endwith %}
 {% if t.records %}
 <div class="tiles">
