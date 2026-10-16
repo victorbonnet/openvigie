@@ -423,6 +423,7 @@ class Collector:
         except HubError as exc:
             self._failed(exc, now)
             return False
+        self._run_commands(reply)  # every reply may carry commands; the hub sends each only once
         if "usage" in reply.get("ignored", []):
             log.warning("the hub ignored usage data; upgrade the hub. Keeping it in the spool.")
             return False

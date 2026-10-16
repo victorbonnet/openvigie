@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from openvigie.adapters.base import ProcessInfo
@@ -67,6 +67,9 @@ def agent_actions(processes_of: Callable[[str], Sequence[ProcessInfo]]) -> dict[
 
 
 MAX_DETAIL = 500
+# the hub gives commands minutes to live; one meant to last longer is refused, which also bounds
+# how long its id must be remembered against replays
+MAX_LIFETIME = timedelta(hours=1)
 
 
 class CommandRunner:
@@ -105,6 +108,8 @@ class CommandRunner:
                 return self._result(command_id, CommandStatus.REFUSED, "malformed command")
             return None
         now = self.clock()
+        if command.expires_at > now + MAX_LIFETIME:  # checked first: its id isn't remembered
+            return self._refuse(command, "expires too far ahead (check the clocks)")
         if not self._first_sight(command, now):
             return self._refuse(command, "already received (replay)")
         if command.expires_at <= now:
