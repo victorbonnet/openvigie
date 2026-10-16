@@ -16,6 +16,9 @@ Scrubbing does this:
 - Secrets are redacted.
 - Credential files are never copied (`.env`, `auth*`, `*token*`, keys…).
 - Home paths, user and host names, e-mails and IP addresses are replaced.
+- Chat, group, user and bot ids are replaced by the same placeholder everywhere: values,
+  dictionary keys and file names.
+- Dictionary keys are scrubbed like values.
 - Free text (prompts, replies, tool output, system prompts) becomes `[scrubbed text <= N chars]`.
 - Structure, ids, timestamps, model names and usage numbers are kept.
 - Finally, the output is checked again. If anything still looks like a secret, nothing is written.
@@ -64,6 +67,8 @@ ports.
      the manifest and I'll find another way.
 
 6. **Review before committing.**
+   - Agent and profile names (folder names, `served_profiles`, `agents.list`) are kept: rename
+     any that are people's names.
    - Open each `MANIFEST.md` and answer the *To fill in by hand* questions. SURVEY.md has the
      processes and ports.
    - Read every file the manifest flags with **check it by hand** (logs are only

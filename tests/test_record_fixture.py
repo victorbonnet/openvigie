@@ -291,6 +291,7 @@ def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
         '"sessionKey": "agent:main:telegram:direct:100000001"',
         "secrets:\n  bitwarden:\n",  # a YAML section, not key: value
         '"sessionKey": "[scrubbed text <= 128 chars]"',
+        '"authProfileId": "openai:user@example.com"',  # an e-mail we already replaced
     ],
 )
 def test_benign_secret_lookalikes_pass(text: str) -> None:
@@ -303,6 +304,7 @@ def test_benign_secret_lookalikes_pass(text: str) -> None:
         'client_auth: "abcd1234wxyz"',
         "access_token_env: abcd1234wxyz",  # not an env var name: a value
         "record_key: hunter2hunter2",
+        '"authProfileId": "openai:sk-proj-abcdefgh12345678"',
         f"note {KEY}",
     ],
 )
@@ -538,3 +540,119 @@ def test_peer_ids_replaced_as_whole_numbers_only(tmp_path: Path) -> None:
     with sqlite3.connect(dest / "state.db") as conn:
         row = conn.execute("select user_id, started_at, input_tokens from sessions").fetchone()
     assert row == ("100000001", "2026-10-14T10:00:01.100014Z", 100014)
+
+
+# Leaks and gaps found recording a real Hermes 0.21.7 / OpenClaw 2026.9.4 install (#55)
+GROUP, LEGACY_GROUP, BOT = "-1001234567890", "-4012345678", "7012345678"
+
+
+def all_names(root: Path) -> str:
+    return "\n".join(str(p.relative_to(root)) for p in root.rglob("*"))
+
+
+def test_keys_scrubbed_like_values(tmp_path: Path) -> None:
+    source = tmp_path / ".openclaw"
+    source.mkdir()
+    config = {
+        "auth": {"profiles": {"openai:alice@corp.com": {"mode": "oauth"},
+                              "anthropic:bob@corp.com": {"mode": "token"}}},
+        "channels": {"telegram": {"groups": {GROUP: {"requireMention": True},
+                                             LEGACY_GROUP: {}}}},
+        "bindings": [{"agentId": "bot-a", "match": {"peer": {"kind": "group", "id": GROUP}}}],
+    }  # fmt: skip
+    (source / "openclaw.json").write_text(json.dumps(config))
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    text = all_text(dest)
+    for leak in ("corp.com", "alice", GROUP.lstrip("-"), LEGACY_GROUP.lstrip("-")):
+        assert leak not in text, leak
+    out = json.loads((dest / "openclaw.json").read_text())
+    assert len(out["auth"]["profiles"]) == 2  # scrubbed keys that collide are kept apart
+    groups = out["channels"]["telegram"]["groups"]
+    assert out["bindings"][0]["match"]["peer"]["id"] in groups  # same placeholder everywhere
+
+
+def test_telegram_group_id_in_a_plain_value_scrubbed(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(f"telegram:\n  home_channel: '{GROUP}'\n")
+    rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber(), ps=FakePs())
+    assert GROUP.lstrip("-") not in all_text(tmp_path / "fixture")
+
+
+def test_ids_in_file_names_scrubbed(tmp_path: Path) -> None:
+    source = tmp_path / ".openclaw"
+    sessions = source / "agents" / "bot-a" / "sessions"
+    sessions.mkdir(parents=True)
+    (source / "openclaw.json").write_text("{}")
+    (source / f"telegram_update_receipts_{BOT}.json").write_text("{}")  # not copied, surveyed
+    (sessions / f"agent_bot-a_telegram_group_{GROUP}.jsonl").write_text('{"type": "turn"}\n')
+    (sessions / "20260101_120000_abcdef12.jsonl").write_text('{"type": "turn"}\n')
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    names = all_names(dest) + all_text(dest)
+    assert BOT not in names and GROUP.lstrip("-") not in names
+    assert "20260101_120000_abcdef12" in names  # dates and short ids in names are kept
+
+
+def test_recorded_database_not_left_in_wal_mode(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("pragma journal_mode=wal")
+        conn.execute("create table sessions (id text)")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "state.db") as conn:
+        assert conn.execute("pragma journal_mode").fetchone()[0] == "delete"
+    assert not list(dest.glob("*-wal")) and not list(dest.glob("*-shm"))
+
+
+def test_sqlite_suffix_recorded_as_a_database(tmp_path: Path) -> None:
+    store = tmp_path / ".openclaw" / "agents" / "main" / "agent"
+    store.mkdir(parents=True)
+    with sqlite3.connect(store / "openclaw-agent.sqlite") as conn:
+        conn.execute("create table messages (content text, input_tokens integer)")
+        conn.execute("insert into messages values ('my private prompt', 12)")
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", tmp_path / ".openclaw", dest, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "agents/main/agent/openclaw-agent.sqlite") as conn:
+        row = conn.execute("select content, input_tokens from messages").fetchone()
+    assert row == ("[scrubbed text <= 128 chars]", 12)
+
+
+def test_selection_not_starved_by_a_big_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # hermes-agent/ (a git checkout) sorts before sessions/ and used up the walk's budget
+    real = rf.walk_bounded
+    monkeypatch.setattr(rf, "walk_bounded", lambda *a, **k: real(*a, **{**k, "max_entries": 50}))
+    source = tmp_path / ".hermes"
+    (source / "hermes-agent").mkdir(parents=True)
+    for i in range(100):
+        (source / "hermes-agent" / f"f{i}.py").write_text("")
+    (source / "sessions").mkdir()
+    (source / "sessions" / "20260101_120000_abcdef12.jsonl").write_text('{"type": "turn"}\n')
+    (source / "cron").mkdir()
+    (source / "cron" / "executions.db").write_bytes(b"")
+    chosen, _ = rf.select_files(source, rf.INCLUDE["hermes"], 20)
+    assert Path("sessions/20260101_120000_abcdef12.jsonl") in chosen
+    assert Path("cron/executions.db") not in chosen  # "*.db" means top level only
+
+
+def test_survey_summarises_big_folders_and_reaches_sessions(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    (source / "cache").mkdir(parents=True)
+    for i in range(500):
+        (source / "cache" / f"c{i}.json").write_text("{}")
+    (source / "sessions").mkdir()
+    (source / "sessions" / "s1.jsonl").write_text("{}\n")
+    (source / "logs").mkdir()
+    (source / "logs" / "agent.log").write_text("x\n")
+    (source / "config.yaml").write_text("a: 1\n")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    survey = (dest / "SURVEY.md").read_text()
+    assert "`sessions/s1.jsonl`" in survey and "`logs/agent.log`" in survey
+    assert "`cache/`: 500 files" in survey
+    assert "c499.json" not in survey
