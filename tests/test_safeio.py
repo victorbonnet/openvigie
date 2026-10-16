@@ -9,6 +9,7 @@ from openvigie.safeio import (
     FileCursor,
     ReadStats,
     UnsafeFileError,
+    WalkReport,
     iter_jsonl,
     load_json_bounded,
     load_toml_bounded,
@@ -208,3 +209,8 @@ def test_walk_bounded(tmp_path: Path) -> None:
         "2.jsonl",
     ]
     assert len(list(walk_bounded(tmp_path, "*", max_entries=2))) <= 2
+    report = WalkReport()
+    list(walk_bounded(tmp_path, "*.jsonl", report=report))
+    assert not report.truncated
+    list(walk_bounded(tmp_path, "*", max_entries=2, report=report))
+    assert report.truncated  # files past the limit were never seen

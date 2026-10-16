@@ -5,6 +5,11 @@ prices each group (cost is linear in tokens within a tier) and folds groups into
 dimensions, bucketing days in the display timezone. Every row carries its coverage: how many
 records were exact, estimated or unknown, and how many tokens had no price. Unknown is never
 summed as zero; a row with any unknown or unpriced part reports its cost as a lower bound.
+
+So does a row that usage not read yet could still add to (FR-3): while a collector is still
+reading an agent's history, all that agent's rows are incomplete. Which days the unread records
+fall on isn't known (a log file last written today can hold last month's records), so no row of
+the agent is assumed complete.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from datetime import UTC, date, datetime, tzinfo
 from decimal import Decimal
 from typing import Any
 
-from openvigie.hub.store.db import Database, ts
+from openvigie.hub.store.db import Database, parse_ts, required_ts, ts
 from openvigie.model import UsageQuality, UsageRecord
 from openvigie.pricing import PriceTable, compute_cost
 
@@ -38,6 +43,8 @@ class UsageRow:
     cost: Decimal = Decimal(0)
     # models whose bundled price is marked unverified: their cost is shown, with a caveat
     unverified_models: set[str] = field(default_factory=set)
+    # False: an agent's history is still being read, so usage may be missing from this row
+    history_complete: bool = True
 
     @property
     def tokens(self) -> int:
@@ -46,13 +53,27 @@ class UsageRow:
 
     @property
     def cost_complete(self) -> bool:
-        """False when part of the usage could not be priced: ``cost`` is then a lower bound."""
-        return self.unknown == 0 and self.unpriced_tokens == 0
+        """False when part of the usage could not be priced or is not read yet: ``cost`` is then
+        a lower bound."""
+        return self.unknown == 0 and self.unpriced_tokens == 0 and self.history_complete
 
     @property
     def cost_usd(self) -> str:
         """The cost as a decimal string, to the micro-dollar."""
         return str(self.cost.quantize(Decimal("0.000001")))
+
+
+@dataclass(frozen=True)
+class Reading:
+    """An agent whose collector is still reading its history: any of its usage may be missing."""
+
+    agent_id: str
+    host_id: str
+    label: str
+    read_until: datetime | None  # files last written before this are read (not a bound)
+    bytes_left: int | None  # None: unknown
+    host_last_seen: datetime  # to tell a collector that stopped reporting
+    host_revoked: bool
 
 
 @dataclass
@@ -61,6 +82,7 @@ class UsageReport:
     total: UsageRow
     start: datetime
     end: datetime
+    reading: list[Reading] = field(default_factory=list)  # agents that make the report partial
 
 
 def _local_day(hour: str, tz: tzinfo) -> date:
@@ -138,8 +160,11 @@ def usage_report(
         )
         for target in (row, total):
             _add(target, g, prices, thresholds)
+    reading = _reading(db, agent_id)
+    for row in [*rows.values(), total]:
+        row.history_complete = not any(_misses(r, row) for r in reading)
     ordered = sorted(rows.values(), key=lambda r: tuple(r.key.values()))
-    return UsageReport(ordered, total, start, end)
+    return UsageReport(ordered, total, start, end, reading)
 
 
 def _thresholds(prices: PriceTable) -> list[int]:
@@ -185,3 +210,27 @@ def _add(row: UsageRow, g: Any, prices: PriceTable, thresholds: list[int]) -> No
         row.cost += cost.amount
         if price is not None and price.unverified:
             row.unverified_models.add(price.model_id)
+
+
+def _reading(db: Database, agent_id: str | None) -> list[Reading]:
+    """Agents whose history is still being read."""
+    sql = f"""
+        SELECT b.agent_id, b.read_until, b.bytes_left, a.host_id, a.name, h.hostname,
+               h.last_seen, h.revoked_at
+        FROM usage_backfill b
+        JOIN agents a ON a.agent_id = b.agent_id
+        JOIN hosts h ON h.host_id = a.host_id
+        WHERE b.complete = 0 {"AND b.agent_id = ?" if agent_id else ""}
+        ORDER BY a.name, h.hostname
+    """  # noqa: S608 - only constant fragments are interpolated
+    with db.read() as conn:
+        found = conn.execute(sql, [agent_id] if agent_id else []).fetchall()
+    return [Reading(r["agent_id"], r["host_id"], f"{r['name']} · {r['hostname']}",
+                    parse_ts(r["read_until"]), r["bytes_left"], required_ts(r["last_seen"]),
+                    r["revoked_at"] is not None) for r in found]  # fmt: skip
+
+
+def _misses(reading: Reading, row: UsageRow) -> bool:
+    """Whether usage not read yet could belong to this row: any row of the agent or its host."""
+    return (row.key.get("agent", reading.agent_id) == reading.agent_id
+            and row.key.get("host", reading.host_id) == reading.host_id)  # fmt: skip

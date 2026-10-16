@@ -37,6 +37,7 @@ flowchart LR
    - Pushes are chunked.
    - A push that fails goes to the durable spool.
    - Cursors are committed only after the hub has the data, or the spool does (at-least-once delivery; the hub deduplicates).
+   - Each read is bounded, so a long history takes many ticks. How far each agent's logs have been read (`UsageBackfill`) goes along whenever it changes, and the hub marks totals as incomplete until the history is read.
 3. **Commands (D14).** The ingest reply can carry commands for the pushing host, each delivered at most once. The collector runs only the actions its `allow_actions` lists (none by default) and reports results in its next push. The hub audits delivery and results.
 4. **The hub** validates every push against the typed models and stores it. It computes cost and risk when they are read, not when data is stored, so editing prices or rules re-prices and re-flags history.
 
@@ -44,15 +45,15 @@ flowchart LR
 
 | Module | Owns | Public interface |
 |---|---|---|
-| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `OpenShellSandbox`, `Command`, `CommandResult`; `to_dict` / `from_dict`; `stable_id` |
+| `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `UsageBackfill`, `OpenShellSandbox`, `Command`, `CommandResult`; `to_dict` / `from_dict`; `stable_id` |
 | `config` | Settings files and private files | `HubSettings`, `CollectorSettings` (and sections); `load_hub_settings`, `load_collector_settings`; `config_dir` / `state_dir` / `data_dir`; `read_private_file`, `write_private_file` |
-| `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `FileCursor`, `ReadStats` |
+| `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `walk_bounded` (+ `WalkReport`), `FileCursor`, `ReadStats` |
 | `redact` | Removing secrets from anything that leaves the process | `redact`, `redact_obj` |
 | `semconv` | OTel GenAI attribute names | constants |
 | `pricing` | Prices and cost (FR-4) | `load_price_table`, `PriceTable.find`, `compute_cost`; file format `PriceFile` |
 | `risk` | Risk rules and flags (FR-9) | `load_rules`, `facts`, `evaluate`, `level`; file format `RuleFile` / `Rule` / `Condition` |
 | `openshell` | Everything about NVIDIA OpenShell; the only module that talks to it (D13) | `cli.Reader(cli_runner()).read()` → `Inventory` (state, sandboxes with their policy); models of the CLI's JSON in `models`; `mapping.OpenShellProbe` (which sandbox a process runs in), `labelled_agent_type`; `starter.generate` (a starter policy, as text); `policy.parse_yaml` / `to_yaml` / `to_json` / `diff` (network rules an admin writes, D15); `apply.apply_network` (its only write: set network rules, revert if they do not load); `versions.MIN_SUPPORTED`, `is_supported` |
-| `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `processes`, `health`), `HostContext`, `AdapterState`, `ActivityBatch` |
+| `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `processes`, `health`), `HostContext`, `AdapterState`, `ActivityBatch`, `Backlog` |
 | `adapters/registry` | Loading adapters and running them safely | `discover`, `run_detect`, `run_collect`, `run_capabilities` |
 | `adapters/usage`, `spans`, `caps` | Helpers shared by adapters | incremental JSONL tailing; span ids and content; capability parsing |
 | `adapters/claude_code`, `codex` | One agent type each | an `Adapter` subclass, registered as an entry point |

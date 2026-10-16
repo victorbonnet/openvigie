@@ -146,3 +146,66 @@ def test_openai_tier_counts_cached_input_once(prices: PriceTable) -> None:
     short = Decimal(10_000) * 2 + Decimal(140_000) * Decimal("0.10")
     long = Decimal(300_000) * 4
     assert total.cost == (short + long) / Decimal(1_000_000)
+
+
+# --- history still being read (FR-3) -----------------------------------------------------------
+
+
+def reading(db: Database, agent: str, until: datetime | None, at: datetime = DAY,
+            complete: bool = False) -> int:  # fmt: skip
+    from openvigie.model import UsageBackfill
+
+    return UsageStore(db).set_backfill(
+        [UsageBackfill(agent, at, complete, None if complete else until, 0 if complete else 7)],
+        "h-pi",
+    )
+
+
+def test_every_row_of_an_agent_reading_history_is_incomplete(prices: PriceTable) -> None:
+    db = Database(MEMORY)
+    seed(
+        db,
+        [
+            rec("1", "cc", DAY, "claude-opus-5-5", 1_000_000, 0),
+            rec("2", "cx", DAY, "gpt-5-codex", 1_000_000, 0, provider="openai"),
+            rec("3", "cx", DAY + timedelta(days=2), "gpt-5-codex", 1, 0, provider="openai"),
+        ],
+    )
+    # files last written before this are read; a resumed session's file written later can
+    # still hold older records, so it says nothing about which days are complete
+    reading(db, "cx", DAY + timedelta(days=1, hours=6))  # fmt: skip
+    start, end = DAY - timedelta(days=1), DAY + timedelta(days=3)
+
+    by_agent = usage_report(db, prices, group_by=["agent"], start=start, end=end)
+    assert [(r.key["agent"], r.history_complete) for r in by_agent.rows] == [
+        ("cc", True), ("cx", False)]  # fmt: skip
+    assert by_agent.total.history_complete is False and by_agent.total.cost_complete is False
+    assert [(r.agent_id, r.label) for r in by_agent.reading] == [("cx", "Codex · pi5")]
+
+    by_day = usage_report(db, prices, group_by=["agent", "day"], start=start, end=end)
+    assert {(r.key["agent"], r.key["day"]): r.history_complete for r in by_day.rows} == {
+        ("cc", "2026-10-14"): True,
+        ("cx", "2026-10-14"): False,  # before read_until, but may still be missing records
+        ("cx", "2026-10-16"): False,
+    }
+    assert usage_report(db, prices, agent_id="cc", start=start, end=end).reading == []
+
+    before = usage_report(db, prices, start=DAY, end=DAY + timedelta(days=1))
+    assert [r.agent_id for r in before.reading] == ["cx"] and not before.total.cost_complete
+    by_model = usage_report(db, prices, group_by=["model"], start=start, end=end)
+    assert {r.key["model"]: r.history_complete for r in by_model.rows} == {
+        "claude-opus-5-5": False, "gpt-5-codex": False}  # fmt: skip
+
+
+def test_backfill_keeps_the_newest_report() -> None:
+    db = Database(MEMORY)
+    seed(db, [])
+    assert reading(db, "cx", DAY, at=DAY + timedelta(minutes=1)) == 1
+    assert reading(db, "cx", None, at=DAY, complete=True) == 0  # older, e.g. from the spool
+    state = UsageStore(db).backfill("cx")
+    assert state is not None and not state.complete and state.read_until == DAY
+    assert reading(db, "cx", None, at=DAY + timedelta(minutes=2), complete=True) == 1
+    state = UsageStore(db).backfill("cx")
+    assert state is not None and state.complete and state.read_until is None
+    assert UsageStore(db).set_backfill([], "h-pi") == 0
+    assert reading(db, "unknown-agent", DAY) == 0  # not this host's agent

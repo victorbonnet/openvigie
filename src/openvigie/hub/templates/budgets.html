@@ -23,7 +23,7 @@
   {% endfor %}
   </tbody>
 </table>
-{% if statuses | rejectattr("cost_complete") | list %}<p class="muted">≥: part of the usage has no known price, so the cost is at least this much.</p>{% endif %}
+{% if statuses | rejectattr("cost_complete") | list %}<p class="muted">≥: part of the usage has no known price or is still being read, so the cost is at least this much.</p>{% endif %}
 {% elif not budgets.problems %}
 <p class="muted">No budgets yet. Add some to <code>{{ budgets.path }}</code>, for example:</p>
 <pre>[[budgets]]

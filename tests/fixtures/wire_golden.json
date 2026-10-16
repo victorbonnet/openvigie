@@ -154,6 +154,13 @@
   "new": "active",
   "old": "idle"
  },
+ "UsageBackfill": {
+  "agent_id": "a1",
+  "bytes_left": 1200000000,
+  "complete": false,
+  "observed_at": "2026-10-14T12:30:15.123456+00:00",
+  "read_until": "2026-10-07T12:30:15.123456+00:00"
+ },
  "UsageRecord": {
   "agent_id": "a1",
   "cache_creation_1h_input_tokens": null,

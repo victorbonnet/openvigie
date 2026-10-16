@@ -23,6 +23,7 @@ from openvigie.hub.api_models import (
     FlagOut,
     IngestRequest,
     IngestResponse,
+    ReadingOut,
     RiskOut,
     SandboxesResponse,
     TracesWanted,
@@ -153,6 +154,7 @@ async def ingest(
             if body.sandboxes is None
             else SandboxStore(request.app.state.db).replace(host_id, body.sandboxes, now)
         ),
+        usage_backfill=usage_store.set_backfill(body.usage_backfill, host_id),
     )
     if body.collector.spool_dropped is not None:
         usage_store.set_spool_dropped(host_id, body.collector.spool_dropped)
@@ -276,4 +278,5 @@ def usage(
         group_by=dims,
         rows=[UsageRowOut.of(row) for row in report.rows],
         total=UsageRowOut.of(report.total),
+        reading=[ReadingOut.of(r) for r in report.reading],
     )

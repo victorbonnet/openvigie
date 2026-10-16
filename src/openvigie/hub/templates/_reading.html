@@ -1,0 +1,6 @@
+{# Agents whose collector is still reading their usage history (FR-3); expects `reading`. #}
+{% if reading %}
+<p class="notice">Usage history is still being read, so totals marked ≥ may be missing some of it:
+  {% for r in reading %}<a href="/agents/{{ r.agent_id }}">{{ r.label }}</a>: reading history ({{ r.left }}{% if r.stalled %}; {{ r.stalled }}{% endif %}){{ "; " if not loop.last else "." }}{% endfor %}
+  {% if reading | rejectattr("stalled") | list %}This clears by itself once the collector has caught up.{% else %}It clears once the collector reports again and catches up.{% endif %}</p>
+{% endif %}

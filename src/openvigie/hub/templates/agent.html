@@ -66,10 +66,11 @@
 
 {% set t = usage.total %}
 <h2>Usage · last 30 days</h2>
+{% with reading = usage.reading %}{% include "_reading.html" %}{% endwith %}
 {% if t.records %}
 <div class="tiles">
   <div class="tile"><div class="k">Cost</div><div class="v">{% if not t.cost_complete %}≥ {% endif %}{{ money(t.cost) }}</div></div>
-  <div class="tile"><div class="k">Tokens</div><div class="v">{{ compact(t.tokens) }}</div></div>
+  <div class="tile"><div class="k">Tokens</div><div class="v">{% if not t.history_complete %}≥ {% endif %}{{ compact(t.tokens) }}</div></div>
   <div class="tile"><div class="k">Calls</div><div class="v">{{ t.records }}</div>
     <div class="s">{{ t.exact }} exact · {{ t.estimated }} estimated · {{ t.unknown }} unknown</div></div>
 </div>

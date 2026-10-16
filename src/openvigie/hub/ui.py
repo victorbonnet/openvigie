@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
@@ -20,7 +20,7 @@ from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.budgets import evaluate, load_budgets, used
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
-from openvigie.hub.reports import UsageRow, usage_report
+from openvigie.hub.reports import Reading, UsageRow, usage_report
 from openvigie.hub.riskview import AgentRisk, agent_risks
 from openvigie.hub.store.alerts import AlertStore
 from openvigie.hub.store.audit import AuditLog
@@ -176,12 +176,51 @@ class SessionView:
 
 
 @dataclass(frozen=True)
+class ReadingView:
+    """An agent whose history is still being read, worded for the page (FR-3)."""
+
+    agent_id: str
+    label: str
+    left: str  # e.g. "1.2 GiB left"
+    stalled: str | None  # why it won't finish on its own, e.g. "host revoked"; None: progressing
+
+
+STALLED_AFTER = timedelta(hours=1)
+
+
+def reading_views(reading: list[Reading], now: datetime | None = None) -> list[ReadingView]:
+    now = now or datetime.now(UTC)
+    return [
+        ReadingView(r.agent_id, r.label,
+                    f"{byte_size(r.bytes_left)} left" if r.bytes_left else "amount left unknown",
+                    _stalled(r, now))
+        for r in reading
+    ]  # fmt: skip
+
+
+def _stalled(r: Reading, now: datetime) -> str | None:
+    if r.host_revoked:
+        return "host revoked"
+    if now - r.host_last_seen > STALLED_AFTER:
+        return f"collector not reporting since {ago(r.host_last_seen, now)}"
+    return None
+
+
+def byte_size(n: int) -> str:
+    for unit, size in (("GiB", 2**30), ("MiB", 2**20), ("KiB", 2**10)):
+        if n >= size:
+            return f"{n / size:.1f} {unit}"
+    return f"{n} B"
+
+
+@dataclass(frozen=True)
 class AgentUsage:
     total: UsageRow
     chart: Markup
     models: list[UsageRow]
     sessions: list[SessionView]
     langfuse_project: str | None = None
+    reading: list[ReadingView] = field(default_factory=list)
 
 
 def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
@@ -217,6 +256,7 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
         models=sorted(report(group_by=["model"]).rows, key=lambda r: r.cost, reverse=True),
         sessions=views,
         langfuse_project=project,
+        reading=reading_views(per_day.reading),
     )
 
 
@@ -424,6 +464,7 @@ def usage_page(
         unpriced_models=sorted(r.labels["model"] for r in models if r.unpriced_tokens),
         override_path=override_path(table),
         sessions=sessions,
+        reading=reading_views(per_agent.reading),
         money=money,
         compact=compact,
     )

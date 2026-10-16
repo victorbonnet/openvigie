@@ -7,7 +7,9 @@ unreachable the loop keeps running: status events wait in a bounded queue and pu
 
 Every slow tick (default 30 s) runs each adapter's ``collect`` and pushes usage. If the hub
 can't take it, the payload goes to the durable spool. Cursors are committed only once the data
-is acknowledged or spooled (at-least-once; the hub deduplicates).
+is acknowledged or spooled (at-least-once; the hub deduplicates). Each read is bounded, so a
+long history takes many ticks: how far each agent's logs have been read goes with the usage
+(``usage_backfill``) whenever it changes, so the hub can mark totals as incomplete meanwhile.
 
 Spans (FR-6) are built and sent only while the hub says it exports traces (``traces.wanted``
 in its ingest reply). Content goes into them only if both the hub and this collector's
@@ -33,7 +35,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from openvigie.adapters.base import Adapter, AdapterState, HostContext, ProcessInfo, TraceOptions
+from openvigie.adapters.base import (
+    ActivityBatch,
+    Adapter,
+    AdapterState,
+    HostContext,
+    ProcessInfo,
+    TraceOptions,
+)
 from openvigie.adapters.registry import Discovery, run_capabilities, run_collect, run_detect
 from openvigie.collector.client import HubClient, HubError
 from openvigie.collector.commands import ACTIONS, CommandRunner, agent_actions
@@ -41,7 +50,14 @@ from openvigie.collector.otlp import Arbiter, OtlpReceiver, OtlpUsage
 from openvigie.collector.state import StateStore
 from openvigie.collector.status import StatusTracker
 from openvigie.config import CollectorSettings
-from openvigie.model import SCHEMA_VERSION, AdapterHealth, AgentInstance, StatusEvent, to_dict
+from openvigie.model import (
+    SCHEMA_VERSION,
+    AdapterHealth,
+    AgentInstance,
+    StatusEvent,
+    UsageBackfill,
+    to_dict,
+)
 from openvigie.openshell.cli import Inventory, Reader, inventory_health
 from openvigie.openshell.mapping import OpenShellProbe, records
 from openvigie.redact import redact_obj
@@ -86,6 +102,7 @@ class _Collected:
     sessions: list[dict[str, Any]] = field(default_factory=list)
     spans: list[dict[str, Any]] = field(default_factory=list)
     touched: list[AdapterState] = field(default_factory=list)
+    backfill: list[dict[str, Any]] = field(default_factory=list)  # changed since last sent
 
 
 class Collector:
@@ -119,6 +136,7 @@ class Collector:
         self.otlp = otlp
         self.capabilities_sent: dict[str, str] = {}
         self.capabilities_sent_at = float("-inf")
+        self.backfill_sent: dict[str, dict[str, Any]] = {}  # agent id → last state delivered
         self.arbiter = Arbiter(settings.otlp.usage_source)
         self.openshell = openshell
         self.openshell_inventory = Inventory("not_installed")
@@ -251,6 +269,7 @@ class Collector:
         spans: list[Any] | None = None,
         capabilities: list[Any] | None = None,
         sandboxes: list[Any] | None = None,
+        backfill: list[Any] | None = None,
     ) -> dict[str, Any]:
         payload = {
             "schema_version": SCHEMA_VERSION,
@@ -263,6 +282,8 @@ class Collector:
             payload["spans"] = spans
         if capabilities:
             payload["capabilities"] = capabilities
+        if backfill:
+            payload["usage_backfill"] = backfill
         if sandboxes is not None:  # [] is meaningful: the host has no sandboxes any more
             payload["sandboxes"] = sandboxes
         if self.store:
@@ -291,6 +312,8 @@ class Collector:
                 self.store.spool_put(redact_obj(p))
         for state in found.touched:
             state.commit()  # data is now with the hub or in the durable spool
+        for item in found.backfill:
+            self.backfill_sent[item["agent_id"]] = _without_time(item)
 
     def _read_openshell(self) -> None:
         """Refresh the OpenShell inventory, and with it which agent runs in which sandbox."""
@@ -340,8 +363,25 @@ class Collector:
             found.sessions += [to_dict(s) for s in batch.sessions]
             found.spans += [to_dict(s) for s in batch.spans]
             found.touched.append(state)
+            if (backfill := self._changed_backfill(agent, batch)) is not None:
+                found.backfill.append(backfill)
         found.spans += self._otlp_spans()
         return found
+
+    def _changed_backfill(
+        self, agent: AgentInstance, batch: ActivityBatch
+    ) -> dict[str, Any] | None:
+        """How far the agent's logs have been read, if that changed since it was last sent."""
+        if batch.backlog is None:
+            return None  # this adapter can't tell
+        backlog = batch.backlog
+        done, known = backlog.complete, not backlog.truncated
+        body = to_dict(UsageBackfill(
+            agent.agent_id, self.ctx.now(), complete=done,
+            read_until=None if done else backlog.oldest,
+            bytes_left=backlog.bytes_left if known else None,
+        ))  # fmt: skip
+        return None if self.backfill_sent.get(agent.agent_id) == _without_time(body) else body
 
     def _usage_payloads(
         self, found: _Collected, capabilities: list[dict[str, Any]]
@@ -357,6 +397,8 @@ class Collector:
         payloads += [self.usage_payload([], [], chunk) for chunk in _span_chunks(found.spans)]
         if capabilities:
             payloads.append(self.usage_payload([], [], capabilities=capabilities))
+        if found.backfill:  # last, so the hub has the usage it describes first
+            payloads.append(self.usage_payload([], [], backfill=found.backfill))
         return payloads
 
     def _changed_capabilities(
@@ -478,6 +520,10 @@ class Collector:
             except Exception:  # never die on a bad tick
                 log.exception("collector tick failed")
             stop.wait(max(0.0, interval - (self.monotonic() - started)))
+
+
+def _without_time(body: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in body.items() if k != "observed_at"}
 
 
 def _span_chunks(spans: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:

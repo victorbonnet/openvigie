@@ -31,6 +31,7 @@ from openvigie.model import (
     Span,
     SpanStatus,
     StatusEvent,
+    UsageBackfill,
     UsageQuality,
     UsageRecord,
     from_dict,
@@ -59,6 +60,7 @@ SAMPLES: dict[str, Any] = {
     "Span": Span("ab" * 16, "cd" * 8, "chat claude-opus-5-5", AT, None, "ef" * 8, "a1",
                  SpanStatus.ERROR, {"gen_ai.usage.input_tokens": 12, "session.id": "s1",
                                     "flag": True, "ratio": 0.5}),
+    "UsageBackfill": UsageBackfill("a1", AT, False, AT - timedelta(days=7), 1_200_000_000),
     "AdapterHealth": AdapterHealth("codex", HealthState.DEGRADED, "bad line", 2, 1),
     "Capabilities": Capabilities(
         "a1", AT, ApprovalLevel.NEVER_ASK, "bypassPermissions", FsAccess.WORKSPACE, ("~/x",),
