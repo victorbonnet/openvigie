@@ -276,3 +276,94 @@ def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
     assert config["terminal"] == {"backend": "local", "timeout": 180}
     assert "Alice" not in (dest / "config.yaml").read_text()
     assert "none running" in (dest / "SURVEY.md").read_text()
+
+
+# Shapes below come from a real Hermes 0.21.7 / OpenClaw 2026.9.4 install (#55).
+@pytest.mark.parametrize(
+    "text",
+    [
+        "redact_secrets: true",
+        '"allowInsecureAuth": false',
+        "secretsMasked: null",
+        "access_token_env: BWS_ACCESS_TOKEN",
+        "record_key: ctrl+r",
+        '"hotkey": "ctrl+shift+k"',
+        '"sessionKey": "agent:main:telegram:direct:100000001"',
+        "secrets:\n  bitwarden:\n",  # a YAML section, not key: value
+    ],
+)
+def test_benign_secret_lookalikes_pass(text: str) -> None:
+    assert not rf.has_secret(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'client_auth: "abcd1234wxyz"',
+        "access_token_env: abcd1234wxyz",  # not an env var name: a value
+        "record_key: hunter2hunter2",
+        f"note {KEY}",
+    ],
+)
+def test_real_secret_shapes_still_match(text: str) -> None:
+    assert rf.has_secret(text)
+
+
+def test_hermes_config_lookalikes_recorded(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(
+        "display:\n  redact_secrets: true\n  show_token_analytics: false\n"
+        "voice:\n  record_key: ctrl+r\n"
+        "secrets:\n  bitwarden:\n    access_token_env: BWS_ACCESS_TOKEN\n"
+    )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    import yaml
+
+    config = yaml.safe_load((dest / "config.yaml").read_text())
+    assert config["voice"]["record_key"] == "ctrl+r"
+    assert config["secrets"]["bitwarden"]["access_token_env"] == "BWS_ACCESS_TOKEN"  # noqa: S105
+
+
+def test_session_key_peer_ids_replaced_stably(tmp_path: Path) -> None:
+    source = tmp_path / ".openclaw"
+    sessions = source / "agents" / "main" / "sessions"
+    sessions.mkdir(parents=True)
+    keys = ["agent:main:telegram:direct:123456789", "agent:main:telegram:direct:123456789",
+            "agent:main:whatsapp:direct:+33612345678", "agent:main:main"]  # fmt: skip
+    lines = [{"type": "turn", "sessionKey": k, "data": {"note": f"see {k}"}} for k in keys]
+    (sessions / "s1.trajectory.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    text = all_text(dest)
+    assert "123456789" not in text and "33612345678" not in text
+    written = (dest / "agents/main/sessions/s1.trajectory.jsonl").read_text()
+    out = [json.loads(x)["sessionKey"] for x in written.splitlines()]
+    assert out[0] == out[1] != out[2]
+    assert out[0].startswith("agent:main:telegram:direct:") and out[3] == "agent:main:main"
+
+
+def test_sqlite_checked_per_value_not_raw_bytes(tmp_path: Path) -> None:
+    # adjacent values ("…-authfix" then "HERMES_SRC=…") and FTS schema text are not secrets
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table events (root text, command text)")
+        conn.execute("insert into events values ('/tmp/review-authfix', 'HERMES_SRC=/opt/h x')")
+        conn.execute("create virtual table m using fts5(content, tokenize='trigram')")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert (dest / "state.db").exists()
+
+
+def test_sqlite_secret_in_a_value_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table t (v blob)")
+        conn.execute("insert into t values (?)", (f"x {KEY} y".encode(),))  # blobs aren't scrubbed
+    with pytest.raises(SystemExit, match="still match"):
+        rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber(), ps=FakePs())

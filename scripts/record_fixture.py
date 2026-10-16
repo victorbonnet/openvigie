@@ -105,9 +105,18 @@ CONTENT_WORDS = ("prompt", "instruction", "persona", "personality", "soul", "des
                  "message", "note", "memory")  # fmt: skip
 # recorder-only and deliberately broad: a secret-looking key anywhere on a line, any quoting
 LOOSE_SECRET = re.compile(
-    r"(?i)([\w-]*(?:key|token|secret|passw(?:or)?d|auth)[\w-]*[\"']?\s*[:=]\s*)"
+    r"(?i)([\w-]*(?:key|token|secret|passw(?:or)?d|auth)[\w-]*[\"']?[ \t]*[:=][ \t]*)"
     r"(?:\"(?!\[REDACTED)[^\"]{4,}\"|'(?!\[REDACTED)[^']{4,}'|(?![\"'\[{])(?!\d+\b)[^\s,}\]]{4,})"
 )
+# Known non-secrets that LOOSE_SECRET catches, seen on real installs (#55)
+NOT_A_VALUE = {"true", "false", "null", "none"}
+ENV_NAME = re.compile(
+    r"[A-Z][A-Z0-9_]{2,}"
+)  # under a *_env key: the variable's name, not its value
+KEY_COMBO = re.compile(r"(?i)(?:ctrl|alt|shift|cmd|meta|super|option)(?:\+[\w-]+)+")
+ROUTING_KEYS = {"sessionkey", "session_key"}  # OpenClaw's agent:<id>:<channel>:<kind>:<peer>
+SESSION_KEY = re.compile(r"\bagent:[\w.@+:-]{1,200}")
+PEER_ID = re.compile(r"(?<=:)[+-]?\d{5,}(?![\w])")  # chat ids, phone numbers
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -120,13 +129,23 @@ class Scrubber:
             self.replacements.append((user, "user"))
         if host and len(host) > 2:
             self.replacements.append((host, "host"))
+        self.peers: dict[str, str] = {}
 
     def text(self, value: str) -> str:
-        value = LOOSE_SECRET.sub(lambda m: f'{m.group(1)}"[REDACTED:key]"', redact(value))
+        value = SESSION_KEY.sub(lambda m: PEER_ID.sub(self.peer, m.group(0)), value)
+        value = LOOSE_SECRET.sub(
+            lambda m: m.group(0) if benign(m) else f'{m.group(1)}"[REDACTED:key]"', redact(value)
+        )
         for old, new in self.replacements:
             value = value.replace(old, new)
         value = EMAIL.sub("user@example.com", value)
         return IPV4.sub("192.0.2.1", value)
+
+    def peer(self, match: re.Match[str]) -> str:
+        """The same chat id or phone number always gets the same placeholder."""
+        found = match.group(0)
+        sign = found[0] if found[0] in "+-" else ""
+        return self.peers.setdefault(found, f"{sign}{100000001 + len(self.peers)}")
 
     def path(self, rel: Path) -> Path:
         """Scrub user and host names out of path components (Claude Code encodes cwd in dirs)."""
@@ -162,6 +181,24 @@ class Scrubber:
         if isinstance(value, list):
             return [self.value(v, key, in_content) for v in value]
         return value
+
+
+def benign(match: re.Match[str]) -> bool:
+    """A LOOSE_SECRET match that is no secret: a boolean, an env var name under a *_env key,
+    a key binding, or a session routing key (its peer ids are replaced by the Scrubber)."""
+    key_match = re.match(r"[\w-]*", match.group(1))
+    key = key_match.group(0).lower() if key_match else ""
+    value = match.group(0)[len(match.group(1)) :].strip("\"'")
+    return (
+        value.lower() in NOT_A_VALUE
+        or (key.endswith("_env") and ENV_NAME.fullmatch(value) is not None)
+        or KEY_COMBO.fullmatch(value) is not None
+        or (key in ROUTING_KEYS and value.startswith("agent:"))
+    )
+
+
+def has_secret(text: str) -> bool:
+    return redact(text) != text or any(not benign(m) for m in LOOSE_SECRET.finditer(text))
 
 
 def denied(path: Path) -> bool:
@@ -291,14 +328,37 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
             ) from None
 
 
+def db_has_secret(path: Path) -> bool:
+    """Check each value on its own: raw file bytes run adjacent values together into false
+    `key=value` matches. The schema is the agent's DDL, checked for real secret shapes only."""
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        if db.execute("pragma freelist_count").fetchone()[0]:
+            return True  # free pages aren't values we can read: fail closed
+        for (sql,) in db.execute("select sql from sqlite_master where sql is not null"):
+            if redact(sql) != sql:
+                return True
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            for row in db.execute(f'select * from "{table}"'):  # noqa: S608
+                for value in row:
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", errors="replace")
+                    if isinstance(value, str) and has_secret(value):
+                        return True
+        return False
+    finally:
+        db.close()
+
+
 def leftover_secrets(root: Path) -> list[str]:
     hits = []
     for path in walk_bounded(root, "*", max_depth=8):
         if path.suffix == ".db":
-            text = path.read_bytes().decode("utf-8", errors="replace")
+            found = db_has_secret(path)
         else:
-            text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
-        if redact(text) != text or LOOSE_SECRET.search(text):
+            found = has_secret(read_text_bounded(path, max_bytes=64 * 1024 * 1024))
+        if found:
             hits.append(str(path.relative_to(root)))
     return hits
 
