@@ -49,7 +49,9 @@ def test_openai_cached_input_is_subset_of_input(table: Any) -> None:
 @pytest.mark.parametrize(
     ("model", "inp", "cached", "out"),
     [("gpt-6.1-sol", "2", "0.10", "10"), ("gpt-6-astra", "10", "1", "50"),
-     ("gpt-6-luna", "0.10", "0.01", "0.50")],
+     ("gpt-6-luna", "0.10", "0.01", "0.50"), ("gpt-6-sol", "2", "0.20", "10"),
+     ("gpt-5.6-sol", "4", "0.40", "20"), ("gpt-5.6-terra", "2", "0.20", "12"),
+     ("gpt-5.6-luna", "0.20", "0.02", "1.20")],
 )  # fmt: skip
 def test_gpt6_family_is_priced_with_cached_input(
     table: Any, model: str, inp: str, cached: str, out: str
@@ -69,7 +71,9 @@ def test_gpt6_family_is_priced_with_cached_input(
 @pytest.mark.parametrize(
     ("model", "inp", "cached", "out"),
     [("gpt-6.1-sol", "4", "0.20", "15"), ("gpt-6-astra", "20", "2", "75"),
-     ("gpt-6-luna", "0.20", "0.02", "0.75")],
+     ("gpt-6-luna", "0.20", "0.02", "0.75"), ("gpt-6-sol", "4", "0.40", "15"),
+     ("gpt-5.6-sol", "8", "0.80", "30"), ("gpt-5.6-terra", "4", "0.40", "18"),
+     ("gpt-5.6-luna", "0.40", "0.04", "1.80")],
 )  # fmt: skip
 def test_gpt6_long_context_bills_the_whole_request(
     table: Any, model: str, inp: str, cached: str, out: str

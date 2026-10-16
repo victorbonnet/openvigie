@@ -168,6 +168,7 @@ input = 2.0
 output = 10.0
 cache_read = 0.20
 as_of = "2026-10-16"
+above = { prompt_tokens = 272000, input = 4.0, output = 15.0, cache_read = 0.40 }
 
 [[models]]
 provider = "openai"
@@ -177,6 +178,36 @@ output = 0.50
 cache_read = 0.01
 as_of = "2026-10-16"
 above = { prompt_tokens = 272000, input = 0.20, output = 0.75, cache_read = 0.02 }
+
+# --- OpenAI gpt-5.6: verified 2026-10-16 against the same page, same long-context rule.
+# gpt-5.6-cyber is listed separately under Cyber models and is left unpriced until seen in use.
+
+[[models]]
+provider = "openai"
+id = "gpt-5.6-sol"
+input = 4.0
+output = 20.0
+cache_read = 0.40
+as_of = "2026-10-16"
+above = { prompt_tokens = 272000, input = 8.0, output = 30.0, cache_read = 0.80 }
+
+[[models]]
+provider = "openai"
+id = "gpt-5.6-terra"
+input = 2.0
+output = 12.0
+cache_read = 0.20
+as_of = "2026-10-16"
+above = { prompt_tokens = 272000, input = 4.0, output = 18.0, cache_read = 0.40 }
+
+[[models]]
+provider = "openai"
+id = "gpt-5.6-luna"
+input = 0.20
+output = 1.20
+cache_read = 0.02
+as_of = "2026-10-16"
+above = { prompt_tokens = 272000, input = 0.40, output = 1.80, cache_read = 0.04 }
 
 # codex-auto-review stays unpriced: a hidden Codex routing alias with no published rate.
 
