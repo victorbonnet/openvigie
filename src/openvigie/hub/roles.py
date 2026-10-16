@@ -22,6 +22,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal, NoReturn
+from urllib.parse import urlsplit
 
 from fastapi import Depends, HTTPException, Request
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -77,7 +78,9 @@ class IdentityMiddleware:
         if scope["type"] == "http":
             headers = scope.get("headers", [])
             values = dict(headers)
-            login = values.get(LOGIN_HEADER, b"").decode("latin-1") or None
+            logins = [v for k, v in headers if k == LOGIN_HEADER]
+            # two login headers: don't guess which one Tailscale Serve set
+            login = logins[0].decode("latin-1") if len(logins) == 1 else None
             host = values.get(b"host", b"").decode("latin-1")
             client = scope["client"][0] if scope.get("client") else None
             scope = {
@@ -125,12 +128,25 @@ def refuse(request: Request, why: str) -> NoReturn:
     raise HTTPException(403, why)
 
 
+def same_origin(request: Request) -> bool:
+    """Browsers say where a request comes from; tools like curl send neither header."""
+    site = request.headers.get("sec-fetch-site")
+    if site is not None and site not in ("same-origin", "none"):
+        return False
+    origin = request.headers.get("origin")
+    return origin is None or urlsplit(origin).netloc == request.headers.get("host")
+
+
 def require_admin(request: Request) -> Identity:
-    """FastAPI dependency for write routes: admins pass, anyone else gets a 403 (audited)."""
+    """FastAPI dependency for write routes: admins pass, anyone else gets a 403, audited unless
+    it is an anonymous cross-site request: any page the operator visits can send those."""
     who = identity(request)
-    if who.role != "admin":
-        refuse(request, "admin role required")
-    return who
+    if who.role == "admin":
+        return who
+    if who.login is None and not same_origin(request):
+        log.info("refused an anonymous cross-site %s %s", request.method, request.url.path)
+        raise HTTPException(403, "admin role required")
+    refuse(request, "admin role required")
 
 
 Admin = Annotated[Identity, Depends(require_admin)]

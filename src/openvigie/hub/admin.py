@@ -15,7 +15,7 @@ import hashlib
 import hmac
 from datetime import UTC, datetime
 from typing import Annotated, Literal
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -32,7 +32,7 @@ from openvigie.hub.actions import (
     propose,
     rollback,
 )
-from openvigie.hub.roles import Admin, identity, refuse
+from openvigie.hub.roles import Admin, identity, refuse, same_origin
 from openvigie.hub.store.commands import CommandQueue
 from openvigie.hub.store.inventory import AgentRow, Inventory
 from openvigie.hub.store.sandboxes import SandboxStore
@@ -75,17 +75,8 @@ def csrf_token(request: Request, purpose: str) -> str:
     return hmac.new(secret, message, hashlib.sha256).hexdigest()
 
 
-def _same_origin(request: Request) -> bool:
-    """Browsers say where a POST comes from; tools like curl send neither header."""
-    site = request.headers.get("sec-fetch-site")
-    if site is not None and site not in ("same-origin", "none"):
-        return False
-    origin = request.headers.get("origin")
-    return origin is None or urlsplit(origin).netloc == request.headers.get("host")
-
-
 async def _form[F: Form](request: Request, model: type[F], purpose: str) -> F:
-    if not _same_origin(request):
+    if not same_origin(request):
         refuse(request, "cross-site request")
     if not request.headers.get("content-type", "").startswith("application/x-www-form-urlencoded"):
         raise HTTPException(415, "expected a form")
@@ -136,7 +127,12 @@ def actions_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/actions/{action_id}", response_class=HTMLResponse)
-def action_page(request: Request, action_id: ActionId, error: str | None = None) -> HTMLResponse:
+def action_page(request: Request, action_id: ActionId) -> HTMLResponse:
+    return _action_page(request, action_id)
+
+
+def _action_page(request: Request, action_id: str, error: str | None = None) -> HTMLResponse:
+    """The review page; ``error`` comes from a failed step, never from the URL."""
     action = _action_or_404(request, action_id)
     command = CommandQueue(request.app.state.db).get(action.command_id or "")
     kind = _kinds(request).get(action.kind)
@@ -221,7 +217,7 @@ async def confirm_action(
     try:
         confirm(request.app.state.db, action, form.typed, who, datetime.now(UTC))
     except ActionError as exc:
-        return action_page(request, action_id, error=str(exc))
+        return _action_page(request, action_id, error=str(exc))
     return _see(action)
 
 
@@ -234,7 +230,7 @@ async def cancel_action(
     try:
         cancel(request.app.state.db, action, who, datetime.now(UTC))
     except ActionError as exc:
-        return action_page(request, action_id, error=str(exc))
+        return _action_page(request, action_id, error=str(exc))
     return _see(action)
 
 
@@ -247,5 +243,5 @@ async def rollback_action(
     try:
         undo = rollback(request.app.state.db, _kinds(request), action, who, datetime.now(UTC))
     except ActionError as exc:
-        return action_page(request, action_id, error=str(exc))
+        return _action_page(request, action_id, error=str(exc))
     return _see(undo)

@@ -114,3 +114,26 @@ def test_admins_are_validated() -> None:
         HubSettings(admins=("not a login",))
     assert HubSettings(admins=("octocat@github",)).admins == ("octocat@github",)
     assert resolve(HubSettings(), "127.0.0.1", TS_NAME, "alice@example.com") is ANONYMOUS
+
+
+def test_two_login_headers_make_the_request_anonymous() -> None:
+    client = client_for(TRUSTED)
+    headers = [("Tailscale-User-Login", "bob@example.com"),
+               ("Tailscale-User-Login", "alice@example.com")]  # fmt: skip
+    seen = client.get("/_whoami", headers=headers).json()
+    assert (seen["login"], seen["role"]) == (None, "viewer")
+
+
+def test_anonymous_cross_site_refusals_are_not_audited() -> None:
+    app = make_app(TRUSTED)
+    client = TestClient(app, base_url=f"https://{TS_NAME}", client=("127.0.0.1", 50000))
+    for _ in range(5):  # what any page the operator visits could send
+        assert (
+            client.post("/api/_write", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 403
+        )
+    assert AuditLog(app.state.db).entries() == []
+    assert (
+        client.post("/api/_write", headers={**BOB, "Sec-Fetch-Site": "cross-site"}).status_code
+        == 403
+    )
+    assert [e.actor for e in AuditLog(app.state.db).entries()] == ["bob@example.com"]

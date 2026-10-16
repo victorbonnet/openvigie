@@ -45,7 +45,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T4 | An agent on the same host reads the collector token and writes fake data or, later, loosens its own sandbox | Token file `0600` owned by the collector user; per-host tokens, revocable; collector runs as its own user; HTTP clients never follow redirects, so the token only goes to the configured hub | #23, #36, #54, #65 |
 | T5 | A web page performs DNS rebinding against the hub on `127.0.0.1` | `TrustedHostMiddleware` with an allow-list, strict CSP, no CORS | #35 |
 | T6 | Stored XSS through agent names, versions or error messages | Jinja2 autoescape, no inline scripts, values escaped in every template | #35, #39 |
-| T7 | The hub is reached from the LAN or the internet | Loopback bind by default; a non-loopback bind needs an explicit opt-in; remote access only via `tailscale serve` | #23, #53 |
+| T7 | The hub is reached from the LAN or the internet | Loopback bind by default; a non-loopback bind needs an explicit opt-in; remote access only via `tailscale serve` (the docs warn never to use `tailscale funnel`) | #23, #53 |
 | T8 | Secrets and personal data leak through traces sent to Langfuse | Export is off unless configured, metadata only by default, content opt-in and redacted again on the hub | #60, #61, #62 |
 | T9 | Usage data accumulates forever | Configurable retention | #51 |
 | T10 | A prompt-injected agent edits its own config or skills to gain access | MVP is read-only; write actions wait for the audit log and roles | #12 |

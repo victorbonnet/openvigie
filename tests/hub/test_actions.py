@@ -232,3 +232,10 @@ def test_only_small_url_encoded_forms(client: TestClient) -> None:
     assert extra.status_code == 422
     unknown = post(client, "/actions/new", {"csrf": token, "kind": "rm-rf"})
     assert unknown.status_code == 400
+
+
+def test_the_error_box_cannot_be_set_from_the_url(client: TestClient) -> None:
+    action_id = propose_noop(client)
+    page = client.get(f"/actions/{action_id}", params={"error": "Type your password here"},
+                      headers=ALICE)  # fmt: skip
+    assert page.status_code == 200 and "Type your password here" not in page.text
