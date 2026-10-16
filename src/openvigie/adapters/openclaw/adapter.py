@@ -6,7 +6,8 @@ One install per state dir (``~/.openclaw`` or ``$OPENCLAW_STATE_DIR``); each age
 
 Version: the installed ``package.json`` next to the running gateway's ``dist/index.js``, else
 ``meta.lastTouchedVersion`` in ``openclaw.json``. Activity: newest mtime of the agent's session
-files and session database, stat only. Usage: each agent's transcripts (``usage``). Only
+files and session database, stat only. Usage: each agent's transcripts (``usage``).
+Capabilities: ``openclaw.json`` (``capabilities``). Only
 ``openclaw.json``, ``package.json`` and the agents' transcripts are read; credentials, identity
 and auth files never are. A JSON5 ``openclaw.json`` still counts as an install, with the
 version unknown and health ``degraded``.
@@ -28,8 +29,9 @@ from openvigie.adapters.common import (
     display_path,
     newest_mtime,
 )
+from openvigie.adapters.openclaw.capabilities import read_capabilities
 from openvigie.adapters.openclaw.usage import read_usage
-from openvigie.model import AgentInstance, SandboxState, stable_id
+from openvigie.model import AgentInstance, Capabilities, SandboxState, stable_id
 from openvigie.safeio import UnsafeFileError, load_json_bounded
 
 CONFIG = "openclaw.json"
@@ -66,6 +68,7 @@ class OpenClawAdapter(Adapter):
         super().__init__()
         self.roots: dict[str, Path] = {}
         self.dirs: dict[str, Path] = {}  # agent id → agents/<id>
+        self.configs: dict[str, tuple[str, dict[str, Any] | None]] = {}  # agent id → (name, config)
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         roots = [
@@ -86,6 +89,7 @@ class OpenClawAdapter(Adapter):
                 agent_id = stable_id(ctx.host.host_id, self.agent_type, str(root), name)
                 self.roots[agent_id] = root
                 self.dirs[agent_id] = root / "agents" / name
+                self.configs[agent_id] = (name, config)
                 found.append(
                     AgentInstance(
                         agent_id=agent_id,
@@ -104,6 +108,13 @@ class OpenClawAdapter(Adapter):
 
     def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
         return ()
+
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        root = self.roots.get(agent.agent_id)
+        name, config = self.configs.get(agent.agent_id, ("", None))
+        if root is None or config is None:  # JSON5 or unreadable: unknown, not "nothing"
+            return None
+        return read_capabilities(agent, root, name, config, ctx.homes, ctx.now())
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         agent_dir = self.dirs.get(agent.agent_id)
