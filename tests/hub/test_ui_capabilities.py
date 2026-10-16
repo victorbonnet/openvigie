@@ -92,7 +92,7 @@ def test_channels_and_who_can_reach_it() -> None:
         )
     )
     assert "<h3>Messaging channels</h3>" in html
-    assert "Who can message it: <strong>anyone: direct messages are open</strong>" in html
+    assert "Who can message it: <strong>anyone (direct messages are open)</strong>" in html
     assert '<span class="badge error">open to anyone</span>' in html
     assert "<code>allowlist</code>" in html and '<span class="badge degraded">yes</span>' in html
     assert "None configured." in page(Capabilities("a1", NOW))

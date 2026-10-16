@@ -65,7 +65,7 @@ def rules(tmp_path: Path):  # type: ignore[no-untyped-def]
         (caps(channels=(OWNER_ONLY, Channel("discord", "open", True))), AGENT, "linux",
          ["others-instruct"]),
         (caps(channels=(GROUPS,), network=NetAccess.FULL), AGENT, "linux",
-         ["others-instruct-broad-access", "shell-network-unsandboxed", "others-instruct"]),
+         ["others-instruct-broad-access", "shell-network-unsandboxed"]),
         (caps(channels=(GROUPS,), filesystem=FsAccess.FULL), AgentInstance(
             "a1", "h", "hermes", "Hermes", sandboxed=SandboxState.YES), "linux",
          ["others-instruct"]),
@@ -160,14 +160,25 @@ def test_agents_api_exposes_risk(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 @pytest.mark.parametrize(
     ("channels", "others", "who"),
     [
-        ((), False, "nobody: no messaging channel"),
+        ((), False, "nobody (no messaging channel)"),
         ((OWNER_ONLY,), False, "1 allowlisted person"),
-        ((OWNER_ONLY, Channel("slack", "allowlist", False, 2, False)), True,
-         "3 allowlisted people"),
-        ((GROUPS,), True, "members of its group chats"),
-        ((OWNER_ONLY, Channel("discord", "open", True)), True, "anyone: direct messages are open"),
+        # the owner alone on two platforms is one person, not two
+        ((OWNER_ONLY, Channel("slack", "allowlist", False, 1, False)), False,
+         "up to 1 allowlisted person per channel"),
+        ((OWNER_ONLY, Channel("slack", "allowlist", False, 3, False)), True,
+         "up to 3 allowlisted people per channel"),
+        ((GROUPS,), True, "members of its group chats and 1 allowlisted person"),
+        ((Channel("telegram", "allowlist", False, 2, True),), True,
+         "members of its group chats and 2 allowlisted people"),
+        ((OWNER_ONLY, Channel("discord", "open", True)), True, "anyone (direct messages are open)"),
         ((Channel("telegram", "pairing"),), None, "unknown"),
         ((Channel("telegram", groups=True),), True, "members of its group chats"),
+        # reach unknown: a count is never shown as if it were all
+        ((Channel("telegram", "allowlist", None, 1, None),), None, "at least 1 allowlisted person"),
+        ((Channel("slack", "allowlist", False, 5, False), Channel("discord")), True,
+         "at least 5 allowlisted people"),
+        # DMs off and no groups: owner-only whatever the allowlist
+        ((Channel("telegram", "disabled", False, None, False),), False, "only its owner"),
     ],
 )  # fmt: skip
 def test_who_can_reach_an_agent(
@@ -175,6 +186,20 @@ def test_who_can_reach_an_agent(
 ) -> None:
     assert reachable_by_others(channels) is others
     assert reached_by(channels) == who
+
+
+def test_reason_names_platforms_and_people(rules) -> None:  # type: ignore[no-untyped-def]
+    open_dms = Channel("discord", "open", True)
+    (flag,) = evaluate(rules, facts(AGENT, caps(channels=(OWNER_ONLY, open_dms)), "linux"))
+    assert flag.reason == (
+        "On discord, telegram, it can be messaged by anyone (direct messages are open). "
+        "Anything they send is an instruction."
+    )
+
+
+def test_one_channel_per_platform() -> None:
+    with pytest.raises(ValueError, match="one per platform"):
+        caps(channels=(OWNER_ONLY, Channel("telegram", "open", True)))
 
 
 def test_unknown_reach_is_a_fact_not_a_flag(rules) -> None:  # type: ignore[no-untyped-def]

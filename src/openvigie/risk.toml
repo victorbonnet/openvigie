@@ -52,8 +52,19 @@ when = { all = [
 id = "others-instruct"
 severity = "medium"
 title = "People other than its owner can instruct it"
-reason = "It answers {reached_by} on {channels}: anything they send is an instruction."
-when = { field = "reachable_by_others", equals = true }
+reason = "On {channels}, it can be messaged by {reached_by}. Anything they send is an instruction."
+# only when others-instruct-broad-access doesn't already report it
+when = { all = [
+  { field = "reachable_by_others", equals = true },
+  { not = { all = [
+    { field = "sandboxed", not_equals = "yes" },
+    { any = [
+      { field = "approvals", equals = "never_ask" },
+      { field = "writes_anywhere", equals = true },
+      { all = [{ field = "shell", equals = true }, { field = "network", equals = "full" }] },
+    ] },
+  ] } },
+] }
 
 [[rules]]
 id = "full-filesystem"

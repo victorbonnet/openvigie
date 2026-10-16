@@ -162,7 +162,11 @@ class RuleSet:
 
 def reachable_by_others(channels: tuple[Channel, ...]) -> bool | None:
     """Whether people other than the owner can instruct the agent: open direct messages, group
-    chats, or several allowlisted people on any channel. ``None`` when that can't be told."""
+    chats, or several allowlisted people on any channel. ``None`` when that can't be told.
+
+    Each channel is judged on its own: people can't be told apart across platforms, so the owner
+    allowlisted on two platforms is still one person (and two different single people on two
+    platforms go unnoticed)."""
     answers = [_others(c) for c in channels]
     if any(answers):
         return True
@@ -172,23 +176,34 @@ def reachable_by_others(channels: tuple[Channel, ...]) -> bool | None:
 def _others(channel: Channel) -> bool | None:
     if channel.open_dms or channel.groups or (channel.allowed_users or 0) > 1:
         return True
-    if channel.open_dms is None or channel.groups is None or channel.allowed_users is None:
+    if channel.open_dms is None or channel.groups is None:
         return None
-    return False
+    if channel.dm_policy == "disabled":  # no DMs, no groups: the allowlist doesn't matter
+        return False
+    return None if channel.allowed_users is None else False
 
 
 def reached_by(channels: tuple[Channel, ...]) -> str:
-    """Who can message the agent, in a few words, for flag reasons and the UI."""
+    """Who can message the agent, in a few words, for flag reasons and the UI. Never firmer than
+    ``reachable_by_others``: a count is exact only when reach is known on every channel."""
     if not channels:
-        return "nobody: no messaging channel"
+        return "nobody (no messaging channel)"
     if any(c.open_dms for c in channels):
-        return "anyone: direct messages are open"
-    if any(c.groups for c in channels):
-        return "members of its group chats"
-    if all(c.allowed_users is not None for c in channels):
-        people = sum(c.allowed_users or 0 for c in channels)
-        return f"{people} allowlisted {'person' if people == 1 else 'people'}"
-    return "unknown"
+        return "anyone (direct messages are open)"
+    parts = ["members of its group chats"] if any(c.groups for c in channels) else []
+    counts = [c.allowed_users for c in channels if c.allowed_users is not None]
+    if counts:
+        most = max(counts)  # per channel: the same person may be allowlisted on several
+        people = f"{most} allowlisted {'person' if most == 1 else 'people'}"
+        if len(counts) < len(channels) or reachable_by_others(channels) is None:
+            parts.append(f"at least {people}")
+        elif len(channels) > 1:
+            parts.append(f"up to {people} per channel")
+        else:
+            parts.append(people)
+    if parts:
+        return " and ".join(parts)
+    return "only its owner" if reachable_by_others(channels) is False else "unknown"
 
 
 def facts(
