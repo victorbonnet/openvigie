@@ -346,13 +346,13 @@ def test_session_key_peer_ids_replaced_stably(tmp_path: Path) -> None:
 
 
 def test_sqlite_checked_per_value_not_raw_bytes(tmp_path: Path) -> None:
-    # adjacent values ("…-authfix" then "HERMES_SRC=…") and FTS schema text are not secrets
+    # adjacent values ("…-authfix" then "HERMES_SRC=…") and schema text are not secrets
     source = tmp_path / ".hermes"
     source.mkdir()
     with sqlite3.connect(source / "state.db") as conn:
         conn.execute("create table events (root text, command text)")
         conn.execute("insert into events values ('/tmp/review-authfix', 'HERMES_SRC=/opt/h x')")
-        conn.execute("create virtual table m using fts5(content, tokenize='trigram')")
+        conn.execute("create table m (tokenize text check (tokenize = 'trigram'))")
     dest = tmp_path / "fixture"
     rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
     assert (dest / "state.db").exists()
@@ -468,3 +468,73 @@ def test_sqlite_keeps_newest_rows(tmp_path: Path) -> None:
         ids = [r[0] for r in conn.execute("select id from messages order by id")]
     assert ids == list(range(251, 301))
     assert "newest 50 of 300 rows in messages" in (dest / "MANIFEST.md").read_text()
+
+
+def test_sqlite_plain_full_text_table_dropped(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (id text, input_tokens integer)")
+        conn.execute("insert into sessions values ('s1', 7)")
+        conn.execute("create virtual table notes using fts5(body)")
+        conn.execute("insert into notes values ('please summarise my lawyer letter')")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert "lawyer" not in all_text(dest)
+    with sqlite3.connect(dest / "state.db") as conn:
+        assert conn.execute("select * from sessions").fetchall() == [("s1", 7)]
+
+
+def test_sqlite_stat_tables_dropped(tmp_path: Path) -> None:
+    # ANALYZE samples (sqlite_stat4) are blobs of indexed values, which aren't scrubbed
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (title text)")
+        conn.execute("create index sessions_title on sessions (title)")
+        conn.execute("insert into sessions values ('Plan the trip')")
+        conn.execute("analyze")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "state.db") as conn:
+        names = {r[0] for r in conn.execute("select name from sqlite_master")}
+    assert not any(n.startswith("sqlite_stat") for n in names)
+
+
+def test_allow_list_ids_scrubbed(tmp_path: Path) -> None:
+    # ids that appear nowhere else (no session key, no chat_id field)
+    hermes = tmp_path / ".hermes"
+    hermes.mkdir()
+    (hermes / "config.yaml").write_text(
+        "telegram:\n  allowed_users: [987654321]\n  allowed_chats: ['-1009876543210']\n"
+    )
+    rf.record("hermes", hermes, tmp_path / "h", scrubber=scrubber(), ps=FakePs())
+    text = all_text(tmp_path / "h")
+    assert "987654321" not in text and "1009876543210" not in text
+
+    openclaw = tmp_path / ".openclaw"
+    openclaw.mkdir()
+    config = {"gateway": {"port": 18789},
+              "channels": {"telegram": {"allowFrom": ["tg:555666777"]},
+                           "whatsapp": {"groupAllowFrom": ["+33612345678"]}}}  # fmt: skip
+    (openclaw / "openclaw.json").write_text(json.dumps(config))
+    rf.record("openclaw", openclaw, tmp_path / "o", scrubber=scrubber(), ps=FakePs())
+    text = all_text(tmp_path / "o")
+    assert "555666777" not in text and "33612345678" not in text
+    out = json.loads((tmp_path / "o" / "openclaw.json").read_text())
+    assert out["gateway"]["port"] == 18789
+    assert out["channels"]["telegram"]["allowFrom"][0].startswith("tg:1000000")
+    assert out["channels"]["whatsapp"]["groupAllowFrom"][0].startswith("+1000000")
+
+
+def test_peer_ids_replaced_as_whole_numbers_only(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (user_id text, started_at text, input_tokens integer)")
+        conn.execute("insert into sessions values ('10001', '2026-10-14T10:00:01.100014Z', 100014)")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "state.db") as conn:
+        row = conn.execute("select user_id, started_at, input_tokens from sessions").fetchone()
+    assert row == ("100000001", "2026-10-14T10:00:01.100014Z", 100014)
