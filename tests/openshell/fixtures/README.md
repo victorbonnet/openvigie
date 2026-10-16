@@ -29,7 +29,9 @@ Real outputs of the `openshell` CLI, recorded on a GitHub ARM runner by
     `main_process_started_at_ms` in `sandbox-get.json` to within 0.1 s;
   - `docker-ps.json` is for reference only: the collector never talks to Docker.
   - Because CI logs are public, `ps.txt` stops each command line at the executable and
-    `docker-ps.json` keeps only `openshell.ai/*` labels; container env is never recorded.
+    `docker-ps.json` keeps only `openshell.ai/*` labels and each container's executable;
+    container env is never recorded. Docker joins labels with commas, so a label value that
+    itself contains a comma is cut there.
 - **Errors and help:**
   - `sandbox-get-missing.json` (no such sandbox), `status-gateway-down.txt` (gateway stopped);
   - `status.txt`, `version.txt`, and `help-*.txt` for each command openvigie may call.

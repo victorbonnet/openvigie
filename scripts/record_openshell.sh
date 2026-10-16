@@ -36,9 +36,11 @@ run sandbox-get-missing.json openshell sandbox get no-such-sandbox --output json
 # Host side, for mapping agents to sandboxes (#149). CI logs are public, so print only what the
 # mapping needs: no `docker inspect` (it dumps container env), only openshell.ai/* labels, and
 # each command line cut after the executable (arguments can carry secrets).
+# Command is quoted ("\"/bin/x --flag v\""): keep the executable only, like ps_tree
+DOCKER_PS_FILTER='.Labels |= (split(",") | map(select(startswith("openshell.ai/"))) | join(","))
+  | .Command |= (ltrimstr("\"") | rtrimstr("\"") | split(" ")[0])'
 docker_ps() {
-  docker ps --no-trunc --format json | jq -c \
-    '.Labels |= (split(",") | map(select(startswith("openshell.ai/"))) | join(","))'
+  docker ps --no-trunc --format json | jq -c "$DOCKER_PS_FILTER"
 }
 ps_tree() {
   # --forest marks (\_ and |) prefix both comm and args: keep words up to argv[0]
