@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,7 +10,14 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.store.usage import UsageStore
-from openvigie.model import AgentInstance, Host, Session, UsageQuality, UsageRecord
+from openvigie.model import (
+    AgentInstance,
+    Host,
+    Session,
+    UsageBackfill,
+    UsageQuality,
+    UsageRecord,
+)
 
 NOW = datetime.now(UTC).replace(microsecond=0)
 PI = Host("h-pi", "pi5", "linux", "aarch64", "0.0.1")
@@ -77,3 +85,54 @@ def test_override_path_is_shown_home_relative(monkeypatch: pytest.MonkeyPatch,
     html = setup(monkeypatch, config).get("/prices").text
     assert "<code>~/.config/openvigie/prices.toml</code>" in html
     assert str(tmp_path) not in html
+
+
+def test_agent_list_shows_usage_and_cost(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = setup(monkeypatch, tmp_path)
+    for html in (client.get("/").text, client.get("/agents/rows").text,
+                 client.get("/hosts/h-pi").text):  # fmt: skip
+        assert "≥ $1.25</a>" in html  # one call is unpriced, so the cost is a lower bound
+        assert "1M tokens" in html
+        assert 'title="No usage recorded in the last 30 days">—</td>' in html  # not $0
+
+
+def unknown_usage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
+    client = setup(monkeypatch, tmp_path)
+    db = client.app.state.db  # type: ignore[attr-defined]
+    Inventory(db).upsert_agents([AgentInstance("a3", "h-pi", "codex", "Mystery")], NOW)
+    UsageStore(db).add_records([UsageRecord("r3", "a3", NOW, provider="openai",
+                                            response_model="gpt-5")], "h-pi")  # fmt: skip
+    return client
+
+
+def test_unknown_token_counts_are_not_shown_as_zero(monkeypatch: pytest.MonkeyPatch,
+                                                    tmp_path: Path) -> None:  # fmt: skip
+    client = unknown_usage(monkeypatch, tmp_path)
+    assert '<span class="muted">unknown tokens</span>' in client.get("/agents/rows").text
+    assert (
+        '<div class="k">Tokens</div><div class="v">unknown</div>' in client.get("/agents/a3").text
+    )
+
+
+def test_agent_whose_history_is_being_read(monkeypatch: pytest.MonkeyPatch,
+                                           tmp_path: Path) -> None:  # fmt: skip
+    client = setup(monkeypatch, tmp_path)
+    UsageStore(client.app.state.db).set_backfill(  # type: ignore[attr-defined]
+        [UsageBackfill("a2", NOW, False, None, 2048)], "h-pi"
+    )
+    assert (
+        'title="History still being read: usage may appear soon">—</td>'
+        in client.get("/agents/rows").text
+    )
+
+
+def test_agent_list_reuses_recent_usage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    client = setup(monkeypatch, tmp_path)
+    client.get("/agents/rows")
+    UsageStore(client.app.state.db).add_records(  # type: ignore[attr-defined]
+        [UsageRecord("r9", "a2", NOW, provider="openai", response_model="gpt-5",
+                     input_tokens=5_000_000, output_tokens=0)], "h-pi")  # fmt: skip
+    assert "5M tokens" not in client.get("/agents/rows").text  # cached for 30 s
+    state = client.app.state  # type: ignore[attr-defined]
+    state.agent_spend = replace(state.agent_spend, at=state.agent_spend.at - 31)
+    assert "5M tokens" in client.get("/agents/rows").text

@@ -1,5 +1,6 @@
 {% from "_risk.html" import risk_badge %}
 {% from "_sandbox.html" import sandbox_badge %}
+{% from "_tokens.html" import tokens %}
 <tbody id="agent-rows" hx-get="/agents/rows{% if query %}?{{ query }}{% endif %}" hx-trigger="every 5s" hx-swap="outerHTML">
   {% for row in rows %}
   {% set a = row.agent %}
@@ -11,9 +12,17 @@
     <td><span class="badge {{ a.status.value }}">{{ a.status.value }}</span></td>
     <td>{{ risk_badge(risks[a.agent_id].level) }}</td>
     <td>{{ sandbox_badge(a, sandboxes) }}</td>
+    {% set u = spend.rows.get(a.agent_id) %}
+    {% if u %}
+    <td class="num"><a href="/agents/{{ a.agent_id }}#usage" title="Estimated list-price cost{% if not u.cost_complete %}, a lower bound: part of the usage is unpriced or not read yet{% endif %}">{% if not u.cost_complete %}≥ {% endif %}{{ money(u.cost) }}</a><br><span class="muted">{{ tokens(u, " tokens") }}</span></td>
+    {% elif a.agent_id in spend.reading %}
+    <td class="num muted" title="History still being read: usage may appear soon">—</td>
+    {% else %}
+    <td class="num muted" title="No usage recorded in the last {{ spend_days }} days">—</td>
+    {% endif %}
     <td>{{ a.last_activity_at | ago }}</td>
   </tr>
   {% else %}
-  <tr><td colspan="8" class="muted">No agents match these filters.</td></tr>
+  <tr><td colspan="9" class="muted">No agents match these filters.</td></tr>
   {% endfor %}
 </tbody>
