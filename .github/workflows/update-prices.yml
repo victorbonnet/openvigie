@@ -62,6 +62,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The branch is bot-owned and rebuilt from main each run, but never overwrite a
+          # reviewer's commit on it (say, an entry moved into the hand section): stop instead.
+          if git fetch --quiet origin "$BRANCH" 2>/dev/null; then
+            last=$(git log -1 --format=%ae FETCH_HEAD)
+            if [ "$last" != "$(git config user.email)" ]; then
+              echo "::warning::$BRANCH has a commit by someone else; merge or close its PR first"
+              exit 0
+            fi
+          fi
           git switch -c "$BRANCH"
           git commit -m "chore(pricing): update bundled prices from LiteLLM ${LITELLM_SHA:0:12} (FR-4)" \
             -- src/openvigie/prices.toml

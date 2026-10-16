@@ -6,11 +6,11 @@ uv run scripts/update_prices.py --revision <40-hex LiteLLM commit> [--input FILE
 
 Reads LiteLLM's ``model_prices_and_context_window.json`` at a pinned commit (from ``--input``
 or raw.githubusercontent.com) and rewrites only the block between the GENERATED markers of
-``prices.toml``. Everything above the block is hand-maintained and wins: a LiteLLM model whose id
-is already a hand entry's id or alias is left out. Generated entries are ``unverified`` and carry
-``source = "litellm@<commit>"``, the revision at which their rates last changed, so a newer
-revision with the same rates gives no diff. The output depends only on the input file, the
-revision and the hand section, so running it twice gives no diff either.
+``prices.toml``. Everything above the block is hand-maintained and wins: a LiteLLM model is left
+out when its id, or its id without a date suffix, is a hand entry's id or alias. Generated
+entries are ``unverified`` and carry ``source = "litellm@<commit>"``, the revision at which their
+rates last changed, so a newer revision with the same rates gives no diff. The output depends
+only on the input file, the revision and the hand section, so running it twice gives no diff.
 
 openvigie never runs this at run time: the table ships with the package (no phone-home).
 """
@@ -32,7 +32,7 @@ from typing import Annotated, Any
 from pydantic import ConfigDict, Field, Strict, TypeAdapter, ValidationError
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 
-from openvigie.pricing import PriceFile
+from openvigie.pricing import DATE_SUFFIX, PriceFile
 
 ROOT = Path(__file__).resolve().parents[1]
 PRICES = ROOT / "src" / "openvigie" / "prices.toml"
@@ -94,12 +94,11 @@ class Entry:
     provider: str
     id: str
     prices: Prices
-    aliases: tuple[str, ...] = ()
     source: str = ""
 
     def same_as(self, other: Entry) -> bool:
         """Equal in everything a reviewer cares about, i.e. all but the source revision."""
-        return (self.prices, self.aliases) == (other.prices, other.aliases)
+        return self.prices == other.prices
 
 
 def per_million(value: float) -> Decimal:
@@ -143,7 +142,11 @@ def convert(data: Mapping[str, Any], hand: PriceFile) -> Result:
     """LiteLLM's table to generated entries, without source revisions yet."""
     skipped: dict[str, int] = {}
     warnings: list[str] = []
-    found: dict[tuple[str, str], Prices] = {}  # (provider, LiteLLM key) -> prices
+    taken = {(m.provider, name) for m in hand.models for name in (m.id, *m.aliases)}
+    unverified = {(m.provider, name): m.id for m in hand.models if m.unverified
+                  for name in (m.id, *m.aliases)}  # fmt: skip
+    covered: set[str] = set()
+    entries = []
 
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
@@ -164,31 +167,19 @@ def convert(data: Mapping[str, Any], hand: PriceFile) -> Result:
         except (ValidationError, KeyError):
             skip("missing or invalid per-token price")
             continue
-        if warning:
-            warnings.append(f"{key}: {warning}")
-        found[(entry.litellm_provider, key)] = prices
-
-    # "openai/gpt-x" becomes an alias of "gpt-x", unless a "gpt-x" entry is priced differently
-    groups: dict[tuple[str, str], list[str]] = {}
-    for (provider, key), prices in found.items():
-        bare = key.removeprefix(f"{provider}/")
-        if found.get((provider, bare), prices) != prices:
-            bare = key
-        groups.setdefault((provider, bare), []).append(key)
-
-    taken = {(m.provider, name) for m in hand.models for name in (m.id, *m.aliases)}
-    unverified = {(m.provider, name): m.id for m in hand.models if m.unverified
-                  for name in (m.id, *m.aliases)}  # fmt: skip
-    covered: set[str] = set()
-    entries = []
-    for (provider, bare), keys in sorted(groups.items()):
-        if (provider, bare) in taken:
-            if (provider, bare) in unverified:
-                covered.add(f"`{unverified[(provider, bare)]}` ({provider})")
+        provider = entry.litellm_provider
+        # PriceTable.find tries the exact id before the undated one, so a generated
+        # "claude-x-20250929" would shadow a hand-verified "claude-x"
+        name = next((n for n in (key, DATE_SUFFIX.sub("", key)) if (provider, n) in taken), None)
+        if name is not None:
+            if (provider, name) in unverified:
+                covered.add(f"`{unverified[(provider, name)]}` ({provider})")
             skip("hand entry wins")
             continue
-        aliases = tuple(sorted(k for k in keys if k != bare and (provider, k) not in taken))
-        entries.append(Entry(provider, bare, found[(provider, keys[0])], aliases))
+        if warning:
+            warnings.append(f"{key}: {warning}")
+        entries.append(Entry(provider, key, prices))
+    entries.sort(key=lambda e: (e.provider, e.id))
     return Result(entries, skipped, warnings, sorted(covered))
 
 
@@ -217,8 +208,7 @@ def parse_block(block: str) -> dict[tuple[str, str], Entry]:
             if above
             else Prices(_rates(model))
         )
-        entry = Entry(model["provider"], model["id"], prices, tuple(model.get("aliases", ())),
-                      model.get("source", ""))  # fmt: skip
+        entry = Entry(model["provider"], model["id"], prices, model.get("source", ""))
         entries[(entry.provider, entry.id)] = entry
     return entries
 
@@ -230,8 +220,6 @@ def number(value: Decimal) -> str:
 
 def render_entry(entry: Entry) -> str:
     lines = ["[[models]]", f'provider = "{entry.provider}"', f'id = "{entry.id}"']
-    if entry.aliases:
-        lines.append("aliases = [" + ", ".join(f'"{a}"' for a in entry.aliases) + "]")
     lines += [f"{name} = {number(value)}" for name, value in entry.prices.rates]
     if entry.prices.above_tokens is not None:
         parts = [f"prompt_tokens = {entry.prices.above_tokens}"]
@@ -295,7 +283,7 @@ def describe(entry: Entry) -> str:
     if entry.prices.above_tokens is not None:
         tier = ", ".join(f"{name} {number(value)}" for name, value in entry.prices.above)
         rates += f"; above {entry.prices.above_tokens} prompt tokens: {tier}"
-    return rates + (f" (also {', '.join(entry.aliases)})" if entry.aliases else "")
+    return rates
 
 
 def summarize(old: dict[tuple[str, str], Entry], new: dict[tuple[str, str], Entry],
