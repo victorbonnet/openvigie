@@ -32,7 +32,7 @@
     <div class="k">Coverage</div>
     <div class="v">{{ total.records }} calls</div>
     <div class="s">{{ total.exact }} exact · {{ total.estimated }} estimated · {{ total.unknown }} unknown{% if total.unpriced_tokens %} · {{ compact(total.unpriced_tokens) }} unpriced tokens{% endif %}</div>
-    {% for r in reading %}<div class="s">{{ r.label }}: reading history{% if r.up_to %}, up to {{ r.up_to }}{% endif %}</div>{% endfor %}
+    {% for r in reading %}<div class="s">{{ r.label }}: reading history{% if r.stalled %} ({{ r.stalled }}){% endif %}</div>{% endfor %}
   </div>
 </div>
 

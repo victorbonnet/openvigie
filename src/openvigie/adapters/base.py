@@ -154,11 +154,18 @@ class AdapterState:
 class Backlog:
     """What ``collect`` left for later ticks: bytes not read yet, and the oldest file they're in.
 
-    Empty means the adapter has read everything there is (its backfill is complete).
+    ``complete`` means the adapter has read everything there is (its backfill is done).
     """
 
     bytes_left: int = 0
-    oldest: datetime | None = None  # last-modified time of the oldest file with unread bytes
+    # last-modified time of the oldest file with unread bytes. Not a bound on the records left:
+    # a file written today can still hold records from last month.
+    oldest: datetime | None = None
+    truncated: bool = False  # too many files to check them all: how much is left is unknown
+
+    @property
+    def complete(self) -> bool:
+        return self.bytes_left == 0 and not self.truncated
 
     def add(self, unread: int, modified: datetime) -> None:
         if unread <= 0:

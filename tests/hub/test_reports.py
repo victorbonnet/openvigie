@@ -148,7 +148,7 @@ def reading(db: Database, agent: str, until: datetime | None, at: datetime = DAY
     )
 
 
-def test_rows_past_what_was_read_are_incomplete(prices: PriceTable) -> None:
+def test_every_row_of_an_agent_reading_history_is_incomplete(prices: PriceTable) -> None:
     db = Database(MEMORY)
     seed(
         db,
@@ -158,6 +158,8 @@ def test_rows_past_what_was_read_are_incomplete(prices: PriceTable) -> None:
             rec("3", "cx", DAY + timedelta(days=2), "gpt-5-codex", 1, 0, provider="openai"),
         ],
     )
+    # files last written before this are read; a resumed session's file written later can
+    # still hold older records, so it says nothing about which days are complete
     reading(db, "cx", DAY + timedelta(days=1, hours=6))  # fmt: skip
     start, end = DAY - timedelta(days=1), DAY + timedelta(days=3)
 
@@ -170,13 +172,16 @@ def test_rows_past_what_was_read_are_incomplete(prices: PriceTable) -> None:
     by_day = usage_report(db, prices, group_by=["agent", "day"], start=start, end=end)
     assert {(r.key["agent"], r.key["day"]): r.history_complete for r in by_day.rows} == {
         ("cc", "2026-10-14"): True,
-        ("cx", "2026-10-14"): True,  # the whole day was read
+        ("cx", "2026-10-14"): False,  # before read_until, but may still be missing records
         ("cx", "2026-10-16"): False,
     }
     assert usage_report(db, prices, agent_id="cc", start=start, end=end).reading == []
 
     before = usage_report(db, prices, start=DAY, end=DAY + timedelta(days=1))
-    assert before.reading == [] and before.total.cost_complete  # ends before read_until
+    assert [r.agent_id for r in before.reading] == ["cx"] and not before.total.cost_complete
+    by_model = usage_report(db, prices, group_by=["model"], start=start, end=end)
+    assert {r.key["model"]: r.history_complete for r in by_model.rows} == {
+        "claude-opus-5-5": False, "gpt-5-codex": False}  # fmt: skip
 
 
 def test_backfill_keeps_the_newest_report() -> None:

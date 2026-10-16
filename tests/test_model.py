@@ -163,3 +163,14 @@ def test_building_a_wire_type_validates_it() -> None:
         Session("s", "a", datetime(2026, 10, 14))  # no timezone
     with pytest.raises(ValidationError):
         AgentInstance("a", "h", "codex", "Codex", process_running="yes")  # type: ignore[arg-type]
+
+
+def test_a_complete_backfill_has_nothing_left() -> None:
+    from openvigie.model import CodecError, UsageBackfill, from_dict
+
+    at = datetime(2026, 10, 14, tzinfo=UTC)
+    assert UsageBackfill("a1", at, False, None, None).bytes_left is None  # unknown amount
+    assert UsageBackfill("a1", at, True, None, 0).complete
+    for bad in ({"bytes_left": 5}, {"read_until": at.isoformat()}):
+        with pytest.raises(CodecError):
+            from_dict(UsageBackfill, {"agent_id": "a1", "complete": True, **bad})

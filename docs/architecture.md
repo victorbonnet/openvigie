@@ -47,7 +47,7 @@ flowchart LR
 |---|---|---|
 | `model` | The collector ↔ hub wire format (schema version 1) | Pydantic dataclasses `Host`, `AgentInstance`, `StatusEvent`, `Session`, `UsageRecord`, `Span`, `Capabilities`, `AdapterHealth`, `UsageBackfill`, `OpenShellSandbox`, `Command`, `CommandResult`; `to_dict` / `from_dict`; `stable_id` |
 | `config` | Settings files and private files | `HubSettings`, `CollectorSettings` (and sections); `load_hub_settings`, `load_collector_settings`; `config_dir` / `state_dir` / `data_dir`; `read_private_file`, `write_private_file` |
-| `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `FileCursor`, `ReadStats` |
+| `safeio` | Reading untrusted agent files | `tail_jsonl`, `load_json_bounded`, `load_toml_bounded`, `walk_bounded` (+ `WalkReport`), `FileCursor`, `ReadStats` |
 | `redact` | Removing secrets from anything that leaves the process | `redact`, `redact_obj` |
 | `semconv` | OTel GenAI attribute names | constants |
 | `pricing` | Prices and cost (FR-4) | `load_price_table`, `PriceTable.find`, `compute_cost`; file format `PriceFile` |

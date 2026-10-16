@@ -222,16 +222,25 @@ def resolve_within(root: Path, relative: str | Path) -> Path:
     return candidate
 
 
+@dataclass
+class WalkReport:
+    """Filled in by ``walk_bounded``: ``truncated`` when it stopped at ``max_entries``."""
+
+    truncated: bool = False
+
+
 def walk_bounded(
     root: Path,
     pattern: str = "*",
     *,
     max_depth: int = 6,
     max_entries: int = 20_000,
+    report: WalkReport | None = None,
 ) -> Iterator[Path]:
     """Yield regular files under ``root`` whose name matches ``pattern``.
 
-    Symlinks are never followed or yielded. Stops after ``max_entries`` directory entries.
+    Symlinks are never followed or yielded. Stops after ``max_entries`` directory entries, and
+    then sets ``report.truncated``: the files past that point were never seen.
     Order is deterministic (sorted per directory).
     """
     seen = 0
@@ -247,6 +256,8 @@ def walk_bounded(
         for entry in reversed(entries):
             seen += 1
             if seen > max_entries:
+                if report is not None:
+                    report.truncated = True
                 return
             if entry.is_symlink():
                 continue

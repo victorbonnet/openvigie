@@ -224,7 +224,8 @@ class ReadingOut(ApiModel):
 
     agent_id: str
     label: str
-    read_until: Timestamp | None  # log files last written before this are all read
+    # log files last written before this are all read; not a bound on the records left
+    read_until: Timestamp | None
     bytes_left: int | None
 
     @classmethod

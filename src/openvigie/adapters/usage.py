@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from openvigie.adapters.base import ActivityBatch, AdapterState, Backlog, HostContext
-from openvigie.safeio import FileCursor, UnsafeFileError, tail_jsonl, walk_bounded
+from openvigie.safeio import FileCursor, UnsafeFileError, WalkReport, tail_jsonl, walk_bounded
 
 MiB = 1024 * 1024
 
@@ -67,10 +67,12 @@ def tail_files(
     Files untouched since their cursor are skipped with a ``stat`` only. On a first read, files
     last modified before ``state.backfill_since`` are skipped entirely (cursor set to the end).
     Once the budget is spent, the remaining files are only ``stat``-ed: what they still hold
-    goes into ``batch.backlog``, so the hub can tell history is still being read.
+    goes into ``batch.backlog``, so the hub can tell history is still being read. If there are
+    too many files to walk them all, the backlog is marked ``truncated`` (unknown).
     """
     backlog = batch.backlog = Backlog()
-    for path in walk_bounded(directory, pattern, max_depth=max_depth):
+    walk = WalkReport()
+    for path in walk_bounded(directory, pattern, max_depth=max_depth, report=walk):
         key = str(path.relative_to(root))
         saved = state.get(key)
         cursor = FileCursor.from_dict(saved) if saved else None
@@ -103,3 +105,4 @@ def tail_files(
         for value in result.values:
             yield key, value
         state.stage(key, result.cursor.to_dict())
+    backlog.truncated = walk.truncated

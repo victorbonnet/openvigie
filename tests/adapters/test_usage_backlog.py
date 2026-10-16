@@ -6,6 +6,8 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from openvigie.adapters.base import ActivityBatch, AdapterState
 from openvigie.adapters.usage import TailBudget, tail_files
 
@@ -69,3 +71,20 @@ def test_rotated_file_counts_in_full(tmp_path: Path) -> None:
     assert batch.backlog is not None
     read_of_a = state.committed["a.jsonl"]["offset"]
     assert batch.backlog.bytes_left == big - read_of_a + size  # b.jsonl is a new file now
+
+
+def test_too_many_files_to_walk_is_an_unknown_backlog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from openvigie.safeio import walk_bounded
+
+    for name in ("a", "b", "c"):
+        write(tmp_path / f"{name}.jsonl", 1, NOW)
+    monkeypatch.setattr("openvigie.adapters.usage.walk_bounded",
+                        lambda *a, **kw: walk_bounded(*a, **{**kw, "max_entries": 2}))  # fmt: skip
+    batch = ActivityBatch()
+    read = len(list(tail_files(tmp_path, tmp_path, "*.jsonl", AdapterState(), batch,
+                               TailBudget())))  # fmt: skip
+    assert read == 2  # c.jsonl was never seen
+    assert batch.backlog is not None and batch.backlog.truncated
+    assert batch.backlog.bytes_left == 0 and not batch.backlog.complete

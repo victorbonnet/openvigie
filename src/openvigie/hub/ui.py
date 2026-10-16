@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
 from typing import Annotated
@@ -180,17 +180,29 @@ class ReadingView:
 
     agent_id: str
     label: str
-    up_to: str | None  # local date the logs have been read up to; None: not known
-    left: str | None  # e.g. "1.2 GiB left"
+    left: str  # e.g. "1.2 GiB left"
+    stalled: str | None  # why it won't finish on its own, e.g. "host revoked"; None: progressing
 
 
-def reading_views(reading: list[Reading], tz: tzinfo) -> list[ReadingView]:
+STALLED_AFTER = timedelta(hours=1)
+
+
+def reading_views(reading: list[Reading], now: datetime | None = None) -> list[ReadingView]:
+    now = now or datetime.now(UTC)
     return [
         ReadingView(r.agent_id, r.label,
-                    r.read_until.astimezone(tz).date().isoformat() if r.read_until else None,
-                    f"{byte_size(r.bytes_left)} left" if r.bytes_left else None)
+                    f"{byte_size(r.bytes_left)} left" if r.bytes_left else "amount left unknown",
+                    _stalled(r, now))
         for r in reading
     ]  # fmt: skip
+
+
+def _stalled(r: Reading, now: datetime) -> str | None:
+    if r.host_revoked:
+        return "host revoked"
+    if now - r.host_last_seen > STALLED_AFTER:
+        return f"collector not reporting since {ago(r.host_last_seen, now)}"
+    return None
 
 
 def byte_size(n: int) -> str:
@@ -243,7 +255,7 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
         models=sorted(report(group_by=["model"]).rows, key=lambda r: r.cost, reverse=True),
         sessions=views,
         langfuse_project=project,
-        reading=reading_views(per_day.reading, state.tz),
+        reading=reading_views(per_day.reading),
     )
 
 
@@ -439,7 +451,7 @@ def usage_page(
         per_day=per_day.rows,
         models=models,
         sessions=sessions,
-        reading=reading_views(per_agent.reading, tz),
+        reading=reading_views(per_agent.reading),
         money=money,
         compact=compact,
     )

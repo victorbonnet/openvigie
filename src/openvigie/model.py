@@ -191,16 +191,23 @@ class UsageRecord:
 class UsageBackfill:
     """How far the collector has read an agent's usage logs (FR-3).
 
-    While ``complete`` is false, usage is still being read: totals that reach past
-    ``read_until`` may be missing records, which are unknown, not zero.
+    While ``complete`` is false, usage is still being read: any of the agent's totals may be
+    missing records, which are unknown, not zero.
     """
 
     agent_id: Id
     observed_at: Timestamp = EPOCH
     complete: Bool = True
-    # every log file last written before this has been read; None when complete
+    # every log file last written before this has been read; None when complete. Not a bound
+    # on the records left: a file written later can still hold older records (resumed sessions).
     read_until: Timestamp | None = None
     bytes_left: Count | None = None  # None: not known
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        if self.complete and (self.read_until is not None or self.bytes_left):
+            raise ValueError("a complete backfill has nothing left to read")
+        return self
 
 
 AttrValue = Text | Annotated[int, Strict(), Field(ge=-MAX_INT, le=MAX_INT)] | StrictFloat | Bool

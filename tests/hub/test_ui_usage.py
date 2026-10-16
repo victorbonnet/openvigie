@@ -109,3 +109,34 @@ def test_page_is_fast_with_90_days() -> None:
     start = time.perf_counter()
     assert client.get("/usage?days=90").status_code == 200
     assert time.perf_counter() - start < 2
+
+
+def test_a_collector_that_stopped_mid_backfill_is_called_out() -> None:
+    from openvigie.hub.reports import Reading
+    from openvigie.hub.ui import reading_views
+
+    now = datetime.now(UTC)
+    fresh = Reading("a0", "h-pi", "Codex · pi5", None, 3 * 2**30, now, False)
+    (view,) = reading_views([fresh], now)
+    assert view.left == "3.0 GiB left" and view.stalled is None
+    gone = Reading("a0", "h-pi", "Codex · pi5", None, None, now - timedelta(hours=3), False)
+    (view,) = reading_views([gone], now)
+    assert view.left == "amount left unknown"
+    assert view.stalled == "collector not reporting since 3h ago"
+    (view,) = reading_views([Reading("a0", "h-pi", "Codex · pi5", None, 1, now, True)], now)
+    assert view.stalled == "host revoked"
+
+
+def test_usage_page_says_when_reading_will_not_finish_by_itself() -> None:
+    from openvigie.model import UsageBackfill
+
+    client = client_with([rec("1")])
+    db = client.app.state.db  # type: ignore[attr-defined]
+    UsageStore(db).set_backfill([UsageBackfill("a0", NOW, False, None, 2048)], "h-pi")
+    html = client.get("/usage").text
+    assert "Agent 0 · pi5</a>: reading history (2.0 KiB left)" in html
+    assert "clears by itself" in html and "≥ $4.00" in html
+    db.conn.execute("UPDATE hosts SET last_seen = '2020-01-01T00:00:00.000000Z'")
+    html = client.get("/usage").text
+    assert "Agent 0 · pi5: reading history (collector not reporting since" in html
+    assert "clears by itself" not in html and "reports again" in html

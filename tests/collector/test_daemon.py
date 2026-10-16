@@ -360,8 +360,8 @@ def test_history_larger_than_a_tick_shows_reading_then_complete(
     assert state.read_until is not None  # the unread transcript's last write
     assert abs(state.read_until - (host.now - timedelta(hours=1))) < timedelta(seconds=1)
     page = client.get("/usage").text
-    assert "Claude Code · testhost: reading history, up to" in page
-    assert "≥ " in page and "clears by itself" in page
+    assert "Claude Code · testhost: reading history</div>" in page  # the Coverage card
+    assert "KiB left" in page and "≥ " in page and "clears by itself" in page
     assert "reading history" in client.get(f"/agents/{agent_id}").text
     assert client.get("/api/v1/usage").json()["total"]["history_complete"] is False
 
@@ -380,3 +380,17 @@ def test_history_larger_than_a_tick_shows_reading_then_complete(
     clock.t += collector.settings.slow_tick_s
     collector.tick()
     assert transport.calls == calls + 1  # complete and unchanged: nothing more to send
+
+
+def test_an_unknown_backlog_is_sent_as_incomplete(
+    tmp_path: Path, hub: tuple[TestClient, Database]
+) -> None:
+    from openvigie.adapters.base import ActivityBatch, Backlog
+
+    collector, _, _, _ = make_collector(tmp_path, hub)
+    (agent,) = collector.observe()[0]
+    batch = ActivityBatch(backlog=Backlog(truncated=True))
+    body = collector._changed_backfill(agent, batch)
+    assert body is not None
+    assert (body["complete"], body["bytes_left"], body["read_until"]) == (False, None, None)
+    assert collector._changed_backfill(agent, ActivityBatch()) is None  # adapter can't tell

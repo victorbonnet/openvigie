@@ -374,10 +374,12 @@ class Collector:
         """How far the agent's logs have been read, if that changed since it was last sent."""
         if batch.backlog is None:
             return None  # this adapter can't tell
-        left = batch.backlog.bytes_left
+        backlog = batch.backlog
+        done, known = backlog.complete, not backlog.truncated
         body = to_dict(UsageBackfill(
-            agent.agent_id, self.ctx.now(), complete=left == 0,
-            read_until=batch.backlog.oldest if left else None, bytes_left=left,
+            agent.agent_id, self.ctx.now(), complete=done,
+            read_until=None if done else backlog.oldest,
+            bytes_left=backlog.bytes_left if known else None,
         ))  # fmt: skip
         return None if self.backfill_sent.get(agent.agent_id) == _without_time(body) else body
 
