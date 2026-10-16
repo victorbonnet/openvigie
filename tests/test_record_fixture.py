@@ -285,11 +285,11 @@ def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
         "redact_secrets: true",
         '"allowInsecureAuth": false',
         "secretsMasked: null",
-        "access_token_env: BWS_ACCESS_TOKEN",
+        "access_token_env: VAULT_ACCESS_TOKEN",
         "record_key: ctrl+r",
         '"hotkey": "ctrl+shift+k"',
         '"sessionKey": "agent:main:telegram:direct:100000001"',
-        "secrets:\n  bitwarden:\n",  # a YAML section, not key: value
+        "secrets:\n  vault:\n",  # a YAML section, not key: value
         '"sessionKey": "[scrubbed text <= 128 chars]"',
         '"authProfileId": "openai:user@example.com"',  # an e-mail we already replaced
     ],
@@ -318,7 +318,7 @@ def test_hermes_config_lookalikes_recorded(tmp_path: Path) -> None:
     (source / "config.yaml").write_text(
         "display:\n  redact_secrets: true\n  show_token_analytics: false\n"
         "voice:\n  record_key: ctrl+r\n"
-        "secrets:\n  bitwarden:\n    access_token_env: BWS_ACCESS_TOKEN\n"
+        "secrets:\n  vault:\n    access_token_env: VAULT_ACCESS_TOKEN\n"
     )
     dest = tmp_path / "fixture"
     rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
@@ -326,7 +326,7 @@ def test_hermes_config_lookalikes_recorded(tmp_path: Path) -> None:
 
     config = yaml.safe_load((dest / "config.yaml").read_text())
     assert config["voice"]["record_key"] == "ctrl+r"
-    assert config["secrets"]["bitwarden"]["access_token_env"] == "BWS_ACCESS_TOKEN"  # noqa: S105
+    assert config["secrets"]["vault"]["access_token_env"] == "VAULT_ACCESS_TOKEN"  # noqa: S105
 
 
 def test_session_key_peer_ids_replaced_stably(tmp_path: Path) -> None:
@@ -348,12 +348,12 @@ def test_session_key_peer_ids_replaced_stably(tmp_path: Path) -> None:
 
 
 def test_sqlite_checked_per_value_not_raw_bytes(tmp_path: Path) -> None:
-    # adjacent values ("…-authfix" then "HERMES_SRC=…") and schema text are not secrets
+    # adjacent values ("…-authcheck" then "APP_SRC=…") and schema text are not secrets
     source = tmp_path / ".hermes"
     source.mkdir()
     with sqlite3.connect(source / "state.db") as conn:
         conn.execute("create table events (root text, command text)")
-        conn.execute("insert into events values ('/tmp/review-authfix', 'HERMES_SRC=/opt/h x')")
+        conn.execute("insert into events values ('/tmp/build-authcheck', 'APP_SRC=/opt/h x')")
         conn.execute("create table m (tokenize text check (tokenize = 'trigram'))")
     dest = tmp_path / "fixture"
     rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
