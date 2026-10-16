@@ -394,6 +394,7 @@ def usage_page(
     top_agent = max(per_agent.rows, key=lambda r: r.cost, default=None)
     sessions = sorted(per_session.rows, key=lambda r: r.cost, reverse=True)[:10]
     models = sorted(per_model.rows, key=lambda r: r.tokens, reverse=True)
+    table: PriceTable = state.prices
     return render(
         request,
         "usage.html",
@@ -410,6 +411,8 @@ def usage_page(
         model_chart=hbars([(r.labels["model"], float(r.tokens)) for r in models]),
         per_day=per_day.rows,
         models=models,
+        unpriced_models=sorted(r.labels["model"] for r in models if r.unpriced_tokens),
+        override_path=str(table.override_path or "prices.toml"),
         sessions=sessions,
         money=money,
         compact=compact,

@@ -46,6 +46,32 @@ def test_openai_cached_input_is_subset_of_input(table: Any) -> None:
     assert cost.amount == expected
 
 
+@pytest.mark.parametrize(
+    ("model", "inp", "cached", "out"),
+    [("gpt-6.1-sol", "2", "0.10", "10"), ("gpt-6-astra", "10", "1", "50"),
+     ("gpt-6-luna", "0.10", "0.01", "0.50")],
+)  # fmt: skip
+def test_gpt6_family_is_priced_with_cached_input(
+    table: Any, model: str, inp: str, cached: str, out: str
+) -> None:
+    cost = compute_cost(
+        rec("openai", model, input_tokens=1_000_000, cache_read_input_tokens=400_000,
+            output_tokens=100_000),
+        table,
+    )  # fmt: skip
+    expected = (Decimal(600_000) * Decimal(inp) + Decimal(400_000) * Decimal(cached)
+                + Decimal(100_000) * Decimal(out)) / Decimal(1_000_000)  # fmt: skip
+    assert cost.amount == expected and cost.quality is UsageQuality.EXACT
+    price = table.find("openai", model)
+    assert price is not None and price.unverified
+
+
+def test_codex_auto_review_stays_unpriced(table: Any) -> None:
+    cost = compute_cost(rec("openai", "codex-auto-review", input_tokens=1000, output_tokens=10),
+                        table)  # fmt: skip
+    assert cost.amount is None and cost.reason == "unpriced_model"
+
+
 def test_recorded_claude_fixture_cost(table: Any) -> None:
     # totals of the recorded Claude Code fixture (#44, #96)
     cost = compute_cost(

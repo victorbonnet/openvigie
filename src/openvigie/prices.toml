@@ -135,3 +135,39 @@ output = 14.0
 cache_read = 0.175
 as_of = "2026-10-14"
 unverified = true
+
+# --- OpenAI gpt-6 family (#196): from third-party price aggregators on 2026-10-16, which all
+# agree; NOT verified against openai.com (unreachable from the build environment). Standard
+# (short-context) tier; Batch is roughly half and isn't modelled.
+
+[[models]]
+provider = "openai"
+id = "gpt-6-astra"
+input = 10.0
+output = 50.0
+cache_read = 1.0
+as_of = "2026-10-16"
+unverified = true
+
+[[models]]
+provider = "openai"
+id = "gpt-6.1-sol"
+input = 2.0
+output = 10.0
+cache_read = 0.10
+as_of = "2026-10-16"
+unverified = true
+
+[[models]]
+provider = "openai"
+id = "gpt-6-luna"
+input = 0.10
+output = 0.50
+cache_read = 0.01
+as_of = "2026-10-16"
+unverified = true
+
+# codex-auto-review stays unpriced on purpose. It is a hidden routing alias in the Codex model
+# catalog (no model, no provider), not a public API model: OpenAI publishes no rate for it, the
+# backend may route it to different models over time, and auto-review is reported as no longer
+# drawing plan usage. Any rate here would be a guess, and unknown must not read as zero.
