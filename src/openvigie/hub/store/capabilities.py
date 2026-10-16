@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from openvigie.hub.store.db import Database, agents_of_host, parse_ts, ts
-from openvigie.model import Capabilities, from_dict, to_dict
+from openvigie.model import Capabilities, Channel, from_dict, to_dict
 
 SCALARS = ("approvals", "approval_mode", "filesystem", "network", "shell")
 LISTS = ("writable_roots", "network_allowlist", "tools_allowed", "tools_denied", "skills")
@@ -28,6 +28,13 @@ def _value(value: Any) -> str:
     return "unknown" if value is None else str(getattr(value, "value", value))
 
 
+def _channel(c: Channel) -> str:
+    dms = "open" if c.open_dms else (c.dm_policy or "unknown")
+    people = "?" if c.allowed_users is None else str(c.allowed_users)
+    groups = {True: "yes", False: "no", None: "unknown"}[c.groups]
+    return f"direct messages {dms}, {people} allowlisted, groups {groups}"
+
+
 def _keyed(caps: Capabilities) -> dict[str, dict[str, str]]:
     """Named items per field, each rendered to a comparable string."""
     return {
@@ -38,6 +45,7 @@ def _keyed(caps: Capabilities) -> dict[str, dict[str, str]]:
         },
         "hooks": {f"{h.event}: {h.command or '?'}": "" for h in caps.hooks},
         "secrets": {f"{s.name} ({s.where})": "" for s in caps.secrets},
+        "channels": {c.platform: _channel(c) for c in caps.channels},
         **{name: dict.fromkeys(getattr(caps, name), "") for name in LISTS},
     }
 

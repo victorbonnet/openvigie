@@ -21,6 +21,23 @@
   <dt>Hooks</dt><dd>{% for h in caps.hooks %}{{ h.event }} → <code>{{ h.command or "?" }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</dd>
   <dt>Secrets reachable</dt><dd>{% for s in caps.secrets %}<code>{{ s.name }}</code> <span class="muted">({{ s.where }})</span>{% if not loop.last %}, {% endif %}{% else %}none found{% endfor %}</dd>
 </dl>
+<h3>Messaging channels</h3>
+{% if caps.channels %}
+<p>Who can message it: <strong>{{ reached_by(caps.channels) }}</strong></p>
+<table>
+  <thead><tr><th>Platform</th><th>Direct messages</th><th>People allowlisted</th><th>Group chats</th></tr></thead>
+  <tbody>
+  {% for c in caps.channels %}
+    <tr><td>{{ c.platform }}</td>
+      <td>{% if c.open_dms %}<span class="badge error">open to anyone</span>{% elif c.dm_policy %}<code>{{ c.dm_policy }}</code>{% else %}<span class="badge unknown">unknown</span>{% endif %}</td>
+      <td>{% if c.allowed_users is none %}<span class="muted">unknown</span>{% else %}{{ c.allowed_users }}{% endif %}</td>
+      <td>{% if c.groups is none %}<span class="muted">unknown</span>{% elif c.groups %}<span class="badge degraded">yes</span>{% else %}no{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">None configured.</p>
+{% endif %}
 <h3>MCP servers</h3>
 {% if caps.mcp_servers %}
 <table>

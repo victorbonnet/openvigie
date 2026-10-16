@@ -276,6 +276,20 @@ class SecretRef:
 
 
 @wire_type
+class Channel:
+    """A messaging platform the agent answers on, and who can reach it there (FR-8, FR-9).
+
+    People are counted, never named. ``None`` is unknown.
+    """
+
+    platform: Id  # telegram, discord, slack, whatsapp, …
+    dm_policy: Id | None = None  # agent's term: allowlist, pairing, open, disabled
+    open_dms: Bool | None = None  # anyone on the platform can message it directly
+    allowed_users: Count | None = None  # people allowlisted to message it
+    groups: Bool | None = None  # answers in group chats or channels, where others can talk to it
+
+
+@wire_type
 class Capabilities:
     """What an agent can access (FR-8). ``None`` and ``UNKNOWN`` mean unknown, never "none"."""
 
@@ -295,6 +309,7 @@ class Capabilities:
     hooks: Items[Hook] = ()
     secrets: Items[SecretRef] = ()
     sources: Items[Text] = ()  # config files read, as display paths
+    channels: Items[Channel] = ()
 
 
 @wire_type

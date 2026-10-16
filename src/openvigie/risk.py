@@ -35,7 +35,7 @@ from pydantic import (
 )
 
 from openvigie.config import config_dir, describe, file_entry
-from openvigie.model import AgentInstance, Capabilities, FsAccess
+from openvigie.model import AgentInstance, Capabilities, Channel, FsAccess
 from openvigie.safeio import UnsafeFileError, load_toml_bounded
 
 log = logging.getLogger(__name__)
@@ -160,6 +160,37 @@ class RuleSet:
     problems: list[str] = field(default_factory=list)  # e.g. a broken override file
 
 
+def reachable_by_others(channels: tuple[Channel, ...]) -> bool | None:
+    """Whether people other than the owner can instruct the agent: open direct messages, group
+    chats, or several allowlisted people on any channel. ``None`` when that can't be told."""
+    answers = [_others(c) for c in channels]
+    if any(answers):
+        return True
+    return None if None in answers else False
+
+
+def _others(channel: Channel) -> bool | None:
+    if channel.open_dms or channel.groups or (channel.allowed_users or 0) > 1:
+        return True
+    if channel.open_dms is None or channel.groups is None or channel.allowed_users is None:
+        return None
+    return False
+
+
+def reached_by(channels: tuple[Channel, ...]) -> str:
+    """Who can message the agent, in a few words, for flag reasons and the UI."""
+    if not channels:
+        return "nobody: no messaging channel"
+    if any(c.open_dms for c in channels):
+        return "anyone: direct messages are open"
+    if any(c.groups for c in channels):
+        return "members of its group chats"
+    if all(c.allowed_users is not None for c in channels):
+        people = sum(c.allowed_users or 0 for c in channels)
+        return f"{people} allowlisted {'person' if people == 1 else 'people'}"
+    return "unknown"
+
+
 def facts(
     agent: AgentInstance, caps: Capabilities | None, host_os: str | None = None
 ) -> dict[str, Any]:
@@ -183,8 +214,15 @@ def facts(
         secrets=sorted({s.name for s in caps.secrets}),
         hooks=sorted({h.command for h in caps.hooks if h.command}),
         writes_anywhere=caps.filesystem is FsAccess.FULL,
+        channels=sorted({c.platform for c in caps.channels}),
+        reachable_by_others=_unknown(reachable_by_others(caps.channels)),
+        reached_by=reached_by(caps.channels),
     )
     return out
+
+
+def _unknown(value: bool | None) -> bool | str:
+    return "unknown" if value is None else value
 
 
 def matches(cond: Condition, f: dict[str, Any]) -> bool:

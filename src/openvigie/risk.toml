@@ -6,7 +6,8 @@
 # Facts a rule can test: agent_type, sandboxed (yes/no/unknown), host_os, capabilities_known,
 # approvals (ask/auto_edit/never_ask/unknown), approval_mode, filesystem
 # (read_only/workspace/full/unknown), network (none/allowlist/full/unknown), shell
-# (true/false/"unknown"), writes_anywhere, and the lists mcp_servers, mcp_unpinned, secrets, hooks.
+# (true/false/"unknown"), writes_anywhere, reachable_by_others (true/false/"unknown"), reached_by
+# (who can message it, as text), and the lists mcp_servers, mcp_unpinned, secrets, hooks, channels.
 # Tests: { field, equals } { field, not_equals } { field, in = [...] } { field, nonempty = bool },
 # combined with all = [...], any = [...], not = {...}. Reasons can quote facts as {name}.
 
@@ -31,6 +32,28 @@ when = { all = [
   { field = "sandboxed", not_equals = "yes" },
   { field = "approvals", not_equals = "never_ask" },
 ] }
+
+[[rules]]
+id = "others-instruct-broad-access"
+severity = "high"
+title = "Others can instruct it, and it has broad access"
+reason = "People other than its owner can message it ({reached_by}) and it can act widely outside a sandbox: one of them, or a prompt injection in what they send, can use that access."
+when = { all = [
+  { field = "reachable_by_others", equals = true },
+  { field = "sandboxed", not_equals = "yes" },
+  { any = [
+    { field = "approvals", equals = "never_ask" },
+    { field = "writes_anywhere", equals = true },
+    { all = [{ field = "shell", equals = true }, { field = "network", equals = "full" }] },
+  ] },
+] }
+
+[[rules]]
+id = "others-instruct"
+severity = "medium"
+title = "People other than its owner can instruct it"
+reason = "It answers {reached_by} on {channels}: anything they send is an instruction."
+when = { field = "reachable_by_others", equals = true }
 
 [[rules]]
 id = "full-filesystem"

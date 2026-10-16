@@ -20,6 +20,7 @@ from openvigie.model import (
     AgentInstance,
     ApprovalLevel,
     Capabilities,
+    Channel,
     CodecError,
     FsAccess,
     Hook,
@@ -142,3 +143,14 @@ def test_collector_sends_capabilities_when_they_change() -> None:
     fake.caps = Capabilities(**{**_fields(BASE), "skills": ("pdf",)})
     c.tick()
     assert len(sent) == 2 and sent[1][0]["skills"] == ["pdf"]
+
+
+def test_diff_names_channel_changes() -> None:
+    before = Capabilities("a1", NOW, channels=(Channel("telegram", "allowlist", False, 1, False),))
+    after = Capabilities("a1", NOW, channels=(Channel("telegram", "allowlist", False, 3, True),
+                                              Channel("discord", "open", True)))  # fmt: skip
+    assert set(diff(before, after)) == {
+        ("channels", "added", "discord direct messages open, ? allowlisted, groups unknown"),
+        ("channels", "changed", "telegram: direct messages allowlist, 1 allowlisted, groups no → "
+                                "direct messages allowlist, 3 allowlisted, groups yes"),
+    }  # fmt: skip

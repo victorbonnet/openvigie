@@ -23,6 +23,22 @@
   "agent_id": "a1",
   "approval_mode": "bypassPermissions",
   "approvals": "never_ask",
+  "channels": [
+   {
+    "allowed_users": 2,
+    "dm_policy": "allowlist",
+    "groups": true,
+    "open_dms": false,
+    "platform": "telegram"
+   },
+   {
+    "allowed_users": null,
+    "dm_policy": null,
+    "groups": null,
+    "open_dms": null,
+    "platform": "discord"
+   }
+  ],
   "filesystem": "workspace",
   "hooks": [
    {
