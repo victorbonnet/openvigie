@@ -1,172 +1,172 @@
-    PID    PPID USER     COMMAND         COMMAND
-      2       0 root     kthreadd        [kthreadd]
-      3       2 root      \_ pool_workqu  \_ [pool_workqueue_release]
-      4       2 root      \_ kworker/R-r  \_ [kworker/R-rcu_gp]
-      5       2 root      \_ kworker/R-s  \_ [kworker/R-sync_wq]
-      6       2 root      \_ kworker/R-k  \_ [kworker/R-kvfree_rcu_reclaim]
-      7       2 root      \_ kworker/R-s  \_ [kworker/R-slub_flushwq]
-      8       2 root      \_ kworker/R-n  \_ [kworker/R-netns]
-      9       2 root      \_ kworker/0:0  \_ [kworker/0:0-events]
-     10       2 root      \_ kworker/0:0  \_ [kworker/0:0H-events_highpri]
-     11       2 root      \_ kworker/0:1  \_ [kworker/0:1-events]
-     12       2 root      \_ kworker/u16  \_ [kworker/u16:0-async]
-     13       2 root      \_ kworker/R-m  \_ [kworker/R-mm_percpu_wq]
-     14       2 root      \_ ksoftirqd/0  \_ [ksoftirqd/0]
-     15       2 root      \_ rcu_sched    \_ [rcu_sched]
-     16       2 root      \_ rcu_exp_par  \_ [rcu_exp_par_gp_kthread_worker/0]
-     17       2 root      \_ rcu_exp_gp_  \_ [rcu_exp_gp_kthread_worker]
-     18       2 root      \_ migration/0  \_ [migration/0]
-     19       2 root      \_ cpuhp/0      \_ [cpuhp/0]
-     20       2 root      \_ cpuhp/1      \_ [cpuhp/1]
-     21       2 root      \_ migration/1  \_ [migration/1]
-     22       2 root      \_ ksoftirqd/1  \_ [ksoftirqd/1]
-     23       2 root      \_ kworker/1:0  \_ [kworker/1:0-cgroup_offline]
-     24       2 root      \_ kworker/1:0  \_ [kworker/1:0H-events_highpri]
-     25       2 root      \_ cpuhp/2      \_ [cpuhp/2]
-     26       2 root      \_ migration/2  \_ [migration/2]
-     27       2 root      \_ ksoftirqd/2  \_ [ksoftirqd/2]
-     28       2 root      \_ kworker/2:0  \_ [kworker/2:0-cgroup_free]
-     29       2 root      \_ kworker/2:0  \_ [kworker/2:0H-events_highpri]
-     30       2 root      \_ cpuhp/3      \_ [cpuhp/3]
-     31       2 root      \_ migration/3  \_ [migration/3]
-     32       2 root      \_ ksoftirqd/3  \_ [ksoftirqd/3]
-     33       2 root      \_ kworker/3:0  \_ [kworker/3:0-events]
-     34       2 root      \_ kworker/3:0  \_ [kworker/3:0H-events_highpri]
-     35       2 root      \_ kdevtmpfs    \_ [kdevtmpfs]
-     36       2 root      \_ kworker/R-i  \_ [kworker/R-inet_frag_wq]
-     37       2 root      \_ rcu_tasks_r  \_ [rcu_tasks_rude_kthread]
-     38       2 root      \_ rcu_tasks_t  \_ [rcu_tasks_trace_kthread]
-     39       2 root      \_ kauditd      \_ [kauditd]
-     40       2 root      \_ khungtaskd   \_ [khungtaskd]
-     41       2 root      \_ oom_reaper   \_ [oom_reaper]
-     42       2 root      \_ kworker/u16  \_ [kworker/u16:1-flush-8:0]
-     43       2 root      \_ kworker/R-w  \_ [kworker/R-writeback]
-     44       2 root      \_ kcompactd0   \_ [kcompactd0]
-     45       2 root      \_ ksmd         \_ [ksmd]
-     46       2 root      \_ khugepaged   \_ [khugepaged]
-     47       2 root      \_ kworker/R-k  \_ [kworker/R-kblockd]
-     48       2 root      \_ kworker/R-b  \_ [kworker/R-blkcg_punt_bio]
-     49       2 root      \_ kworker/R-k  \_ [kworker/R-kintegrityd]
-     50       2 root      \_ kworker/1:1  \_ [kworker/1:1-cgroup_free]
-     51       2 root      \_ kworker/2:1  \_ [kworker/2:1-events]
-     52       2 root      \_ pr/ttyAMA0   \_ [pr/ttyAMA0]
-     53       2 root      \_ kworker/R-t  \_ [kworker/R-tpm_dev_wq]
-     54       2 root      \_ kworker/R-a  \_ [kworker/R-ata_sff]
-     55       2 root      \_ kworker/R-m  \_ [kworker/R-md]
-     56       2 root      \_ kworker/R-m  \_ [kworker/R-md_bitmap]
-     57       2 root      \_ kworker/R-e  \_ [kworker/R-edac-poller]
-     58       2 root      \_ kworker/3:1  \_ [kworker/3:1-events]
-     59       2 root      \_ kworker/R-h  \_ [kworker/R-hv_vmbus_con]
-     60       2 root      \_ kworker/R-h  \_ [kworker/R-hv_vmbus_rescind]
-     61       2 root      \_ kworker/R-h  \_ [kworker/R-hv_pri_chan]
-     62       2 root      \_ kworker/R-h  \_ [kworker/R-hv_sub_chan]
-     63       2 root      \_ kworker/R-d  \_ [kworker/R-devfreq_wq]
-     64       2 root      \_ watchdogd    \_ [watchdogd]
-     65       2 root      \_ kworker/R-q  \_ [kworker/R-quota_events_unbound]
-     66       2 root      \_ kworker/2:1  \_ [kworker/2:1H-kblockd]
-     67       2 root      \_ kswapd0      \_ [kswapd0]
-     68       2 root      \_ ecryptfs-kt  \_ [ecryptfs-kthread]
-     69       2 root      \_ kworker/R-k  \_ [kworker/R-kthrotld]
-     70       2 root      \_ irq/15-ACPI  \_ [irq/15-ACPI:Ged]
-     71       2 root      \_ kworker/R-a  \_ [kworker/R-acpi_thermal_pm]
-     72       2 root      \_ kworker/R-n  \_ [kworker/R-nfit]
-     73       2 root      \_ kworker/u16  \_ [kworker/u16:2-flush-8:0]
-     74       2 root      \_ scsi_eh_0    \_ [scsi_eh_0]
-     75       2 root      \_ kworker/R-n  \_ [kworker/R-nvme-wq]
-     76       2 root      \_ scsi_eh_1    \_ [scsi_eh_1]
-     77       2 root      \_ kworker/R-s  \_ [kworker/R-scsi_tmf_1]
-     78       2 root      \_ kworker/R-s  \_ [kworker/R-scsi_tmf_0]
-     79       2 root      \_ kworker/R-n  \_ [kworker/R-nvme-reset-wq]
-     80       2 root      \_ kworker/R-n  \_ [kworker/R-nvme-delete-wq]
-     81       2 root      \_ kworker/R-n  \_ [kworker/R-nvme-auth-wq]
-     82       2 root      \_ kworker/u16  \_ [kworker/u16:3-events_power_efficient]
-     83       2 root      \_ kworker/u16  \_ [kworker/u16:4-flush-8:0]
-     84       2 root      \_ kworker/u16  \_ [kworker/u16:5-flush-8:0]
-     85       2 root      \_ kworker/u16  \_ [kworker/u16:6-flush-8:0]
-     86       2 root      \_ kworker/u16  \_ [kworker/u16:7]
-     87       2 root      \_ hv_balloon   \_ [hv_balloon]
-     88       2 root      \_ kworker/R-m  \_ [kworker/R-mld]
-     89       2 root      \_ kworker/1:1  \_ [kworker/1:1H-kblockd]
-     90       2 root      \_ kworker/R-i  \_ [kworker/R-ipv6_addrconf]
-     91       2 root      \_ kworker/R-k  \_ [kworker/R-kstrp]
-     93       2 root      \_ kworker/u17  \_ [kworker/u17:0]
-    104       2 root      \_ kworker/R-c  \_ [kworker/R-charger_manager]
-    105       2 root      \_ jbd2/sda1-8  \_ [jbd2/sda1-8]
-    106       2 root      \_ kworker/R-e  \_ [kworker/R-ext4-rsv-conversion]
-    107       2 root      \_ kworker/1:2  \_ [kworker/1:2-cgroup_release]
-    108       2 root      \_ kworker/3:1  \_ [kworker/3:1H-kblockd]
-    110       2 root      \_ kworker/0:1  \_ [kworker/0:1H-kblockd]
-    172       2 root      \_ kworker/0:2  \_ [kworker/0:2-events]
-    176       2 root      \_ kworker/3:2  \_ [kworker/3:2-events]
-    181       2 root      \_ kworker/R-k  \_ [kworker/R-kmpathd]
-    182       2 root      \_ kworker/R-k  \_ [kworker/R-kmpath_handlerd]
-    201       2 root      \_ kworker/1:3  \_ [kworker/1:3-events]
-    202       2 root      \_ kworker/1:4  \_ [kworker/1:4-cgroup_free]
-    203       2 root      \_ kworker/1:5  \_ [kworker/1:5-cgroup_bpf_destroy]
-    204       2 root      \_ kworker/2:2  \_ [kworker/2:2-events]
-    241       2 root      \_ psimon       \_ [psimon]
-    357       2 root      \_ kworker/0:3  \_ [kworker/0:3-events]
-    359       2 root      \_ jbd2/sda16-  \_ [jbd2/sda16-8]
-    360       2 root      \_ kworker/R-e  \_ [kworker/R-ext4-rsv-conversion]
-    368       2 root      \_ kworker/0:4  \_ [kworker/0:4-events]
-    407       2 root      \_ kworker/R-t  \_ [kworker/R-tls-strp]
-    460       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_cmd_bdda:00:02.0]
-    462       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_healthbdda:00:02.0]
-    467       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_page_allocator]
-    468       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_events]
-    567       2 root      \_ kworker/2:3  \_ [kworker/2:3-events]
-    569       2 root      \_ ptp1         \_ [ptp1]
-    570       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_fc]
-    571       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5_hv_vhca]
-    574       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5e]
-    576       2 root      \_ kworker/R-m  \_ [kworker/R-mlx5e_arfs]
-    592       2 root      \_ kworker/R-i  \_ [kworker/R-ib-comp-wq]
-    593       2 root      \_ kworker/R-i  \_ [kworker/R-ib-comp-unb-wq]
-    595       2 root      \_ kworker/R-i  \_ [kworker/R-ib_mcast]
-    596       2 root      \_ kworker/R-i  \_ [kworker/R-ib_nl_sa_wq]
-    597       2 root      \_ kworker/R-m  \_ [kworker/R-mkey_cache]
-   2414       2 root      \_ psimon       \_ [psimon]
-      1       0 root     systemd         /sbin/init
-    158       1 root     systemd-journal /usr/lib/systemd/systemd-journald
-    224       1 root     multipathd      /sbin/multipathd -d -s
-    237       1 root     systemd-udevd   /usr/lib/systemd/systemd-udevd
-    430       1 root     hv_kvp_daemon   /usr/lib/linux-tools/6.17.0-1022-azure/hv_kvp_daemon -n
-    572       1 systemd+ systemd-resolve /usr/lib/systemd/systemd-resolved
-    581       1 root     haveged         /usr/sbin/haveged --Foreground --verbose=1
-    730       1 systemd+ systemd-network /usr/lib/systemd/systemd-networkd
-    984       1 message+ dbus-daemon     @dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
-    989       1 root     networkd-dispat /usr/bin/python3 /usr/bin/networkd-dispatcher --run-startup-triggers
-    991       1 root     php-fpm8.3      php-fpm: master process (/etc/php/8.3/fpm/php-fpm.conf)
-   1213     991 www-data  \_ php-fpm8.3   \_ php-fpm: pool www
-   1215     991 www-data  \_ php-fpm8.3   \_ php-fpm: pool www
-    996       1 polkitd  polkitd         /usr/lib/polkit-1/polkitd --no-debug
-   1025       1 root     systemd-logind  /usr/lib/systemd/systemd-logind
-   1033       1 root     udisksd         /usr/libexec/udisks2/udisksd
-   1038       1 root     python3         /usr/bin/python3 -u /usr/sbin/waagent -daemon
-   1407    1038 root      \_ python3      \_ /usr/bin/python3 -u bin/WALinuxAgent-2.16.0.2-py3.12.egg -run-exthandlers
-   1057       1 syslog   rsyslogd        /usr/sbin/rsyslogd -n -iNONE
-   1115       1 _chrony  chronyd         /usr/sbin/chronyd -F 1
-   1118    1115 _chrony   \_ chronyd      \_ /usr/sbin/chronyd -F 1
-   1119       1 root     cron            /usr/sbin/cron -f -P
-   1155       1 root     containerd      /usr/bin/containerd
-   1210       1 root     ModemManager    /usr/sbin/ModemManager
-   1272       1 root     agetty          /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 - vt220
-   1352       1 root     dockerd         /usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
-   1362       1 root     agetty          /sbin/agetty -o -p -- \u --noclear - linux
-   1392       1 runner   systemd         /usr/lib/systemd/systemd --user
-   1408    1392 runner    \_ (sd-pam)     \_ (sd-pam)
-   2546    1392 runner    \_ openshell-g  \_ /usr/bin/openshell-gateway
-   2014       1 runner   hosted-compute- /opt/hca/hosted-compute-agent
-   2031    2014 root      \_ sudo         \_ sudo -n PROVJOBD_E2E=1 /tmp/provjobd2266332361
-   2033    2031 root      |   \_ provjob  |   \_ /tmp/provjobd2266332361
-   2093    2014 runner    \_ Runner.List  \_ /home/runner/extracted/bin/Runner.Listener run
-   2108    2093 runner        \_ Runner.      \_ /home/runner/extracted/bin/Runner.Worker spawnclient 142 145
-   2726    2108 runner            \_ bas          \_ /usr/bin/bash -e /home/runner/work/_temp/8a27a322-93c4-44bc-a004-437da7979f07.sh
-   2727    2726 runner               bas              \_ bash scripts/record_openshell.sh
-   3796    2727 runner               ps                   \_ ps -eo pid,ppid,user,comm,args --forest
-   2427       1 root     packagekitd     /usr/libexec/packagekitd
-   2808       1 root     containerd-shim /usr/bin/containerd-shim-runc-v2 -namespace moby -id dce1f7adb2c42497ba398494e468d2b234a49c8875d3d9ded57217397a9f4ebd -address /run/containerd/containerd.sock
-   2835    2808 packer    \_ openshell-s  \_ /.openshell/runtime/openshell-sandbox --bootstrap /.openshell/channel/sandbox/bootstrap.json
-   2955    2835 packer        \_ sleep        \_ sleep 3600
-   2876       1 root     containerd-shim /usr/bin/containerd-shim-runc-v2 -namespace moby -id 4d75b8d6f76dc2c3090bf4c9f57b315226d1c21b4fb981e56bbb1fae31e9e930 -address /run/containerd/containerd.sock
-   2900    2876 nobody    \_ openshell-s  \_ /openshell-supervisor --backend-descriptor-file /.openshell/supervisor/runtime-descriptor.json --auth-bundle-file /.openshell/supervisor/auth.json --workdir /sandbox --health-socket-path=/run/openshell/health.sock
+PID PPID USER COMMAND COMMAND
+2 0 root kthreadd [kthreadd]
+3 2 root \_ pool_workqu \_ [pool_workqueue_release]
+4 2 root \_ kworker/R-r \_ [kworker/R-rcu_gp]
+5 2 root \_ kworker/R-s \_ [kworker/R-sync_wq]
+6 2 root \_ kworker/R-k \_ [kworker/R-kvfree_rcu_reclaim]
+7 2 root \_ kworker/R-s \_ [kworker/R-slub_flushwq]
+8 2 root \_ kworker/R-n \_ [kworker/R-netns]
+9 2 root \_ kworker/0:0 \_ [kworker/0:0-events]
+10 2 root \_ kworker/0:0 \_ [kworker/0:0H-events_highpri]
+11 2 root \_ kworker/0:1 \_ [kworker/0:1-events]
+12 2 root \_ kworker/u16 \_ [kworker/u16:0-async]
+13 2 root \_ kworker/R-m \_ [kworker/R-mm_percpu_wq]
+14 2 root \_ ksoftirqd/0 \_ [ksoftirqd/0]
+15 2 root \_ rcu_sched \_ [rcu_sched]
+16 2 root \_ rcu_exp_par \_ [rcu_exp_par_gp_kthread_worker/0]
+17 2 root \_ rcu_exp_gp_ \_ [rcu_exp_gp_kthread_worker]
+18 2 root \_ migration/0 \_ [migration/0]
+19 2 root \_ cpuhp/0 \_ [cpuhp/0]
+20 2 root \_ cpuhp/1 \_ [cpuhp/1]
+21 2 root \_ migration/1 \_ [migration/1]
+22 2 root \_ ksoftirqd/1 \_ [ksoftirqd/1]
+23 2 root \_ kworker/1:0 \_ [kworker/1:0-cgroup_offline]
+24 2 root \_ kworker/1:0 \_ [kworker/1:0H-events_highpri]
+25 2 root \_ cpuhp/2 \_ [cpuhp/2]
+26 2 root \_ migration/2 \_ [migration/2]
+27 2 root \_ ksoftirqd/2 \_ [ksoftirqd/2]
+28 2 root \_ kworker/2:0 \_ [kworker/2:0-cgroup_free]
+29 2 root \_ kworker/2:0 \_ [kworker/2:0H-events_highpri]
+30 2 root \_ cpuhp/3 \_ [cpuhp/3]
+31 2 root \_ migration/3 \_ [migration/3]
+32 2 root \_ ksoftirqd/3 \_ [ksoftirqd/3]
+33 2 root \_ kworker/3:0 \_ [kworker/3:0-events]
+34 2 root \_ kworker/3:0 \_ [kworker/3:0H-events_highpri]
+35 2 root \_ kdevtmpfs \_ [kdevtmpfs]
+36 2 root \_ kworker/R-i \_ [kworker/R-inet_frag_wq]
+37 2 root \_ rcu_tasks_r \_ [rcu_tasks_rude_kthread]
+38 2 root \_ rcu_tasks_t \_ [rcu_tasks_trace_kthread]
+39 2 root \_ kauditd \_ [kauditd]
+40 2 root \_ khungtaskd \_ [khungtaskd]
+41 2 root \_ oom_reaper \_ [oom_reaper]
+42 2 root \_ kworker/u16 \_ [kworker/u16:1-flush-8:0]
+43 2 root \_ kworker/R-w \_ [kworker/R-writeback]
+44 2 root \_ kcompactd0 \_ [kcompactd0]
+45 2 root \_ ksmd \_ [ksmd]
+46 2 root \_ khugepaged \_ [khugepaged]
+47 2 root \_ kworker/R-k \_ [kworker/R-kblockd]
+48 2 root \_ kworker/R-b \_ [kworker/R-blkcg_punt_bio]
+49 2 root \_ kworker/R-k \_ [kworker/R-kintegrityd]
+50 2 root \_ kworker/1:1 \_ [kworker/1:1-cgroup_free]
+51 2 root \_ kworker/2:1 \_ [kworker/2:1-events]
+52 2 root \_ pr/ttyAMA0 \_ [pr/ttyAMA0]
+53 2 root \_ kworker/R-t \_ [kworker/R-tpm_dev_wq]
+54 2 root \_ kworker/R-a \_ [kworker/R-ata_sff]
+55 2 root \_ kworker/R-m \_ [kworker/R-md]
+56 2 root \_ kworker/R-m \_ [kworker/R-md_bitmap]
+57 2 root \_ kworker/R-e \_ [kworker/R-edac-poller]
+58 2 root \_ kworker/3:1 \_ [kworker/3:1-events]
+59 2 root \_ kworker/R-h \_ [kworker/R-hv_vmbus_con]
+60 2 root \_ kworker/R-h \_ [kworker/R-hv_vmbus_rescind]
+61 2 root \_ kworker/R-h \_ [kworker/R-hv_pri_chan]
+62 2 root \_ kworker/R-h \_ [kworker/R-hv_sub_chan]
+63 2 root \_ kworker/R-d \_ [kworker/R-devfreq_wq]
+64 2 root \_ watchdogd \_ [watchdogd]
+65 2 root \_ kworker/R-q \_ [kworker/R-quota_events_unbound]
+66 2 root \_ kworker/2:1 \_ [kworker/2:1H-kblockd]
+67 2 root \_ kswapd0 \_ [kswapd0]
+68 2 root \_ ecryptfs-kt \_ [ecryptfs-kthread]
+69 2 root \_ kworker/R-k \_ [kworker/R-kthrotld]
+70 2 root \_ irq/15-ACPI \_ [irq/15-ACPI:Ged]
+71 2 root \_ kworker/R-a \_ [kworker/R-acpi_thermal_pm]
+72 2 root \_ kworker/R-n \_ [kworker/R-nfit]
+73 2 root \_ kworker/u16 \_ [kworker/u16:2-flush-8:0]
+74 2 root \_ scsi_eh_0 \_ [scsi_eh_0]
+75 2 root \_ kworker/R-n \_ [kworker/R-nvme-wq]
+76 2 root \_ scsi_eh_1 \_ [scsi_eh_1]
+77 2 root \_ kworker/R-s \_ [kworker/R-scsi_tmf_1]
+78 2 root \_ kworker/R-s \_ [kworker/R-scsi_tmf_0]
+79 2 root \_ kworker/R-n \_ [kworker/R-nvme-reset-wq]
+80 2 root \_ kworker/R-n \_ [kworker/R-nvme-delete-wq]
+81 2 root \_ kworker/R-n \_ [kworker/R-nvme-auth-wq]
+82 2 root \_ kworker/u16 \_ [kworker/u16:3-events_power_efficient]
+83 2 root \_ kworker/u16 \_ [kworker/u16:4-flush-8:0]
+84 2 root \_ kworker/u16 \_ [kworker/u16:5-flush-8:0]
+85 2 root \_ kworker/u16 \_ [kworker/u16:6-flush-8:0]
+86 2 root \_ kworker/u16 \_ [kworker/u16:7]
+87 2 root \_ hv_balloon \_ [hv_balloon]
+88 2 root \_ kworker/R-m \_ [kworker/R-mld]
+89 2 root \_ kworker/1:1 \_ [kworker/1:1H-kblockd]
+90 2 root \_ kworker/R-i \_ [kworker/R-ipv6_addrconf]
+91 2 root \_ kworker/R-k \_ [kworker/R-kstrp]
+93 2 root \_ kworker/u17 \_ [kworker/u17:0]
+104 2 root \_ kworker/R-c \_ [kworker/R-charger_manager]
+105 2 root \_ jbd2/sda1-8 \_ [jbd2/sda1-8]
+106 2 root \_ kworker/R-e \_ [kworker/R-ext4-rsv-conversion]
+107 2 root \_ kworker/1:2 \_ [kworker/1:2-cgroup_release]
+108 2 root \_ kworker/3:1 \_ [kworker/3:1H-kblockd]
+110 2 root \_ kworker/0:1 \_ [kworker/0:1H-kblockd]
+172 2 root \_ kworker/0:2 \_ [kworker/0:2-events]
+176 2 root \_ kworker/3:2 \_ [kworker/3:2-events]
+181 2 root \_ kworker/R-k \_ [kworker/R-kmpathd]
+182 2 root \_ kworker/R-k \_ [kworker/R-kmpath_handlerd]
+201 2 root \_ kworker/1:3 \_ [kworker/1:3-events]
+202 2 root \_ kworker/1:4 \_ [kworker/1:4-cgroup_free]
+203 2 root \_ kworker/1:5 \_ [kworker/1:5-cgroup_bpf_destroy]
+204 2 root \_ kworker/2:2 \_ [kworker/2:2-events]
+241 2 root \_ psimon \_ [psimon]
+357 2 root \_ kworker/0:3 \_ [kworker/0:3-events]
+359 2 root \_ jbd2/sda16- \_ [jbd2/sda16-8]
+360 2 root \_ kworker/R-e \_ [kworker/R-ext4-rsv-conversion]
+368 2 root \_ kworker/0:4 \_ [kworker/0:4-events]
+407 2 root \_ kworker/R-t \_ [kworker/R-tls-strp]
+460 2 root \_ kworker/R-m \_ [kworker/R-mlx5_cmd_bdda:00:02.0]
+462 2 root \_ kworker/R-m \_ [kworker/R-mlx5_healthbdda:00:02.0]
+467 2 root \_ kworker/R-m \_ [kworker/R-mlx5_page_allocator]
+468 2 root \_ kworker/R-m \_ [kworker/R-mlx5_events]
+567 2 root \_ kworker/2:3 \_ [kworker/2:3-events]
+569 2 root \_ ptp1 \_ [ptp1]
+570 2 root \_ kworker/R-m \_ [kworker/R-mlx5_fc]
+571 2 root \_ kworker/R-m \_ [kworker/R-mlx5_hv_vhca]
+574 2 root \_ kworker/R-m \_ [kworker/R-mlx5e]
+576 2 root \_ kworker/R-m \_ [kworker/R-mlx5e_arfs]
+592 2 root \_ kworker/R-i \_ [kworker/R-ib-comp-wq]
+593 2 root \_ kworker/R-i \_ [kworker/R-ib-comp-unb-wq]
+595 2 root \_ kworker/R-i \_ [kworker/R-ib_mcast]
+596 2 root \_ kworker/R-i \_ [kworker/R-ib_nl_sa_wq]
+597 2 root \_ kworker/R-m \_ [kworker/R-mkey_cache]
+2414 2 root \_ psimon \_ [psimon]
+1 0 root systemd /sbin/init
+158 1 root systemd-journal /usr/lib/systemd/systemd-journald
+224 1 root multipathd /sbin/multipathd
+237 1 root systemd-udevd /usr/lib/systemd/systemd-udevd
+430 1 root hv_kvp_daemon /usr/lib/linux-tools/6.17.0-1022-azure/hv_kvp_daemon
+572 1 systemd+ systemd-resolve /usr/lib/systemd/systemd-resolved
+581 1 root haveged /usr/sbin/haveged
+730 1 systemd+ systemd-network /usr/lib/systemd/systemd-networkd
+984 1 message+ dbus-daemon @dbus-daemon
+989 1 root networkd-dispat /usr/bin/python3
+991 1 root php-fpm8.3 php-fpm:
+1213 991 www-data \_ php-fpm8.3 \_ php-fpm:
+1215 991 www-data \_ php-fpm8.3 \_ php-fpm:
+996 1 polkitd polkitd /usr/lib/polkit-1/polkitd
+1025 1 root systemd-logind /usr/lib/systemd/systemd-logind
+1033 1 root udisksd /usr/libexec/udisks2/udisksd
+1038 1 root python3 /usr/bin/python3
+1407 1038 root \_ python3 \_ /usr/bin/python3
+1057 1 syslog rsyslogd /usr/sbin/rsyslogd
+1115 1 _chrony chronyd /usr/sbin/chronyd
+1118 1115 _chrony \_ chronyd \_ /usr/sbin/chronyd
+1119 1 root cron /usr/sbin/cron
+1155 1 root containerd /usr/bin/containerd
+1210 1 root ModemManager /usr/sbin/ModemManager
+1272 1 root agetty /sbin/agetty
+1352 1 root dockerd /usr/bin/dockerd
+1362 1 root agetty /sbin/agetty
+1392 1 runner systemd /usr/lib/systemd/systemd
+1408 1392 runner \_ (sd-pam) \_ (sd-pam)
+2546 1392 runner \_ openshell-g \_ /usr/bin/openshell-gateway
+2014 1 runner hosted-compute- /opt/hca/hosted-compute-agent
+2031 2014 root \_ sudo \_ sudo
+2033 2031 root | \_ provjob | \_ /tmp/provjobd2266332361
+2093 2014 runner \_ Runner.List \_ /home/runner/extracted/bin/Runner.Listener
+2108 2093 runner \_ Runner. \_ /home/runner/extracted/bin/Runner.Worker
+2726 2108 runner \_ bas \_ /usr/bin/bash
+2727 2726 runner bas \_ bash
+3796 2727 runner ps \_ ps
+2427 1 root packagekitd /usr/libexec/packagekitd
+2808 1 root containerd-shim /usr/bin/containerd-shim-runc-v2
+2835 2808 packer \_ openshell-s \_ /.openshell/runtime/openshell-sandbox
+2955 2835 packer \_ sleep \_ sleep
+2876 1 root containerd-shim /usr/bin/containerd-shim-runc-v2
+2900 2876 nobody \_ openshell-s \_ /openshell-supervisor

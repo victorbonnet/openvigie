@@ -33,10 +33,25 @@ run update-dry-run.txt openshell policy update "$NAME" --rule-name ov_probe \
   --binary /usr/bin/curl --add-endpoint api.github.com:443:read-only:rest:enforce --dry-run
 run sandbox-get-missing.json openshell sandbox get no-such-sandbox --output json
 
-# Host side, for mapping agents to sandboxes (#149)
-run docker-ps.json docker ps --no-trunc --format json
-for id in $(docker ps -q); do run "docker-inspect-$id.json" docker inspect "$id"; done
-run ps.txt ps -eo pid,ppid,user,comm,args --forest
+# Host side, for mapping agents to sandboxes (#149). CI logs are public, so print only what the
+# mapping needs: no `docker inspect` (it dumps container env), only openshell.ai/* labels, and
+# each command line cut after the executable (arguments can carry secrets).
+# Command is quoted ("\"/bin/x --flag v\""): keep the executable only, like ps_tree
+DOCKER_PS_FILTER='.Labels |= (split(",") | map(select(startswith("openshell.ai/"))) | join(","))
+  | .Command |= (ltrimstr("\"") | rtrimstr("\"") | split(" ")[0])'
+docker_ps() {
+  docker ps --no-trunc --format json | jq -c "$DOCKER_PS_FILTER"
+}
+ps_tree() {
+  # --forest marks (\_ and |) prefix both comm and args: keep words up to argv[0]
+  ps -eo pid,ppid,user,comm,args --forest | awk '{
+    out = $1 " " $2 " " $3; seen = 0
+    for (i = 4; i <= NF && seen < 2; i++) { out = out " " $i; if ($i != "\\_" && $i != "|") seen++ }
+    print out
+  }'
+}
+run docker-ps.json docker_ps
+run ps.txt ps_tree
 main=$(pgrep -f 'sleep 3600' | head -1)
 if [ -n "$main" ]; then
   run main-cgroup.txt cat "/proc/$main/cgroup"
