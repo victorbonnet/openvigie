@@ -156,3 +156,81 @@ def test_two_homes_get_their_own_processes(tmp_path: Path) -> None:
 
 def test_registered() -> None:
     assert "hermes" in [a.agent_type for a in discover(quiet=True).adapters]
+
+
+def add_profile(home: Path, name: str) -> Path:
+    profile = home / ".hermes" / "profiles" / name
+    profile.mkdir(parents=True)
+    for file in ("config.yaml", "state.db"):
+        shutil.copy(FIXTURE / file, profile / file)
+    return profile
+
+
+def test_one_agent_per_profile(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "argos")
+    add_profile(home, "comptoir-dev")
+    ctx = fake_context(homes=[home], processes=[gateway(home)],
+                       sandboxed={1302: (SandboxState.NO, None)})  # fmt: skip
+    adapter = HermesAdapter()
+    agents = {a.name: a for a in adapter.detect(ctx)}
+    assert list(agents) == ["Hermes · default", "Hermes · argos", "Hermes · comptoir-dev"]
+    argos = agents["Hermes · argos"]
+    assert argos.config_root == "~/.hermes/profiles/argos"
+    assert argos.version == "0.21.7"
+    assert argos.process_running is True
+    assert argos.sandboxed is SandboxState.NO
+    assert argos.last_activity_at is not None
+    assert adapter.processes(argos.agent_id) == ()
+    assert [p.pid for p in adapter.processes(agents["Hermes · default"].agent_id)] == [1302]
+
+
+def test_default_profile_keeps_its_id(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    (before,) = HermesAdapter().detect(fake_context(homes=[home]))
+    add_profile(home, "argos")
+    after = HermesAdapter().detect(fake_context(homes=[home]))
+    assert after[0].agent_id == before.agent_id
+    assert after[1].agent_id != before.agent_id
+
+
+def test_profile_not_served_is_stopped(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "unserved")
+    ctx = fake_context(homes=[home], processes=[gateway(home)])
+    agents = {a.name: a for a in HermesAdapter().detect(ctx)}
+    assert agents["Hermes · default"].process_running is True
+    assert agents["Hermes · unserved"].process_running is False
+    assert agents["Hermes · unserved"].sandboxed is SandboxState.UNKNOWN
+
+
+def test_profile_with_its_own_gateway(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "solo")
+    python = f"{home}/.hermes/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
+    solo = fake_process(400, "hermes", (python, "-I", "hermes", "-p", "solo", "gateway", "run"),
+                        exe=python)  # fmt: skip
+    adapter = HermesAdapter()
+    agents = {a.name: a for a in adapter.detect(fake_context(homes=[home], processes=[solo]))}
+    assert agents["Hermes · solo"].process_running is True
+    assert [p.pid for p in adapter.processes(agents["Hermes · solo"].agent_id)] == [400]
+    assert agents["Hermes · default"].process_running is False
+
+
+def test_odd_profile_folders_are_skipped(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    profiles = home / ".hermes" / "profiles"
+    (profiles / "empty").mkdir(parents=True)
+    (profiles / ".hidden").mkdir()
+    (profiles / "linked").symlink_to(FIXTURE)
+    (profiles / "file").write_text("")
+    (agent,) = HermesAdapter().detect(fake_context(homes=[home]))
+    assert agent.name == "Hermes"
+
+
+def test_broken_profile_config_names_the_profile(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    (add_profile(home, "argos") / "config.yaml").write_text("model: [unclosed\n")
+    adapter = HermesAdapter()
+    assert len(adapter.detect(fake_context(homes=[home]))) == 2
+    assert adapter.health().reason == "profile argos: config.yaml is not valid YAML"
