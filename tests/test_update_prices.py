@@ -73,9 +73,11 @@ def generated() -> tuple[str, str]:
 @pytest.fixture
 def recorded() -> tuple[str, str]:
     """The recorded excerpt against the real bundled hand section."""
+    # drop the bundled generated block: its entries keep the commit they were generated at
+    head, _, tail = up.split(BUNDLED.read_text())
     text: str
     summary: str
-    text, summary = up.update(BUNDLED.read_text(), excerpt(EXCERPT), RECORDED)
+    text, summary = up.update(f"{head}{up.BEGIN}\n{up.END}{tail}", excerpt(EXCERPT), RECORDED)
     return text, summary
 
 
