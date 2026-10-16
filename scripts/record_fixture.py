@@ -46,7 +46,7 @@ INCLUDE: dict[str, list[str]] = {
         "config.yaml",
         "gateway_state.json",
         "gateway.pid",
-        "*.db",  # state.db: sessions, messages, usage
+        "*.db",
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",

@@ -730,7 +730,6 @@ def test_selection_never_walks_through_a_symlinked_folder(tmp_path: Path) -> Non
 
 
 def test_hermes_store_taken_before_session_logs(tmp_path: Path) -> None:
-    # many session files filled --max-files before state.db was reached
     source = tmp_path / ".hermes"
     (source / "sessions").mkdir(parents=True)
     for i in range(30):
