@@ -22,6 +22,10 @@ to the hub on loopback, so the hub never listens on a network interface itself.
 
 3. Open `https://hub.tail1234.ts.net` from any device on your tailnet.
 
+> **Use `tailscale serve`, never `tailscale funnel`.** Funnel publishes the hub on the public
+> internet: anyone could read your agents, usage and audit log, and post to the hub. Serve
+> keeps it inside your tailnet.
+
 ## Enrolling a remote collector
 
 On the hub: `openvigie hub enrol-code`. On the other machine:
