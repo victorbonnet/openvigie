@@ -42,13 +42,14 @@ INCLUDE: dict[str, list[str]] = {
     "claude-code": ["settings.json", "projects/*/*.jsonl", "projects/*/*/subagents/*.jsonl"],
     "codex": ["config.toml", "sessions/*/*/*/rollout-*.jsonl"],
     "hermes": [
+        # first: patterns are taken in order until --max-files
         "config.yaml",
         "gateway_state.json",
         "gateway.pid",
+        "*.db",  # state.db: sessions, messages, usage
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",
-        "*.db",
     ],
     "openclaw": [
         # first: patterns are taken in order until --max-files

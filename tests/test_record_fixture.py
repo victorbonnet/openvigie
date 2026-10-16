@@ -727,3 +727,15 @@ def test_selection_never_walks_through_a_symlinked_folder(tmp_path: Path) -> Non
     (source / "a").symlink_to(tmp_path / "outside")
     chosen, _ = rf.select_files(source, ["a/b/*"], 20)
     assert chosen == []
+
+
+def test_hermes_store_taken_before_session_logs(tmp_path: Path) -> None:
+    # many session files filled --max-files before state.db was reached
+    source = tmp_path / ".hermes"
+    (source / "sessions").mkdir(parents=True)
+    for i in range(30):
+        (source / "sessions" / f"20260101_1200{i:02d}_abcdef12.jsonl").write_text("{}\n")
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table messages (id integer primary key, timestamp real)")
+    chosen, _ = rf.select_files(source, rf.INCLUDE["hermes"], 20)
+    assert Path("state.db") in chosen
