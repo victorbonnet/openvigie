@@ -54,8 +54,13 @@ def test_agent_without_usage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
 
 
 def test_prices_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    override = '[[models]]\nprovider = "openai"\nid = "gpt-5"\ninput = 2\noutput = 20\n'
+    override = (
+        '[[models]]\nprovider = "openai"\nid = "gpt-5"\ninput = 2\noutput = 20\n'
+        '[[models]]\nprovider = "openai"\nid = "gpt-x"\ninput = 1\noutput = 2\n'
+        f'source = "litellm@{"c" * 40}"\n'
+    )
     html = setup(monkeypatch, tmp_path, override).get("/prices").text
+    assert f"litellm@{'c' * 12}<" in html  # generated entries show the LiteLLM commit
     assert "Seen in the last 90 days but unpriced" in html and "secret-model" in html
     assert "your override" in html
     assert "bundled · unverified" in html

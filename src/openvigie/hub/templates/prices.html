@@ -37,7 +37,8 @@
       <td>{{ p.as_of or "" }}</td>
       <td>{% if p.overridden %}<span class="badge ok">your override</span>
         {% elif p.unverified %}<span class="badge degraded">bundled · unverified</span>
-        {% else %}bundled{% endif %}</td>
+        {% else %}bundled{% endif %}
+        {% if p.source %}<br><span class="muted">{{ p.source[:20] }}</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

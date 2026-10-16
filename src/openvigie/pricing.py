@@ -71,6 +71,7 @@ class ModelEntry(Rates):
     above: Tier | None = None
     as_of: StrictStr | date | None = None
     unverified: StrictBool = False
+    source: StrictStr | None = None  # where a generated entry comes from, e.g. litellm@<commit>
 
 
 @file_entry
@@ -98,6 +99,7 @@ class ModelPrice:
     as_of: str | None = None
     unverified: bool = False
     overridden: bool = False
+    source: str | None = None
 
 
 @dataclass
@@ -106,16 +108,20 @@ class PriceTable:
     cached_input_included: dict[str, bool] = field(default_factory=dict)
     sources: dict[str, str] = field(default_factory=dict)
     override_path: Path | None = None
+    # name or alias -> prices in table order, so the first match still wins; reset by _add
+    _index: dict[str, list[ModelPrice]] | None = field(default=None, repr=False)
 
     def find(self, provider: str | None, model: str | None) -> ModelPrice | None:
         if not model:
             return None
-        candidates = [model, DATE_SUFFIX.sub("", model)]
-        for name in candidates:
+        if self._index is None:
+            self._index = {}
             for price in self.models.values():
-                if provider is not None and price.provider != provider:
-                    continue
-                if name == price.model_id or name in price.aliases:
+                for name in (price.model_id, *price.aliases):
+                    self._index.setdefault(name, []).append(price)
+        for name in (model, DATE_SUFFIX.sub("", model)):
+            for price in self._index.get(name, ()):
+                if provider is None or price.provider == provider:
                     return price
         return None
 
@@ -177,6 +183,7 @@ def compute_cost(
 
 
 def _add(file: PriceFile, table: PriceTable, *, overridden: bool) -> None:
+    table._index = None
     for name, provider in file.providers.items():
         table.cached_input_included[name] = provider.cached_input_included
         if provider.source:
@@ -199,6 +206,7 @@ def _add(file: PriceFile, table: PriceTable, *, overridden: bool) -> None:
             as_of=str(entry.as_of) if entry.as_of else None,
             unverified=entry.unverified,
             overridden=overridden,
+            source=entry.source,
         )  # fmt: skip
 
 
