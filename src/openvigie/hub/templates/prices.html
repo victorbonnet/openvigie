@@ -28,7 +28,7 @@
     <tr>
       <td>{{ p.provider }}</td>
       <td>{{ p.model_id }}{% if p.aliases %}<br><span class="muted">also {{ p.aliases | join(", ") }}</span>{% endif %}
-        {% if p.above %}<br><span class="muted">above {{ compact(p.above_prompt_tokens) }} prompt tokens: {{ p.above.input }} / {{ p.above.output }}</span>{% endif %}</td>
+        {% if p.above %}<br><span class="muted">above {{ compact(p.above_prompt_tokens) }} prompt tokens: {{ p.above.input }} / {{ p.above.output }}{% if p.above.cache_read is not none %} / cached {{ p.above.cache_read }}{% endif %}</span>{% endif %}</td>
       <td class="num">{{ p.rates.input }}</td>
       <td class="num">{{ p.rates.output }}</td>
       <td class="num">{{ p.rates.cache_read if p.rates.cache_read is not none else "—" }}</td>
@@ -43,6 +43,8 @@
   </tbody>
 </table>
 <p class="muted">{% for name, included in included.items() %}{{ name }}: cached input is {% if included %}part of{% else %}separate from{% endif %} input tokens{% if sources.get(name) %} (<a href="{{ sources[name] }}" rel="noopener noreferrer">pricing page</a>){% endif %}. {% endfor %}</p>
+<p class="muted">Costs assume standard processing. Batch, Flex and Fast (priority) tiers are billed
+  differently and aren't modelled, since agent logs don't record which tier a request used.</p>
 
 <h2>Change a price</h2>
 <p>Create or edit <code>{{ override_path }}</code> on the hub. Entries there win over the bundled table,

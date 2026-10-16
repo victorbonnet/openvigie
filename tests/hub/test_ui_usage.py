@@ -67,7 +67,9 @@ def openai(rid: str, model: str) -> UsageRecord:
 
 def test_gpt6_usage_is_not_a_lower_bound() -> None:
     html = client_with([openai("c1", "gpt-6.1-sol"), openai("c2", "gpt-6-luna")]).get("/usage").text
-    assert "$2.10" in html and "≥" not in html and "lower bounds" not in html
+    # 1M-token prompts are above 272K, so the long-context rates apply: $4.00 + $0.20
+    assert "$4.20" in html and "≥" not in html and "lower bounds" not in html
+    assert "bundled prices" not in html
 
 
 def test_unpriced_models_are_listed_with_the_override_file() -> None:
@@ -76,7 +78,7 @@ def test_unpriced_models_are_listed_with_the_override_file() -> None:
         .get("/usage")
         .text
     )
-    assert "≥ $2.00" in html and "Unpriced: codex-auto-review." in html
+    assert "≥ $4.00" in html and "Unpriced: codex-auto-review." in html
     assert "prices.toml</code>" in html
 
 

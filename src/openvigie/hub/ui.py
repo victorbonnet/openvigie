@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
+from pathlib import Path as FilePath
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -219,6 +220,15 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
     )
 
 
+def override_path(table: PriceTable) -> str:
+    """The price override file, home-relative so the page doesn't show the account name."""
+    path = table.override_path
+    if path is None:
+        return "prices.toml"
+    home = FilePath.home()
+    return f"~/{path.relative_to(home)}" if path.is_relative_to(home) else str(path)
+
+
 @router.get("/prices", response_class=HTMLResponse)
 def prices_page(request: Request) -> HTMLResponse:
     state = request.app.state
@@ -235,7 +245,7 @@ def prices_page(request: Request) -> HTMLResponse:
         sources=table.sources,
         included=table.cached_input_included,
         unpriced=unpriced,
-        override_path=str(table.override_path or "prices.toml"),
+        override_path=override_path(table),
         compact=compact,
     )
 
@@ -412,7 +422,7 @@ def usage_page(
         per_day=per_day.rows,
         models=models,
         unpriced_models=sorted(r.labels["model"] for r in models if r.unpriced_tokens),
-        override_path=str(table.override_path or "prices.toml"),
+        override_path=override_path(table),
         sessions=sessions,
         money=money,
         compact=compact,

@@ -55,15 +55,40 @@ def test_gpt6_family_is_priced_with_cached_input(
     table: Any, model: str, inp: str, cached: str, out: str
 ) -> None:
     cost = compute_cost(
-        rec("openai", model, input_tokens=1_000_000, cache_read_input_tokens=400_000,
+        rec("openai", model, input_tokens=200_000, cache_read_input_tokens=80_000,
             output_tokens=100_000),
         table,
     )  # fmt: skip
-    expected = (Decimal(600_000) * Decimal(inp) + Decimal(400_000) * Decimal(cached)
+    expected = (Decimal(120_000) * Decimal(inp) + Decimal(80_000) * Decimal(cached)
                 + Decimal(100_000) * Decimal(out)) / Decimal(1_000_000)  # fmt: skip
     assert cost.amount == expected and cost.quality is UsageQuality.EXACT
     price = table.find("openai", model)
-    assert price is not None and price.unverified
+    assert price is not None and not price.unverified
+
+
+@pytest.mark.parametrize(
+    ("model", "inp", "cached", "out"),
+    [("gpt-6.1-sol", "4", "0.20", "15"), ("gpt-6-astra", "20", "2", "75"),
+     ("gpt-6-luna", "0.20", "0.02", "0.75")],
+)  # fmt: skip
+def test_gpt6_long_context_bills_the_whole_request(
+    table: Any, model: str, inp: str, cached: str, out: str
+) -> None:
+    # cached input counts toward the 272K threshold, since OpenAI includes it in input_tokens
+    long = compute_cost(rec("openai", model, input_tokens=272_001, cache_read_input_tokens=200_000,
+                            output_tokens=1000), table)  # fmt: skip
+    expected = (Decimal(72_001) * Decimal(inp) + Decimal(200_000) * Decimal(cached)
+                + Decimal(1000) * Decimal(out)) / Decimal(1_000_000)  # fmt: skip
+    assert long.amount == expected and long.quality is UsageQuality.EXACT
+    at_limit = compute_cost(rec("openai", model, input_tokens=272_000, output_tokens=0), table)
+    price = table.find("openai", model)
+    assert price is not None and at_limit.amount == Decimal(272_000) * price.rates.input / 10**6
+
+
+def test_gpt6_sol_is_not_an_alias_of_gpt61_sol(table: Any) -> None:
+    cost = compute_cost(rec("openai", "gpt-6-sol", input_tokens=1000, cache_read_input_tokens=1000,
+                            output_tokens=0), table)  # fmt: skip
+    assert cost.amount == Decimal(1000) * Decimal("0.20") / Decimal(1_000_000)
 
 
 def test_codex_auto_review_stays_unpriced(table: Any) -> None:
