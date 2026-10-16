@@ -4,6 +4,7 @@ import hashlib
 import json
 import stat
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -127,7 +128,7 @@ def test_collector_action(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commands, "cli_runner", lambda timeout: fake)
     runner = CommandRunner(("sandbox.policy.set",))
     item = {"command_id": "b" * 32, "action": "sandbox.policy.set",
-            "expires_at": "2999-01-01T00:00:00+00:00",
+            "expires_at": (datetime.now(UTC) + timedelta(minutes=5)).isoformat(),
             "args": {"sandbox": "ov-net", "base_hash": fake.hash_of(3),
                      "network_policies": json.dumps(NEW_RULES)}}  # fmt: skip
     result = runner.run(item)

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
@@ -121,7 +122,7 @@ def test_collector_actions(spawn: Any) -> None:
 
     def command(cid: str, action: str, **args: str) -> dict[str, Any]:
         return {"command_id": cid * 32, "action": action, "args": args,
-                "expires_at": "2999-01-01T00:00:00+00:00"}  # fmt: skip
+                "expires_at": (datetime.now(UTC) + timedelta(minutes=5)).isoformat()}  # fmt: skip
 
     result = runner.run(command("a", "agent.stop", agent_id="a1"))
     assert result is not None and result.status is CommandStatus.SUCCEEDED and gone(agent)

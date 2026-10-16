@@ -165,3 +165,22 @@ def test_results_for_other_hosts_commands_are_ignored(setup: tuple[Collector, Da
     collector.tick()
     stored = CommandQueue(db).get(other.command_id)
     assert stored is not None and stored.status == "queued"
+
+
+def test_a_command_meant_to_live_too_long_is_refused() -> None:
+    far = command(expires=NOW + timedelta(hours=2))
+    assert outcome(runner(), far) == (CommandStatus.REFUSED,
+                                      "expires too far ahead (check the clocks)")  # fmt: skip
+
+
+def test_commands_in_a_usage_reply_are_run(setup: tuple[Collector, Database]) -> None:
+    """Every ingest reply can carry commands, and the hub hands each out once: a usage push
+    (or a spool flush) must not drop them."""
+    collector, db = setup
+    cid = queue(db)
+    payload = collector.build_payload([], [], full=True)
+    assert collector._send_usage(payload, 0.0)  # the usage push itself, not a whole tick
+    assert [r["command_id"] for r in collector.command_results] == [cid]
+    collector.tick()
+    stored = CommandQueue(db).get(cid)
+    assert stored is not None and stored.status == "succeeded"
