@@ -54,7 +54,9 @@ them from `ctx.processes()`). An admin's *Stop* and *Kill* act on these and thei
 - **Read agent files only with `openvigie.safeio`**: bounded reads, no symlinks, malformed lines
   skipped and counted in `ActivityBatch.stats`, which feeds the adapter's health in the UI.
 - Never execute the agent's binary, never read credential files, and never keep prompt or output
-  text in usage records.
+  text in usage records. One exception: when an agent keeps who may message it only next to its
+  secrets (Hermes' `.env`), read just those settings' lines and keep counts, never values
+  (`adapters/hermes/access.py`).
 - Agent ids must be stable: derive them with `stable_id(host_id, agent_type, <install key>)`.
 - Unknown is not zero: leave token counts as `None` when you can't read them.
 - Store read positions with `state.stage(key, cursor.to_dict())`. The collector commits them

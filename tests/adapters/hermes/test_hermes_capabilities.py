@@ -39,7 +39,7 @@ def test_recorded_profile(tmp_path: Path) -> None:
     assert caps.network is NetAccess.UNKNOWN
     assert caps.shell is True
     assert "hermes-cli" in caps.tools_allowed and "terminal" in caps.tools_allowed
-    assert caps.channels == (Channel("telegram", groups=True),)
+    assert caps.channels == (Channel("telegram"),)  # no .env recorded: who may write is unknown
     assert caps.sources == ("~/.hermes/config.yaml",)
 
 
@@ -48,7 +48,7 @@ def test_profile_defaults_and_its_platforms(tmp_path: Path) -> None:
     assert caps.approvals is ApprovalLevel.AUTO_EDIT and caps.approval_mode == "smart"
     assert caps.filesystem is FsAccess.FULL and caps.network is NetAccess.FULL  # local backend
     assert caps.shell is True and caps.tools_allowed == ("hermes-cli",)
-    assert caps.channels == (Channel("telegram"),)  # who may DM it lives in .env: unknown
+    assert caps.channels == (Channel("telegram"),)
     assert caps.sources == ("~/.hermes/profiles/profile-1/config.yaml",)
 
 

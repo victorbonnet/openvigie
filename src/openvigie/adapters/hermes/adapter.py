@@ -13,7 +13,8 @@ The version comes from the home's ``gateway_state.json``: the install's packagin
 placeholder versions. Activity is the newest message in each ``state.db``, and usage its
 per-model totals (``usage``); ``gateway_state.json`` is rewritten as a heartbeat, so its mtime
 isn't activity. The gateway listens on no port: processes are matched by running from the
-install, helpers by their parent. ``.env*``, ``auth.json`` and ``auth/`` are never opened.
+install, helpers by their parent. ``auth.json`` and ``auth/`` are never opened, and ``.env``
+only by ``access``, which keeps nothing but counts.
 """
 
 from __future__ import annotations
