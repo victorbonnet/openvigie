@@ -20,6 +20,7 @@ import argparse
 import datetime as dt
 import fnmatch
 import getpass
+import itertools
 import json
 import os
 import re
@@ -29,7 +30,8 @@ import sqlite3
 import sys
 import tempfile
 import time
-from collections.abc import Iterable
+from collections import deque
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -39,12 +41,22 @@ from openvigie.safeio import iter_jsonl, read_text_bounded, walk_bounded
 INCLUDE: dict[str, list[str]] = {
     "claude-code": ["settings.json", "projects/*/*.jsonl", "projects/*/*/subagents/*.jsonl"],
     "codex": ["config.toml", "sessions/*/*/*/rollout-*.jsonl"],
-    "hermes": ["config.yaml", "sessions/*", "sessions/*/*", "logs/*.log", "*.db"],
+    "hermes": [
+        "config.yaml",
+        "gateway_state.json",
+        "gateway.pid",
+        "sessions/*",
+        "sessions/*/*",
+        "logs/*.log",
+        "*.db",
+    ],
     "openclaw": [
+        # first: patterns are taken in order until --max-files
         "openclaw.json",
+        "agents/*/agent/*.sqlite",  # OpenClaw's session store
+        "agents/*/agent.json",
         "agents/*/sessions/*.jsonl",
         "agents/*/sessions/*.json",
-        "agents/*/agent.json",
         "logs/*.log",
     ],
 }
@@ -126,11 +138,22 @@ ALLOW_KEY = re.compile(
     r"(?i)(?:allow_?from|allowed_?(?:users|chats|ids|senders|peers)|allow_?list|white_?list"
     r"|trusted_?(?:users|ids)|admins?$|owners?$)"
 )
+# in keys and file names, long numbers are chat, group or bot ids; dates (8 digits) are kept
+LONG_ID = re.compile(r"(?<!\d)\d{9,}(?!\d)")
+TELEGRAM_GROUP = re.compile(r"(?<![\d-])-100\d{10}(?!\d)")  # a supergroup id, anywhere
+SQLITE_SUFFIXES = (".db", ".sqlite", ".sqlite3")
+SCRUBBED_EMAIL = re.compile(r"(?:[\w.-]{1,40}:)?user@example\.com")
 WHOLE_DIGITS = re.compile(r"(?<!\d)\d{5,}(?!\d)")  # in tg:<id>, +<phone>, -100<group>
 PEER_FIELD = re.compile(
     r"(?i)\b(?:chat|user|sender|from|peer|recipient|owner)_?id[\"']?[ \t]*[:=][ \t]*"
     r"[\"']?[+-]?(\d{5,})\b"
 )
+# broader names (home_channel, bot_id, thread…): long numbers only, and never a timestamp
+BROAD_PEER_WORDS = r"(?:chat|user|sender|peer|channel|group|bot|thread|topic)"
+BROAD_PEER_FIELD = re.compile(
+    rf"(?i)\b[\w-]*{BROAD_PEER_WORDS}[\w-]*[\"']?[ \t]*[:=][ \t]*[\"']?[+-]?(\d{{9,}})\b"
+)
+BROAD_PEER_COLUMN = re.compile(rf"(?i){BROAD_PEER_WORDS}")
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -178,6 +201,10 @@ class Scrubber:
         sign = found[0] if found[0] in "+-" else ""
         return sign + self.peer_digits(found.lstrip("+-"))
 
+    def key(self, key: Any) -> Any:
+        """Keys are scrubbed like values: e-mails, ids, home and host names."""
+        return self.text(key) if isinstance(key, str) else self.value(key)
+
     def path(self, rel: Path) -> Path:
         """Scrub user and host names out of path components (Claude Code encodes cwd in dirs)."""
         parts = []
@@ -210,7 +237,13 @@ class Scrubber:
         if isinstance(value, int) and str(abs(value)) in self.peers:
             return int(self.peers[str(abs(value))]) * (-1 if value < 0 else 1)
         if isinstance(value, dict):
-            return {k: self.value(v, k, in_content) for k, v in value.items()}
+            out: dict[Any, Any] = {}
+            for k, v in value.items():
+                new = self.key(k)
+                while new in out:  # two keys scrubbed alike (two e-mails): keep both
+                    new = f"{new} #{len(out)}"
+                out[new] = self.value(v, k, in_content)
+            return out
         if isinstance(value, list):
             return [self.value(v, key, in_content) for v in value]
         return value
@@ -226,6 +259,7 @@ def benign(match: re.Match[str]) -> bool:
     return (
         value.lower() in NOT_A_VALUE
         or value.startswith("[scrubbed text <=")  # our own placeholder
+        or SCRUBBED_EMAIL.fullmatch(value) is not None  # authProfileId: "openai:<e-mail>"
         or (key.endswith("_env") and ENV_NAME.fullmatch(value) is not None)
         or KEY_COMBO.fullmatch(value) is not None
         or (key in ROUTING_KEYS and value.startswith("agent:"))
@@ -243,16 +277,28 @@ def denied(path: Path) -> bool:
 def select_files(
     source: Path, patterns: list[str], max_files: int
 ) -> tuple[list[Path], list[Path]]:
+    """Each pattern is walked from its literal folder, to its own depth (``*.db`` is the top
+    level only), so a big unrelated folder (a git checkout) can't use up the walk's budget."""
     chosen: list[Path] = []
     dropped: list[Path] = []
-    for path in walk_bounded(source, "*", max_depth=6):
-        rel = path.relative_to(source)
-        if not any(fnmatch.fnmatch(str(rel), pat) for pat in patterns):
-            continue
-        if denied(path):
-            dropped.append(rel)
-        elif len(chosen) < max_files:
-            chosen.append(rel)
+    seen: set[Path] = set()
+    for pattern in patterns:
+        parts = Path(pattern).parts
+        literal = list(itertools.takewhile(lambda p: not WILDCARD.search(p), parts[:-1]))
+        base = source.joinpath(*literal)
+        if any(source.joinpath(*literal[: n + 1]).is_symlink() for n in range(len(literal))):
+            continue  # never walk out of the source
+        for path in walk_bounded(base, "*", max_depth=len(parts) - len(literal) - 1):
+            rel = path.relative_to(source)
+            if rel in seen or len(rel.parts) != len(parts):
+                continue
+            if not fnmatch.fnmatch(str(rel), pattern):
+                continue
+            seen.add(rel)
+            if denied(path):
+                dropped.append(rel)
+            elif len(chosen) < max_files:
+                chosen.append(rel)
     return chosen, dropped
 
 
@@ -276,7 +322,7 @@ def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
         data = yaml.safe_load(read_text_bounded(src))
         dst.write_text(yaml.safe_dump(scrubber.value(data), sort_keys=False))
         return "yaml (comments dropped)"
-    if src.suffix == ".db":
+    if src.suffix in SQLITE_SUFFIXES:
         return scrub_sqlite(src, dst, scrubber, max_rows=max_lines)
     lines = read_text_bounded(src).splitlines()[:max_lines]
     dst.write_text("".join(scrubber.text(line) + "\n" for line in lines))
@@ -336,6 +382,8 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber, max_rows: int) -> str
                     scrub_column(target, table, col)
         target.commit()
         target.execute("vacuum")
+        # a WAL-mode copy grows -wal/-shm files next to it whenever it's opened
+        target.execute("pragma journal_mode=delete")
     finally:
         source.close()
         target.close()
@@ -432,13 +480,15 @@ def collect_peers(source: Path, files: list[Path]) -> set[str]:
     ids: set[str] = set()
     for rel in files:
         path = source / rel
-        if path.suffix == ".db":
+        if path.suffix in SQLITE_SUFFIXES:
             ids |= db_peers(path)
             continue
         text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
         for key in SESSION_KEY.finditer(text):
             ids |= {m.group(0).lstrip("+-") for m in PEER_ID.finditer(key.group(0))}
         ids |= {m.group(1) for m in PEER_FIELD.finditer(text)}
+        ids |= {m.group(0).lstrip("-") for m in TELEGRAM_GROUP.finditer(text)}
+        ids |= {d for m in BROAD_PEER_FIELD.finditer(text) if not timestamp(d := m.group(1))}
         for data in structured(path, text):
             ids |= allow_list_peers(data)
     return ids
@@ -463,9 +513,17 @@ def structured(path: Path, text: str) -> list[Any]:
     return []
 
 
+def timestamp(digits: str) -> bool:
+    """Epoch seconds, ms, µs or ns between 2017 and 2036: not an id."""
+    n = int(digits)
+    return any(1_500_000_000 * 1000**k <= n <= 2_100_000_000 * 1000**k for k in range(4))
+
+
 def allow_list_peers(data: Any, listed: bool = False) -> set[str]:
+    """Entries of allow lists, and long ids used as keys (``groups: {"-100…": …}``)."""
     if isinstance(data, dict):
-        return set().union(
+        in_keys = {d for k in data for d in LONG_ID.findall(str(k))}
+        return in_keys.union(
             *(
                 allow_list_peers(v, listed or bool(ALLOW_KEY.search(str(k))))
                 for k, v in data.items()
@@ -488,9 +546,61 @@ def db_peers(path: Path) -> set[str]:
                 if PEER_KEY.match(col):
                     rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
                     ids |= {str(v).lstrip("+-") for (v,) in rows if PEER_DIGITS.fullmatch(str(v))}
+                elif BROAD_PEER_COLUMN.search(col):
+                    rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
+                    ids |= {
+                        d for (v,) in rows
+                        if re.fullmatch(r"[+-]?\d{9,}", str(v))
+                        and not timestamp(d := str(v).lstrip("+-"))
+                    }  # fmt: skip
     finally:
         db.close()
     return ids
+
+
+def long_numbers(root: Path, placeholders: set[str], per_place: int = 12) -> list[str]:
+    """Where numbers that could be a chat, group, bot or phone id remain, for review: 9 to 15
+    digits, not a placeholder, not a timestamp. One line per file, or per table.column."""
+    found: dict[tuple[str, str], set[str]] = {}
+
+    def add(file: str, where: str, text: str) -> None:
+        for d in LONG_ID.findall(text):
+            if len(d) <= 15 and d not in placeholders and not timestamp(d):
+                found.setdefault((file, where), set()).add(d)
+
+    for path in walk_bounded(root, "*", max_depth=8):
+        rel = str(path.relative_to(root))
+        add(rel, "", rel)
+        if path.suffix in SQLITE_SUFFIXES:
+            for where, value in sqlite_values(path):
+                add(rel, f" {where}", value)
+        else:
+            add(rel, "", read_text_bounded(path, max_bytes=64 * 1024 * 1024))
+    lines = []
+    for (file, where), numbers in sorted(found.items()):
+        shown = sorted(numbers)[:per_place]
+        more = f" (+{len(numbers) - per_place} more)" if len(numbers) > per_place else ""
+        lines.append(f"- `{file}`{where}: " + ", ".join(f"`{d}`" for d in shown) + more)
+    return lines
+
+
+def sqlite_values(path: Path) -> Iterator[tuple[str, str]]:
+    """Every text, blob and large integer value as text, with its table.column."""
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            cols = [c[1] for c in db.execute(f'pragma table_info("{table}")')]
+            for row in db.execute(f'select * from "{table}"'):  # noqa: S608
+                for col, value in zip(cols, row, strict=False):
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", errors="replace")
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        value = str(abs(value))
+                    if isinstance(value, str):
+                        yield f"{table}.{col}", value
+    finally:
+        db.close()
 
 
 def leftover_peers(root: Path, ids: set[str]) -> list[str]:
@@ -538,7 +648,7 @@ def db_has_secret(path: Path) -> bool:
 def leftover_secrets(root: Path) -> list[str]:
     hits = []
     for path in walk_bounded(root, "*", max_depth=8):
-        if path.suffix == ".db":
+        if path.suffix in SQLITE_SUFFIXES:
             found = db_has_secret(path)
         else:
             found = text_has_secret(read_text_bounded(path, max_bytes=64 * 1024 * 1024))
@@ -548,6 +658,8 @@ def leftover_secrets(root: Path) -> list[str]:
 
 
 MAX_SURVEY_FILES = 400
+SURVEY_DIR_FILES = 20
+WILDCARD = re.compile(r"[*?\[]")
 SENSITIVE_FLAG = re.compile(r"(?i)(key|token|secret|passw|auth|cookie|credential)")
 
 
@@ -567,22 +679,87 @@ def scrub_args(args: list[str], scrubber: Scrubber) -> list[str]:
     return out
 
 
-def survey_files(source: Path, chosen: set[Path], scrubber: Scrubber, now: float) -> list[str]:
-    lines = []
-    for n, path in enumerate(walk_bounded(source, "*", max_depth=6)):
-        if n >= MAX_SURVEY_FILES:
-            lines.append(f"- … more than {MAX_SURVEY_FILES} files")
-            break
-        rel = path.relative_to(source)
+def walk_breadth_first(
+    source: Path, max_depth: int = 6, max_entries: int = 50_000
+) -> Iterator[tuple[Path, int, list[os.DirEntry[str]]]]:
+    """Each folder with its sorted entries, shallow folders first; symlinks are not followed."""
+    queue: deque[tuple[Path, int]] = deque([(source, 0)])
+    seen = 0
+    while queue:
+        directory, depth = queue.popleft()
         try:
-            st = path.stat()
+            with os.scandir(directory) as it:
+                entries = sorted(it, key=lambda e: e.name)
         except OSError:
             continue
-        hours = max(0.0, (now - st.st_mtime) / 3600)
-        age = f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
-        mark = " (never copied)" if denied(path) else (" (copied)" if rel in chosen else "")
-        lines.append(f"- `{scrubber.path(rel)}`: {st.st_size:,} bytes, {age}{mark}")
+        seen += len(entries)
+        if seen > max_entries:
+            return
+        for entry in entries:
+            if depth < max_depth and entry.is_dir(follow_symlinks=False):
+                queue.append((Path(entry.path), depth + 1))
+        yield directory, depth, entries
+
+
+def name_peers(source: Path) -> set[str]:
+    """Long ids in file and folder names (``telegram_update_receipts_<bot id>.json``)."""
+    return {
+        d for _, _, entries in walk_breadth_first(source) for e in entries
+        for d in LONG_ID.findall(e.name)
+    }  # fmt: skip
+
+
+def survey_files(source: Path, chosen: set[Path], scrubber: Scrubber, now: float) -> list[str]:
+    """Breadth first, so top-level files and folders come before deep caches. A folder with
+    more than SURVEY_DIR_FILES files (below the top level) is one summary line."""
+    lines: list[str] = []
+    for directory, depth, entries in walk_breadth_first(source):
+        files = []
+        for entry in entries:
+            if entry.is_file(follow_symlinks=False):
+                try:
+                    files.append((Path(entry.path), entry.stat(follow_symlinks=False)))
+                except OSError:
+                    continue
+        rel_dir = directory.relative_to(source)
+        if depth > 0 and len(files) > SURVEY_DIR_FILES:
+            lines.append(folder_line(rel_dir, files, chosen, scrubber, now, source))
+        else:
+            for path, st in files:
+                rel = path.relative_to(source)
+                mark = " (never copied)" if denied(path) else (" (copied)" if rel in chosen else "")
+                lines.append(f"- `{scrubber.path(rel)}`: {st.st_size:,} bytes, "
+                             f"{age(now, st.st_mtime)}{mark}")  # fmt: skip
+        if len(lines) >= MAX_SURVEY_FILES:
+            lines = [*lines[:MAX_SURVEY_FILES], f"- … more than {MAX_SURVEY_FILES} lines"]
+            break
     return lines or ["- none"]
+
+
+def folder_line(
+    rel_dir: Path,
+    files: list[tuple[Path, os.stat_result]],
+    chosen: set[Path],
+    scrubber: Scrubber,
+    now: float,
+    source: Path,
+) -> str:
+    copied = sum(p.relative_to(source) in chosen for p, _ in files)
+    never = sum(denied(p) for p, _ in files)
+    marks = ", ".join(x for x in (f"{copied} copied" if copied else "",
+                                  f"{never} never copied" if never else "") if x)  # fmt: skip
+    examples = ", ".join(f"`{scrubber.path(Path(p.name))}`" for p, _ in files[:3])
+    return (
+        f"- `{scrubber.path(rel_dir)}/`: {len(files):,} files, "
+        f"{sum(st.st_size for _, st in files):,} bytes, newest "
+        f"{age(now, max(st.st_mtime for _, st in files))}"
+        f"{f' ({marks})' if marks else ''}; e.g. {examples}"
+    )
+
+
+def age(now: float, mtime: float) -> str:
+    hours = max(0.0, (now - mtime) / 3600)
+    return f"{hours:.0f} h ago" if hours < 48 else f"{hours / 24:.0f} days ago"
 
 
 def survey_processes(agent: str, scrubber: Scrubber, ps: Any) -> list[str]:
@@ -633,6 +810,13 @@ Recorded with `scripts/record_fixture.py` from a real install, then scrubbed.
 
 {dropped}
 
+## Long numbers left in the output (check each one by hand)
+
+Numbers of 9 to 15 digits that aren't a placeholder or a timestamp: hashes and tool ids are
+expected; a chat, group, bot or phone number is not.
+
+{numbers}
+
 ## To fill in by hand (SURVEY.md has the files, processes and ports seen)
 
 - Agent version (`<agent> --version`):
@@ -671,7 +855,9 @@ def record(
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
-    scrubber.add_peers(collect_peers(source, chosen))
+    # names of copied files too: name_peers' walk may stop before reaching them
+    in_names = {d for rel in chosen for d in LONG_ID.findall(str(rel))}
+    scrubber.add_peers(collect_peers(source, chosen) | name_peers(source) | in_names)
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
@@ -698,6 +884,7 @@ def record(
                 date=dt.date.today().isoformat(),
                 files="\n".join(notes),
                 dropped="\n".join(f"- `{scrubber.path(d)}`" for d in dropped) or "- none",
+                numbers="\n".join(long_numbers(staging, set(scrubber.peers.values()))) or "- none",
             )
         )
         if dest.exists():
