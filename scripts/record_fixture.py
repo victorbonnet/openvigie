@@ -258,18 +258,37 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
                 if "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype:
-                    target.execute(
-                        # names come from the schema of the DB we just copied
-                        f'update "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
-                        f"where typeof(\"{col}\") = 'text'",
-                        (col.lower(),),
-                    )
+                    scrub_column(target, table, col)
         target.commit()
         target.execute("vacuum")
     finally:
         source.close()
         target.close()
     return f"sqlite, {len(tables)} tables"
+
+
+def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
+    # names come from the schema of the DB we just copied. OR ABORT overrides the table's own
+    # ON CONFLICT clause: rollback would undo earlier scrubs, ignore and replace keep raw text
+    # or drop rows. With it a collision always raises and undoes only this statement.
+    try:
+        db.execute(
+            f'update or abort "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
+            f"where typeof(\"{col}\") = 'text'",
+            (col.lower(),),
+        )
+    except sqlite3.IntegrityError:
+        # a UNIQUE column: equal placeholders collide, so tell them apart by rowid
+        try:
+            db.execute(
+                f'update or abort "{table}" set "{col}" = '  # noqa: S608
+                f"scrub(\"{col}\", ?) || ' #' || rowid where typeof(\"{col}\") = 'text'",
+                (col.lower(),),
+            )
+        except sqlite3.OperationalError:
+            raise SystemExit(
+                f"table {table} has a unique text column ({col}) and no rowid; not written"
+            ) from None
 
 
 def leftover_secrets(root: Path) -> list[str]:
