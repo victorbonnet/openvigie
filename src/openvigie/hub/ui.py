@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
+from pathlib import Path as FilePath
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -259,6 +260,15 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
     )
 
 
+def override_path(table: PriceTable) -> str:
+    """The price override file, home-relative so the page doesn't show the account name."""
+    path = table.override_path
+    if path is None:
+        return "prices.toml"
+    home = FilePath.home()
+    return f"~/{path.relative_to(home)}" if path.is_relative_to(home) else str(path)
+
+
 @router.get("/prices", response_class=HTMLResponse)
 def prices_page(request: Request) -> HTMLResponse:
     state = request.app.state
@@ -275,7 +285,7 @@ def prices_page(request: Request) -> HTMLResponse:
         sources=table.sources,
         included=table.cached_input_included,
         unpriced=unpriced,
-        override_path=str(table.override_path or "prices.toml"),
+        override_path=override_path(table),
         compact=compact,
     )
 
@@ -434,6 +444,7 @@ def usage_page(
     top_agent = max(per_agent.rows, key=lambda r: r.cost, default=None)
     sessions = sorted(per_session.rows, key=lambda r: r.cost, reverse=True)[:10]
     models = sorted(per_model.rows, key=lambda r: r.tokens, reverse=True)
+    table: PriceTable = state.prices
     return render(
         request,
         "usage.html",
@@ -450,6 +461,8 @@ def usage_page(
         model_chart=hbars([(r.labels["model"], float(r.tokens)) for r in models]),
         per_day=per_day.rows,
         models=models,
+        unpriced_models=sorted(r.labels["model"] for r in models if r.unpriced_tokens),
+        override_path=override_path(table),
         sessions=sessions,
         reading=reading_views(per_agent.reading),
         money=money,

@@ -39,7 +39,9 @@
 {% include "_reading.html" %}
 {% if total.unknown or total.unpriced_tokens %}
 <p class="notice">Some usage could not be priced (unknown token counts or a model missing from the
-  <a href="/prices">price table</a>), so costs marked ≥ are lower bounds, not totals.</p>
+  <a href="/prices">price table</a>), so costs marked ≥ are lower bounds, not totals.
+  {% if unpriced_models %}Unpriced: {{ unpriced_models | join(", ") }}. Add their rates to
+  <code>{{ override_path }}</code> on the hub to include them (see <a href="/prices">Prices</a>).{% endif %}</p>
 {% endif %}
 {% if total.unverified_models %}
 <p class="notice">Costs for {{ total.unverified_models | sort | join(", ") }} use bundled prices that
