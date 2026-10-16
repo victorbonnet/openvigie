@@ -290,6 +290,7 @@ def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
         '"hotkey": "ctrl+shift+k"',
         '"sessionKey": "agent:main:telegram:direct:100000001"',
         "secrets:\n  bitwarden:\n",  # a YAML section, not key: value
+        '"sessionKey": "[scrubbed text <= 128 chars]"',
     ],
 )
 def test_benign_secret_lookalikes_pass(text: str) -> None:
@@ -367,3 +368,61 @@ def test_sqlite_secret_in_a_value_still_refused(
         conn.execute("insert into t values (?)", (f"x {KEY} y".encode(),))  # blobs aren't scrubbed
     with pytest.raises(SystemExit, match="still match"):
         rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber(), ps=FakePs())
+
+
+def test_large_clean_file_passes_and_key_block_fails() -> None:
+    clean = "\n".join(json.dumps({"n": i, "pad": "x" * 100}) for i in range(20_000))
+    assert len(clean) > 1024 * 1024  # past redact()'s truncation
+    assert not rf.text_has_secret(clean)
+    assert rf.text_has_secret(clean + "\n-----BEGIN RSA PRIVATE KEY-----\nabc\n")
+    assert rf.text_has_secret(clean + f"\nnote {KEY}\n")
+
+
+PEER = "123456789"
+
+
+def test_peer_ids_replaced_everywhere_openclaw(tmp_path: Path) -> None:
+    source = tmp_path / ".openclaw"
+    sessions = source / "agents" / "main" / "sessions"
+    sessions.mkdir(parents=True)
+    (source / "openclaw.json").write_text(
+        json.dumps({"channels": {"telegram": {"allowFrom": [f"tg:{PEER}"]}}})
+    )
+    line = {"sessionKey": f"agent:main:telegram:direct:{PEER}", "chatId": int(PEER),
+            "origin": {"from_id": PEER}}  # fmt: skip
+    (sessions / "s1.jsonl").write_text(json.dumps(line) + "\n")
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert PEER not in all_text(dest)
+    config = json.loads((dest / "openclaw.json").read_text())
+    out = json.loads((dest / "agents/main/sessions/s1.jsonl").read_text())
+    placeholder = out["sessionKey"].rsplit(":", 1)[1]
+    assert config["channels"]["telegram"]["allowFrom"] == [f"tg:{placeholder}"]
+    assert out["chatId"] == int(placeholder)
+    assert out["origin"]["from_id"] == placeholder
+
+
+def test_peer_ids_replaced_in_sqlite(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (id text, user_id text, chat_id integer)")
+        conn.execute("insert into sessions values ('s1', ?, ?)", (PEER, int(PEER)))
+    (source / "config.yaml").write_text(f"telegram:\n  allowed_users: [{PEER}]\n")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert PEER not in all_text(dest)
+    with sqlite3.connect(dest / "state.db") as conn:
+        user_id, chat_id = conn.execute("select user_id, chat_id from sessions").fetchone()
+    assert user_id == str(chat_id)
+
+
+def test_refuses_when_a_peer_id_survives(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (chat_id text, raw blob)")  # blobs aren't scrubbed
+        conn.execute("insert into sessions values (?, ?)", (PEER, f"to {PEER}".encode()))
+    with pytest.raises(SystemExit, match="chat or user ids"):
+        rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber(), ps=FakePs())
+    assert not (tmp_path / "fixture").exists()

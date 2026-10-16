@@ -114,9 +114,16 @@ ENV_NAME = re.compile(
     r"[A-Z][A-Z0-9_]{2,}"
 )  # under a *_env key: the variable's name, not its value
 KEY_COMBO = re.compile(r"(?i)(?:ctrl|alt|shift|cmd|meta|super|option)(?:\+[\w-]+)+")
+PEER_DIGITS = re.compile(r"[+-]?\d{5,}")
 ROUTING_KEYS = {"sessionkey", "session_key"}  # OpenClaw's agent:<id>:<channel>:<kind>:<peer>
 SESSION_KEY = re.compile(r"\bagent:[\w.@+:-]{1,200}")
 PEER_ID = re.compile(r"(?<=:)[+-]?\d{5,}(?![\w])")  # chat ids, phone numbers
+# chat and user ids are personal: found before scrubbing, then replaced wherever they appear
+PEER_KEY = re.compile(r"(?i)^(?:chat|user|sender|from|peer|recipient|owner)_?id$")
+PEER_FIELD = re.compile(
+    r"(?i)\b(?:chat|user|sender|from|peer|recipient|owner)_?id[\"']?[ \t]*[:=][ \t]*"
+    r"[\"']?[+-]?(\d{5,})\b"
+)
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -129,7 +136,15 @@ class Scrubber:
             self.replacements.append((user, "user"))
         if host and len(host) > 2:
             self.replacements.append((host, "host"))
-        self.peers: dict[str, str] = {}
+        self.peers: dict[str, str] = {}  # digits -> placeholder digits
+
+    def add_peers(self, ids: set[str]) -> None:
+        for digits in sorted(ids):
+            self.replacements.append((digits, self.peer_digits(digits)))
+
+    def peer_digits(self, digits: str) -> str:
+        """The same chat id or phone number always gets the same placeholder."""
+        return self.peers.setdefault(digits, str(100000001 + len(self.peers)))
 
     def text(self, value: str) -> str:
         value = SESSION_KEY.sub(lambda m: PEER_ID.sub(self.peer, m.group(0)), value)
@@ -142,10 +157,9 @@ class Scrubber:
         return IPV4.sub("192.0.2.1", value)
 
     def peer(self, match: re.Match[str]) -> str:
-        """The same chat id or phone number always gets the same placeholder."""
         found = match.group(0)
         sign = found[0] if found[0] in "+-" else ""
-        return self.peers.setdefault(found, f"{sign}{100000001 + len(self.peers)}")
+        return sign + self.peer_digits(found.lstrip("+-"))
 
     def path(self, rel: Path) -> Path:
         """Scrub user and host names out of path components (Claude Code encodes cwd in dirs)."""
@@ -176,6 +190,8 @@ class Scrubber:
             if len(value) > LONG_TEXT:
                 return self.placeholder(value)
             return self.text(value)
+        if isinstance(value, int) and str(abs(value)) in self.peers:
+            return int(self.peers[str(abs(value))]) * (-1 if value < 0 else 1)
         if isinstance(value, dict):
             return {k: self.value(v, k, in_content) for k, v in value.items()}
         if isinstance(value, list):
@@ -184,13 +200,15 @@ class Scrubber:
 
 
 def benign(match: re.Match[str]) -> bool:
-    """A LOOSE_SECRET match that is no secret: a boolean, an env var name under a *_env key,
-    a key binding, or a session routing key (its peer ids are replaced by the Scrubber)."""
+    """A LOOSE_SECRET match that is no secret: a boolean, a scrubber placeholder, an env var
+    name under a *_env key, a key binding, or a session routing key (its peer ids are replaced
+    by the Scrubber)."""
     key_match = re.match(r"[\w-]*", match.group(1))
     key = key_match.group(0).lower() if key_match else ""
     value = match.group(0)[len(match.group(1)) :].strip("\"'")
     return (
         value.lower() in NOT_A_VALUE
+        or value.startswith("[scrubbed text <=")  # our own placeholder
         or (key.endswith("_env") and ENV_NAME.fullmatch(value) is not None)
         or KEY_COMBO.fullmatch(value) is not None
         or (key in ROUTING_KEYS and value.startswith("agent:"))
@@ -294,7 +312,8 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
         target.create_function("scrub", 2, lambda v, k: scrubber.value(v, k))
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
-                if "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype:
+                textual = "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype
+                if textual or PEER_KEY.match(col):
                     scrub_column(target, table, col)
         target.commit()
         target.execute("vacuum")
@@ -311,7 +330,7 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
     try:
         db.execute(
             f'update or abort "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
-            f"where typeof(\"{col}\") = 'text'",
+            f"where typeof(\"{col}\") in ('text', 'integer')",
             (col.lower(),),
         )
     except sqlite3.IntegrityError:
@@ -326,6 +345,53 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
             raise SystemExit(
                 f"table {table} has a unique text column ({col}) and no rowid; not written"
             ) from None
+
+
+def collect_peers(source: Path, files: list[Path]) -> set[str]:
+    """Chat and user ids in the sample: peers in session keys, values of chat_id-like fields
+    and columns. Collected first so every file replaces them the same way."""
+    ids: set[str] = set()
+    for rel in files:
+        path = source / rel
+        if path.suffix == ".db":
+            ids |= db_peers(path)
+            continue
+        text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
+        for key in SESSION_KEY.finditer(text):
+            ids |= {m.group(0).lstrip("+-") for m in PEER_ID.finditer(key.group(0))}
+        ids |= {m.group(1) for m in PEER_FIELD.finditer(text)}
+    return ids
+
+
+def db_peers(path: Path) -> set[str]:
+    ids: set[str] = set()
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            for _, col, *_ in db.execute(f'pragma table_info("{table}")').fetchall():
+                if PEER_KEY.match(col):
+                    rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
+                    ids |= {str(v).lstrip("+-") for (v,) in rows if PEER_DIGITS.fullmatch(str(v))}
+    finally:
+        db.close()
+    return ids
+
+
+def leftover_peers(root: Path, ids: set[str]) -> list[str]:
+    """Files that still hold a collected id anywhere in their bytes (a .db's raw pages too)."""
+    needles = [i.encode() for i in ids]
+    return [
+        str(path.relative_to(root))
+        for path in walk_bounded(root, "*", max_depth=8)
+        if any(n in path.read_bytes() for n in needles)
+    ]
+
+
+def text_has_secret(text: str) -> bool:
+    """Line by line: redact() truncates past 1 MB, so a whole large file would always differ.
+    Private keys span lines, so any key block fails closed."""
+    return "PRIVATE KEY-----" in text or any(has_secret(line) for line in text.splitlines())
 
 
 def db_has_secret(path: Path) -> bool:
@@ -357,7 +423,7 @@ def leftover_secrets(root: Path) -> list[str]:
         if path.suffix == ".db":
             found = db_has_secret(path)
         else:
-            found = has_secret(read_text_bounded(path, max_bytes=64 * 1024 * 1024))
+            found = text_has_secret(read_text_bounded(path, max_bytes=64 * 1024 * 1024))
         if found:
             hits.append(str(path.relative_to(root)))
     return hits
@@ -487,6 +553,7 @@ def record(
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
+    scrubber.add_peers(collect_peers(source, chosen))
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
@@ -504,6 +571,9 @@ def record(
         hits = leftover_secrets(staging)
         if hits:
             raise SystemExit(f"secret patterns still match after scrubbing: {hits}; not written")
+        hits = leftover_peers(staging, set(scrubber.peers))
+        if hits:
+            raise SystemExit(f"chat or user ids still present after scrubbing: {hits}; not written")
         (staging / "MANIFEST.md").write_text(
             MANIFEST.format(
                 agent=agent,
