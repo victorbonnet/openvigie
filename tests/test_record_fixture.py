@@ -138,6 +138,38 @@ def test_sqlite_unique_text_column_stays_unique(tmp_path: Path) -> None:
     assert len({r[1] for r in rows}) == 2
 
 
+@pytest.mark.parametrize("conflict", ["rollback", "ignore", "replace", "abort", "fail"])
+def test_sqlite_unique_conflict_clause_never_leaks(tmp_path: Path, conflict: str) -> None:
+    # the table's ON CONFLICT clause must not undo earlier scrubs, keep raw text or drop rows
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table messages (id text, content text)")
+        conn.execute("insert into messages values ('m1', 'my private prompt')")
+        conn.execute(f"create table sessions (id text, title text unique on conflict {conflict})")
+        conn.executemany("insert into sessions values (?, ?)", [("s1", "Fix bug"), ("s2", "Plan")])
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber())
+    with sqlite3.connect(dest / "state.db") as conn:
+        content = conn.execute("select content from messages").fetchone()[0]
+        titles = [r[0] for r in conn.execute("select title from sessions order by id")]
+    assert content.startswith("[scrubbed text")
+    assert len(titles) == 2
+    assert all(t.startswith("[scrubbed text") for t in titles)
+    assert len(set(titles)) == 2
+
+
+def test_sqlite_unique_column_without_rowid_fails_clearly(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (id text primary key, title text unique) without rowid")
+        conn.executemany("insert into sessions values (?, ?)", [("s1", "Fix bug"), ("s2", "Plan")])
+    with pytest.raises(SystemExit, match="sessions"):
+        rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber())
+    assert not (tmp_path / "fixture").exists()
+
+
 def test_unknown_agent_rejected(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         rf.record("nope", tmp_path, tmp_path / "out")
