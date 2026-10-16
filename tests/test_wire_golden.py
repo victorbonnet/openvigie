@@ -16,6 +16,7 @@ from openvigie.model import (
     AgentStatus,
     ApprovalLevel,
     Capabilities,
+    Channel,
     FsAccess,
     HealthState,
     Hook,
@@ -69,6 +70,7 @@ SAMPLES: dict[str, Any] = {
          McpServer("docs", "http", None, "mcp.example.com", None)),
         ("pdf",), (Hook("PreToolUse", "jq"),), (SecretRef("GH_TOKEN", "mcp:gh"),),
         ("~/.claude/settings.json",),
+        (Channel("telegram", "allowlist", False, 2, True), Channel("discord")),
     ),
     "OpenShellSandbox": OpenShellSandbox(
         "267c2951", "h1", "ov-net", AT, "default", "Ready", {"openvigie.agent": "claude-code"},

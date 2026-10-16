@@ -11,6 +11,7 @@ from openvigie.model import (
     AgentInstance,
     ApprovalLevel,
     Capabilities,
+    Channel,
     FsAccess,
     Hook,
     Host,
@@ -77,3 +78,21 @@ def test_untrusted_values_are_escaped() -> None:
     html = page(evil)
     assert "<script>alert(1)</script>" not in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_channels_and_who_can_reach_it() -> None:
+    html = page(
+        Capabilities(
+            "a1",
+            NOW,
+            channels=(
+                Channel("telegram", "allowlist", False, 2, True),
+                Channel("discord", "open", True),
+            ),
+        )
+    )
+    assert "<h3>Messaging channels</h3>" in html
+    assert "Who can message it: <strong>anyone (direct messages are open)</strong>" in html
+    assert '<span class="badge error">open to anyone</span>' in html
+    assert "<code>allowlist</code>" in html and '<span class="badge degraded">yes</span>' in html
+    assert "None configured." in page(Capabilities("a1", NOW))

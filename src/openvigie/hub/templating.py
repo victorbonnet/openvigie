@@ -15,6 +15,7 @@ def templates_env() -> jinja2.Environment:
     from openvigie.hub.admin import csrf_token
     from openvigie.hub.roles import identity
     from openvigie.hub.ui import ago
+    from openvigie.risk import reached_by
 
     env = jinja2.Environment(
         loader=jinja2.PackageLoader("openvigie.hub", "templates"),
@@ -23,6 +24,7 @@ def templates_env() -> jinja2.Environment:
     )
     env.globals["version"] = __version__
     env.filters["ago"] = ago
+    env.globals["reached_by"] = reached_by
     env.globals["adapter_alerts"] = adapter_alerts
     env.globals["whoami"] = identity
     env.globals["recent_alerts"] = recent_alerts
