@@ -426,3 +426,45 @@ def test_refuses_when_a_peer_id_survives(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="chat or user ids"):
         rf.record("hermes", source, tmp_path / "fixture", scrubber=scrubber(), ps=FakePs())
     assert not (tmp_path / "fixture").exists()
+
+
+def test_sqlite_fts_index_and_triggers_dropped(tmp_path: Path) -> None:
+    # an FTS index keeps the original terms after its content is scrubbed (Hermes' state.db)
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.executescript("""
+            create table messages (id integer primary key, content text, token_count integer);
+            create virtual table messages_fts using fts5(content, content=messages,
+                                                         content_rowid=id);
+            create virtual table messages_tri using fts5(content, tokenize='trigram');
+            create trigger messages_fts_insert after insert on messages begin
+                insert into messages_fts(rowid, content) values (new.id, new.content);
+                insert into messages_tri(rowid, content) values (new.id, new.content);
+            end;
+        """)
+        conn.execute("insert into messages values (1, 'zanzibarprivate plans', 42)")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert "zanzibar" not in all_text(dest)
+    with sqlite3.connect(dest / "state.db") as conn:
+        names = {r[0] for r in conn.execute("select name from sqlite_master")}
+        row = conn.execute("select content, token_count from messages").fetchone()
+    assert names == {"messages"}
+    assert row == ("[scrubbed text <= 128 chars]", 42)
+    manifest = (dest / "MANIFEST.md").read_text()
+    assert "messages_fts" in manifest and "1 trigger" in manifest
+
+
+def test_sqlite_keeps_newest_rows(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table messages (id integer primary key, token_count integer)")
+        conn.executemany("insert into messages values (?, ?)", [(i, i) for i in range(1, 301)])
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, max_lines=50, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "state.db") as conn:
+        ids = [r[0] for r in conn.execute("select id from messages order by id")]
+    assert ids == list(range(251, 301))
+    assert "newest 50 of 300 rows in messages" in (dest / "MANIFEST.md").read_text()
