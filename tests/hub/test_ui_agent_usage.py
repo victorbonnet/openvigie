@@ -61,3 +61,14 @@ def test_prices_page(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert "bundled · unverified" in html
     assert "claude-opus-5-5" in html
     assert str(tmp_path / "prices.toml") in html
+    assert "Costs assume standard processing" in html
+
+
+def test_override_path_is_shown_home_relative(monkeypatch: pytest.MonkeyPatch,
+                                              tmp_path: Path) -> None:  # fmt: skip
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = tmp_path / ".config" / "openvigie"
+    config.mkdir(parents=True)
+    html = setup(monkeypatch, config).get("/prices").text
+    assert "<code>~/.config/openvigie/prices.toml</code>" in html
+    assert str(tmp_path) not in html

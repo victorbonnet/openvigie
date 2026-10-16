@@ -133,3 +133,16 @@ def test_group_by_session(prices: PriceTable) -> None:
     report = usage_report(db, prices, start=DAY, end=DAY + timedelta(days=1), group_by=["session"])
     assert {r.key["session"]: r.records for r in report.rows} == {"a": 1, "b": 2}
     assert len(usage_report(db, prices, start=DAY, end=DAY + timedelta(days=1)).rows) == 1
+
+
+def test_openai_tier_counts_cached_input_once(prices: PriceTable) -> None:
+    # 150K input of which 140K cached: under gpt-6's 272K threshold even though input + cached
+    # would exceed it, and above Haiku's 100K threshold, which must not switch gpt-6's tier.
+    db = Database(MEMORY)
+    seed(db, [rec("1", "cx", DAY, "gpt-6.1-sol", 150_000, 0, provider="openai",
+                  cache_read_input_tokens=140_000),
+              rec("2", "cx", DAY, "gpt-6.1-sol", 300_000, 0, provider="openai")])  # fmt: skip
+    total = usage_report(db, prices, start=DAY, end=DAY + timedelta(days=1)).total
+    short = Decimal(10_000) * 2 + Decimal(140_000) * Decimal("0.10")
+    long = Decimal(300_000) * 4
+    assert total.cost == (short + long) / Decimal(1_000_000)

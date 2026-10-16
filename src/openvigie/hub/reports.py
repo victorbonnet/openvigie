@@ -1,6 +1,6 @@
 """Usage and cost aggregation (FR-3, FR-4), shared by the UI and ``/api/v1/usage``.
 
-SQLite sums tokens per (agent, model, provider, hour, quality, prompt-size tier); Python then
+SQLite sums tokens per (agent, model, provider, hour, quality, prompt-size bucket); Python then
 prices each group (cost is linear in tokens within a tier) and folds groups into the requested
 dimensions, bucketing days in the display timezone. Every row carries its coverage: how many
 records were exact, estimated or unknown, and how many tokens had no price. Unknown is never
@@ -20,7 +20,6 @@ from openvigie.model import UsageQuality, UsageRecord
 from openvigie.pricing import PriceTable, compute_cost
 
 DIMENSIONS = ("agent", "host", "model", "day", "session")
-TIER_PROMPT_TOKENS = 100_000  # the only size-dependent price today (Claude Haiku 5.5)
 
 
 @dataclass
@@ -80,26 +79,36 @@ def usage_report(
 ) -> UsageReport:
     dims = [d for d in group_by if d in DIMENSIONS]
     with_session = "session" in dims
+    # Tiers depend on each request's own prompt size, so requests are bucketed by how many of
+    # the table's tier thresholds they exceed before summing.
+    thresholds = _thresholds(prices)
+    bucket = " + ".join(f"(u.prompt > {t})" for t in thresholds) or "0"
+    included = [name for name, inside in prices.cached_input_included.items() if inside]
+    marks = ", ".join("?" for _ in included) or "NULL"
     sql = f"""
+        WITH r AS (
+            SELECT *, CASE WHEN provider IN ({marks}) THEN COALESCE(input_tokens, 0)
+                      ELSE COALESCE(input_tokens, 0) + COALESCE(cache_read_input_tokens, 0)
+                           + COALESCE(cache_creation_input_tokens, 0) END AS prompt
+            FROM usage_records WHERE ts >= ? AND ts < ? {"AND agent_id = ?" if agent_id else ""}
+        )
         SELECT u.agent_id, a.host_id, h.hostname, a.name AS agent_name, a.agent_type,
                COALESCE(u.response_model, u.request_model) AS model, u.provider,
                substr(u.ts, 1, 13) AS hour, u.quality,
                {"u.session_id" if with_session else "NULL"} AS grouped_session,
                (u.input_tokens IS NOT NULL AND u.output_tokens IS NOT NULL) AS known,
-               (COALESCE(u.input_tokens, 0) + COALESCE(u.cache_read_input_tokens, 0)
-                + COALESCE(u.cache_creation_input_tokens, 0)) > {TIER_PROMPT_TOKENS} AS big,
+               {bucket} AS bucket,
                COUNT(*) AS n,
                SUM(u.input_tokens) AS input, SUM(u.output_tokens) AS output,
                SUM(u.cache_read_input_tokens) AS cache_read,
                SUM(u.cache_creation_input_tokens) AS cache_write,
                SUM(u.cache_creation_1h_input_tokens) AS cache_write_1h
-        FROM usage_records u
+        FROM r u
         JOIN agents a ON a.agent_id = u.agent_id
         JOIN hosts h ON h.host_id = a.host_id
-        WHERE u.ts >= ? AND u.ts < ? {"AND u.agent_id = ?" if agent_id else ""}
-        GROUP BY u.agent_id, model, u.provider, hour, u.quality, grouped_session, known, big
-    """  # noqa: S608 - only constant fragments are interpolated
-    params: list[Any] = [ts(start), ts(end)]
+        GROUP BY u.agent_id, model, u.provider, hour, u.quality, grouped_session, known, bucket
+    """  # noqa: S608 - only constant fragments and validated integers are interpolated
+    params: list[Any] = [*included, ts(start), ts(end)]
     if agent_id:
         params.append(agent_id)
     with db.read() as conn:
@@ -128,12 +137,17 @@ def usage_report(
             UsageRow(key={d: key[d] for d in dims}, labels={d: labels[d] for d in dims}),
         )
         for target in (row, total):
-            _add(target, g, prices)
+            _add(target, g, prices, thresholds)
     ordered = sorted(rows.values(), key=lambda r: tuple(r.key.values()))
     return UsageReport(ordered, total, start, end)
 
 
-def _add(row: UsageRow, g: Any, prices: PriceTable) -> None:
+def _thresholds(prices: PriceTable) -> list[int]:
+    return sorted({p.above_prompt_tokens for p in prices.models.values()
+                   if p.above_prompt_tokens is not None})  # fmt: skip
+
+
+def _add(row: UsageRow, g: Any, prices: PriceTable, thresholds: list[int]) -> None:
     n = int(g["n"])
     quality = UsageQuality(g["quality"])
     row.records += n
@@ -161,11 +175,13 @@ def _add(row: UsageRow, g: Any, prices: PriceTable) -> None:
         cache_creation_1h_input_tokens=g["cache_write_1h"],
         quality=quality,
     )
-    cost = compute_cost(synthetic, prices, long_prompt=bool(g["big"]))
+    price = prices.find(g["provider"], g["model"])
+    limit = price.above_prompt_tokens if price else None
+    long_prompt = limit is not None and g["bucket"] > thresholds.index(limit)
+    cost = compute_cost(synthetic, prices, long_prompt=long_prompt)
     if cost.amount is None:
         row.unpriced_tokens += (g["input"] or 0) + (g["output"] or 0)
     else:
         row.cost += cost.amount
-        price = prices.find(g["provider"], g["model"])
         if price is not None and price.unverified:
             row.unverified_models.add(price.model_id)
