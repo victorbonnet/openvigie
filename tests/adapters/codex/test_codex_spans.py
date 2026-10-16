@@ -65,7 +65,7 @@ def test_golden_span_tree(tmp_path: Path) -> None:
     tool = by_name["execute_tool shell"]
     assert tool.parent_span_id == chats[0].span_id
     assert tool.status is SpanStatus.OK and tool.end_time is not None
-    assert len({s.trace_id for s in spans}) == 2  # one trace per rollout
+    assert len({s.trace_id for s in spans}) == 3  # one trace per rollout
 
 
 def test_no_content_by_default(tmp_path: Path) -> None:

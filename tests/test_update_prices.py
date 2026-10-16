@@ -115,7 +115,7 @@ def test_recorded_mapping(recorded: tuple[str, str]) -> None:
 @pytest.mark.parametrize("model", ["claude-haiku-5-5", "gpt-6.1-sol"])
 def test_recorded_mapping_matches_hand_verified_entry(model: str) -> None:
     """LiteLLM's rates, converted, equal the ones checked against the provider's page (LiteLLM
-    may know more: it has a cache write rate for gpt-6.1-sol, which the hand entry leaves out)."""
+    may know more than the hand entry, which only lists the rates it verified)."""
     prices, warning = up.convert_one(excerpt(EXCERPT)[model])
     hand = models(BUNDLED.read_text())[model]
     rates, above = dict(prices.rates), dict(prices.above)

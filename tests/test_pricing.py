@@ -85,6 +85,43 @@ def test_gpt6_long_context_bills_the_whole_request(
     assert price is not None and at_limit.amount == Decimal(272_000) * price.rates.input / 10**6
 
 
+@pytest.mark.parametrize(
+    ("model", "inp", "cached", "write", "long_factor"),
+    [("gpt-6.1-sol", "2", "0.10", "2.5", 2), ("gpt-6-astra", "10", "1", "12.5", 2),
+     ("gpt-6-luna", "0.10", "0.01", "0.125", 2)],
+)  # fmt: skip
+def test_gpt6_cache_writes_are_billed_once(
+    table: Any, model: str, inp: str, cached: str, write: str, long_factor: int
+) -> None:
+    # cache writes, like reads, are part of OpenAI's input_tokens: only the rest is billed as input
+    cost = compute_cost(
+        rec("openai", model, input_tokens=100_000, cache_read_input_tokens=30_000,
+            cache_creation_input_tokens=50_000),
+        table,
+    )  # fmt: skip
+    expected = (Decimal(20_000) * Decimal(inp) + Decimal(30_000) * Decimal(cached)
+                + Decimal(50_000) * Decimal(write)) / Decimal(1_000_000)  # fmt: skip
+    assert cost.amount == expected
+    assert cost.quality is UsageQuality.EXACT and cost.reason is None
+    # the long-context tier doubles the cache write rate too
+    long = compute_cost(
+        rec("openai", model, input_tokens=300_000, cache_creation_input_tokens=300_000), table
+    )
+    assert long.amount == Decimal(300_000) * Decimal(write) * long_factor / Decimal(1_000_000)
+
+
+def test_recorded_codex_cache_write_fixture_cost(table: Any) -> None:
+    # second turn of the Codex gpt-6.1-sol fixture (tests/adapters/codex/fixtures, …-0003)
+    cost = compute_cost(
+        rec("openai", "gpt-6.1-sol", input_tokens=12000, cache_read_input_tokens=9000,
+            cache_creation_input_tokens=2000, output_tokens=200),
+        table,
+    )  # fmt: skip
+    expected = (Decimal(1000) * 2 + Decimal(9000) * Decimal("0.10")
+                + Decimal(2000) * Decimal("2.5") + Decimal(200) * 10) / 10**6  # fmt: skip
+    assert cost.amount == expected and cost.quality is UsageQuality.EXACT
+
+
 def test_gpt6_sol_is_not_an_alias_of_gpt61_sol(table: Any) -> None:
     cost = compute_cost(rec("openai", "gpt-6-sol", input_tokens=1000, cache_read_input_tokens=1000,
                             output_tokens=0), table)  # fmt: skip

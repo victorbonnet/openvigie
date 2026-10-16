@@ -6,8 +6,10 @@ never executed and ``auth.json`` is never opened.
 
 Usage semantics (OpenAI): ``token_count`` events carry a cumulative ``total_token_usage``.
 Records are the *deltas* between successive totals, so repeated events never double count.
-``cached_input_tokens`` is a subset of ``input_tokens`` and ``reasoning_output_tokens`` a
-subset of ``output_tokens``; they are stored as such and pricing (#47) accounts for it.
+``cached_input_tokens`` and ``cache_write_input_tokens`` are subsets of ``input_tokens`` (the
+Responses API's ``input_tokens_details``), and ``reasoning_output_tokens`` a subset of
+``output_tokens``; they are stored as such and pricing (#47) accounts for it. Rollouts written
+before Codex recorded cache writes lack that field, which is then left unset.
 ``token_count`` events with ``info: null`` precede the first call and carry no usage.
 When traces are enabled the same pass builds GenAI spans (``spans.py``, FR-6).
 """
@@ -59,7 +61,10 @@ def is_codex_process(proc: ProcessInfo) -> bool:
     return False
 
 
-USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
+# record ids hash these cumulative totals; cache writes are left out so that ids of records read
+# before they were mapped stay the same (a cache write always comes with more input_tokens)
+ID_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens")
+USAGE_FIELDS = (*ID_FIELDS, "cache_write_input_tokens")
 
 
 class CodexAdapter(Adapter):
@@ -223,7 +228,9 @@ class CodexAdapter(Adapter):
         model = file_ctx.get("model")
         known = delta["input_tokens"] is not None and delta["output_tokens"] is not None
         return UsageRecord(
-            record_id=stable_id(agent.agent_id, str(session), *(str(v) for v in current.values())),
+            record_id=stable_id(
+                agent.agent_id, str(session), *(str(current[f]) for f in ID_FIELDS)
+            ),
             agent_id=agent.agent_id,
             timestamp=when,
             session_id=session,
@@ -233,6 +240,7 @@ class CodexAdapter(Adapter):
             input_tokens=delta["input_tokens"],
             output_tokens=delta["output_tokens"],
             cache_read_input_tokens=delta["cached_input_tokens"],
+            cache_creation_input_tokens=delta["cache_write_input_tokens"],
             reasoning_tokens=delta["reasoning_output_tokens"],
             quality=UsageQuality.EXACT if known else UsageQuality.UNKNOWN,
         )

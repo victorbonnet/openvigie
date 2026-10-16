@@ -3,6 +3,71 @@
   "agent_id": "agent-codex-fixture",
   "attributes": {
    "gen_ai.agent.name": "codex",
+   "gen_ai.conversation.id": "0199dc00-3333-7000-8000-000000000003",
+   "gen_ai.operation.name": "invoke_agent",
+   "gen_ai.provider.name": "openai",
+   "openvigie.agent.id": "agent-codex-fixture",
+   "openvigie.agent.type": "codex",
+   "session.id": "0199dc00-3333-7000-8000-000000000003"
+  },
+  "end_time": "2026-10-12T14:00:27+00:00",
+  "name": "invoke_agent codex",
+  "parent_span_id": null,
+  "span_id": "87e22738dd0b9e90",
+  "start_time": "2026-10-12T14:00:00+00:00",
+  "status": "unset",
+  "trace_id": "f207f082c4bb70c7d82631b0521ca9fb"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "openai",
+   "gen_ai.request.model": "gpt-6.1-sol",
+   "gen_ai.response.model": "gpt-6.1-sol",
+   "gen_ai.usage.cache_creation.input_tokens": 6000,
+   "gen_ai.usage.cache_read.input_tokens": 0,
+   "gen_ai.usage.input_tokens": 10000,
+   "gen_ai.usage.output_tokens": 300,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 64,
+   "session.id": "0199dc00-3333-7000-8000-000000000003"
+  },
+  "end_time": "2026-10-12T14:00:08+00:00",
+  "name": "chat gpt-6.1-sol",
+  "parent_span_id": "87e22738dd0b9e90",
+  "span_id": "16904faaa5c7904b",
+  "start_time": "2026-10-12T14:00:02+00:00",
+  "status": "unset",
+  "trace_id": "f207f082c4bb70c7d82631b0521ca9fb"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.operation.name": "chat",
+   "gen_ai.provider.name": "openai",
+   "gen_ai.request.model": "gpt-6.1-sol",
+   "gen_ai.response.model": "gpt-6.1-sol",
+   "gen_ai.usage.cache_creation.input_tokens": 2000,
+   "gen_ai.usage.cache_read.input_tokens": 9000,
+   "gen_ai.usage.input_tokens": 12000,
+   "gen_ai.usage.output_tokens": 200,
+   "openvigie.usage.quality": "exact",
+   "openvigie.usage.reasoning_tokens": 0,
+   "session.id": "0199dc00-3333-7000-8000-000000000003"
+  },
+  "end_time": "2026-10-12T14:00:27+00:00",
+  "name": "chat gpt-6.1-sol",
+  "parent_span_id": "87e22738dd0b9e90",
+  "span_id": "a71411ff1457b318",
+  "start_time": "2026-10-12T14:00:20+00:00",
+  "status": "unset",
+  "trace_id": "f207f082c4bb70c7d82631b0521ca9fb"
+ },
+ {
+  "agent_id": "agent-codex-fixture",
+  "attributes": {
+   "gen_ai.agent.name": "codex",
    "gen_ai.conversation.id": "0199e0b0-2222-7000-8000-000000000002",
    "gen_ai.operation.name": "invoke_agent",
    "gen_ai.provider.name": "openai",

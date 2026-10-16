@@ -164,7 +164,7 @@ def test_codex_logs_and_otlp_counted_once(tmp_path: Path) -> None:
     assert c.tick()
     receiver.handle("/v1/logs", JSON, (FIXTURES / "codex_logs.json").read_bytes())
     c.tick()
-    assert sum(r["output_tokens"] for r in hub.usage) == 770 and len(hub.usage) == 3
+    assert sum(r["output_tokens"] for r in hub.usage) == 1270 and len(hub.usage) == 5
 
 
 def trace_payload(service: str = "claude-code") -> bytes:
