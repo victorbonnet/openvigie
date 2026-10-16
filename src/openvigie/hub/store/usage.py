@@ -1,11 +1,12 @@
-"""Usage repository: deduplicated usage records and sessions."""
+"""Usage repository: deduplicated usage records, sessions, and how far logs have been read."""
 
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from openvigie.hub.store.db import Database, agents_of_host, parse_ts, required_ts, ts
-from openvigie.model import Session, UsageQuality, UsageRecord
+from openvigie.model import Session, UsageBackfill, UsageQuality, UsageRecord
 
 
 class UsageStore:
@@ -112,6 +113,44 @@ class UsageStore:
             for r in rows
         ]  # fmt: skip
 
+    def set_backfill(self, items: list[UsageBackfill], host_id: str) -> int:
+        """Keep the newest report per agent; an older one (e.g. from the spool) is ignored."""
+        changed = 0
+        with self.db.transaction() as conn:
+            owned = agents_of_host(conn, host_id)
+            for b in items:
+                if b.agent_id not in owned:
+                    continue
+                cur = conn.execute(
+                    "INSERT INTO usage_backfill (agent_id, observed_at, complete, read_until, "
+                    "bytes_left) VALUES (?, ?, ?, ?, ?) ON CONFLICT (agent_id) DO UPDATE SET "
+                    "observed_at = excluded.observed_at, complete = excluded.complete, "
+                    "read_until = excluded.read_until, bytes_left = excluded.bytes_left "
+                    "WHERE excluded.observed_at >= usage_backfill.observed_at",
+                    (b.agent_id, ts(b.observed_at), int(b.complete),
+                     b.read_until and ts(b.read_until), b.bytes_left),
+                )  # fmt: skip
+                changed += cur.rowcount
+        return changed
+
+    def backfill(self, agent_id: str) -> UsageBackfill | None:
+        with self.db.read() as conn:
+            row = conn.execute(
+                "SELECT * FROM usage_backfill WHERE agent_id = ?", (agent_id,)
+            ).fetchone()
+        return None if row is None else backfill_of(row)
+
     def set_spool_dropped(self, host_id: str, dropped: int) -> None:
         with self.db.transaction() as conn:
             conn.execute("UPDATE hosts SET spool_dropped = ? WHERE host_id = ?", (dropped, host_id))
+
+
+def backfill_of(row: Any) -> UsageBackfill:
+    """A ``usage_backfill`` row as its wire type."""
+    return UsageBackfill(
+        agent_id=row["agent_id"],
+        observed_at=required_ts(row["observed_at"]),
+        complete=bool(row["complete"]),
+        read_until=parse_ts(row["read_until"]),
+        bytes_left=row["bytes_left"],
+    )

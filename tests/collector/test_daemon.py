@@ -337,3 +337,46 @@ def test_sandboxes_reach_the_hub_with_their_agents(
     clock.t += 31
     collector.tick()
     assert collector.sandboxes_sent_at == sent_at  # unchanged, so not sent again
+
+
+# --- reading history (FR-3, FR-5) --------------------------------------------------------------
+
+
+def test_history_larger_than_a_tick_shows_reading_then_complete(
+    tmp_path: Path, hub: tuple[TestClient, Database], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from openvigie.adapters.usage import TailBudget
+    from openvigie.hub.store.usage import UsageStore
+
+    # about one transcript per tick: the fixture's two transcripts take two ticks to read
+    monkeypatch.setattr(TailBudget, "for_context", classmethod(lambda cls, ctx: cls(1, 1)))
+    collector, host, transport, clock = make_collector(tmp_path, hub)
+    client, db = hub
+    assert collector.tick()
+    (row,) = Inventory(db).agents()
+    agent_id = row.agent.agent_id
+    state = UsageStore(db).backfill(agent_id)
+    assert state is not None and not state.complete and state.bytes_left
+    assert state.read_until is not None  # the unread transcript's last write
+    assert abs(state.read_until - (host.now - timedelta(hours=1))) < timedelta(seconds=1)
+    page = client.get("/usage").text
+    assert "Claude Code · testhost: reading history, up to" in page
+    assert "≥ " in page and "clears by itself" in page
+    assert "reading history" in client.get(f"/agents/{agent_id}").text
+    assert client.get("/api/v1/usage").json()["total"]["history_complete"] is False
+
+    clock.t += collector.settings.slow_tick_s
+    assert collector.tick()
+    state = UsageStore(db).backfill(agent_id)
+    assert state is not None and state.complete and state.read_until is None
+    assert len(UsageStore(db).records()) == 9  # all of it, as with an unbounded read
+    page = client.get("/usage").text
+    assert "reading history" not in page and "clears by itself" not in page
+    assert "reading history" not in client.get(f"/agents/{agent_id}").text
+    usage = client.get("/api/v1/usage").json()
+    assert usage["reading"] == [] and usage["total"]["history_complete"] is True
+
+    calls = transport.calls
+    clock.t += collector.settings.slow_tick_s
+    collector.tick()
+    assert transport.calls == calls + 1  # complete and unchanged: nothing more to send

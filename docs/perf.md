@@ -24,6 +24,10 @@ With trace export on, every model call and tool call also becomes a span, which 
 memory per transcript line than a usage record. Adapters then read 4 MiB per tick instead of
 16 MiB, so a large backfill takes more ticks but the peak stays low.
 
+While a backfill takes more than one tick, the Usage and agent pages say the agent's history is
+still being read and mark its totals with ≥. Once the budget of a tick is spent, the files left
+are only `stat`-ed to measure what remains, as on any idle tick.
+
 ## Results
 
 | Machine | Data | Peak RSS | Idle CPU per tick | Idle CPU at 5 s tick | Backfill |

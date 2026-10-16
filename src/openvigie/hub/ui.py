@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta, tzinfo
 from decimal import Decimal
 from functools import partial
 from typing import Annotated
@@ -19,7 +19,7 @@ from openvigie.hub.api import DateParam, date_range
 from openvigie.hub.budgets import evaluate, load_budgets, used
 from openvigie.hub.charts import OTHER, Series, assign_slots, compact, hbars, money, stacked_bars
 from openvigie.hub.langfuse import TraceLink, project_url, trace_link
-from openvigie.hub.reports import UsageRow, usage_report
+from openvigie.hub.reports import Reading, UsageRow, usage_report
 from openvigie.hub.riskview import AgentRisk, agent_risks
 from openvigie.hub.store.alerts import AlertStore
 from openvigie.hub.store.audit import AuditLog
@@ -175,12 +175,39 @@ class SessionView:
 
 
 @dataclass(frozen=True)
+class ReadingView:
+    """An agent whose history is still being read, worded for the page (FR-3)."""
+
+    agent_id: str
+    label: str
+    up_to: str | None  # local date the logs have been read up to; None: not known
+    left: str | None  # e.g. "1.2 GiB left"
+
+
+def reading_views(reading: list[Reading], tz: tzinfo) -> list[ReadingView]:
+    return [
+        ReadingView(r.agent_id, r.label,
+                    r.read_until.astimezone(tz).date().isoformat() if r.read_until else None,
+                    f"{byte_size(r.bytes_left)} left" if r.bytes_left else None)
+        for r in reading
+    ]  # fmt: skip
+
+
+def byte_size(n: int) -> str:
+    for unit, size in (("GiB", 2**30), ("MiB", 2**20), ("KiB", 2**10)):
+        if n >= size:
+            return f"{n / size:.1f} {unit}"
+    return f"{n} B"
+
+
+@dataclass(frozen=True)
 class AgentUsage:
     total: UsageRow
     chart: Markup
     models: list[UsageRow]
     sessions: list[SessionView]
     langfuse_project: str | None = None
+    reading: list[ReadingView] = field(default_factory=list)
 
 
 def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
@@ -216,6 +243,7 @@ def agent_usage(request: Request, agent_id: str, days: int = 30) -> AgentUsage:
         models=sorted(report(group_by=["model"]).rows, key=lambda r: r.cost, reverse=True),
         sessions=views,
         langfuse_project=project,
+        reading=reading_views(per_day.reading, state.tz),
     )
 
 
@@ -411,6 +439,7 @@ def usage_page(
         per_day=per_day.rows,
         models=models,
         sessions=sessions,
+        reading=reading_views(per_agent.reading, tz),
         money=money,
         compact=compact,
     )

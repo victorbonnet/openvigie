@@ -20,7 +20,7 @@
   </div>
   <div class="tile">
     <div class="k">Tokens</div>
-    <div class="v">{{ compact(total.tokens) }}</div>
+    <div class="v">{% if not total.history_complete %}≥ {% endif %}{{ compact(total.tokens) }}</div>
     <div class="s">{{ compact(total.input_tokens) }} in · {{ compact(total.output_tokens) }} out · {{ compact(total.cache_read_tokens) }} cache read</div>
   </div>
   <div class="tile">
@@ -32,10 +32,12 @@
     <div class="k">Coverage</div>
     <div class="v">{{ total.records }} calls</div>
     <div class="s">{{ total.exact }} exact · {{ total.estimated }} estimated · {{ total.unknown }} unknown{% if total.unpriced_tokens %} · {{ compact(total.unpriced_tokens) }} unpriced tokens{% endif %}</div>
+    {% for r in reading %}<div class="s">{{ r.label }}: reading history{% if r.up_to %}, up to {{ r.up_to }}{% endif %}</div>{% endfor %}
   </div>
 </div>
 
-{% if not total.cost_complete %}
+{% include "_reading.html" %}
+{% if total.unknown or total.unpriced_tokens %}
 <p class="notice">Some usage could not be priced (unknown token counts or a model missing from the
   <a href="/prices">price table</a>), so costs marked ≥ are lower bounds, not totals.</p>
 {% endif %}

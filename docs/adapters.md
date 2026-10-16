@@ -59,6 +59,10 @@ them from `ctx.processes()`). An admin's *Stop* and *Kill* act on these and thei
 - Unknown is not zero: leave token counts as `None` when you can't read them.
 - Store read positions with `state.stage(key, cursor.to_dict())`. The collector commits them
   only after the hub has stored the data.
+- Read a bounded amount per `collect` and say what is left in `ActivityBatch.backlog` (unread
+  bytes, oldest unread file), so the hub can show that history is still being read rather than
+  totals that look complete. `adapters.usage.tail_files` does both. Leave it `None` if you
+  can't tell.
 - Spans (FR-6) are optional: build them only when `ctx.traces.enabled`. Use the ids from
   `openvigie.adapters.spans` (one trace per session, deterministic span ids) and the GenAI names
   in `openvigie.semconv`. Content attributes only when `ctx.traces.export_content`, and only

@@ -151,12 +151,30 @@ class AdapterState:
 
 
 @dataclass
+class Backlog:
+    """What ``collect`` left for later ticks: bytes not read yet, and the oldest file they're in.
+
+    Empty means the adapter has read everything there is (its backfill is complete).
+    """
+
+    bytes_left: int = 0
+    oldest: datetime | None = None  # last-modified time of the oldest file with unread bytes
+
+    def add(self, unread: int, modified: datetime) -> None:
+        if unread <= 0:
+            return
+        self.bytes_left += unread
+        self.oldest = modified if self.oldest is None else min(self.oldest, modified)
+
+
+@dataclass
 class ActivityBatch:
     last_activity_at: datetime | None = None
     sessions: list[Session] = field(default_factory=list)
     usage: list[UsageRecord] = field(default_factory=list)
     spans: list[Span] = field(default_factory=list)
     stats: ReadStats = field(default_factory=ReadStats)
+    backlog: Backlog | None = None  # None: the adapter can't tell how much is left to read
 
 
 class Adapter(ABC):

@@ -187,6 +187,22 @@ class UsageRecord:
         return {k: v for k, v in pairs if v is not None}
 
 
+@wire_type
+class UsageBackfill:
+    """How far the collector has read an agent's usage logs (FR-3).
+
+    While ``complete`` is false, usage is still being read: totals that reach past
+    ``read_until`` may be missing records, which are unknown, not zero.
+    """
+
+    agent_id: Id
+    observed_at: Timestamp = EPOCH
+    complete: Bool = True
+    # every log file last written before this has been read; None when complete
+    read_until: Timestamp | None = None
+    bytes_left: Count | None = None  # None: not known
+
+
 AttrValue = Text | Annotated[int, Strict(), Field(ge=-MAX_INT, le=MAX_INT)] | StrictFloat | Bool
 
 

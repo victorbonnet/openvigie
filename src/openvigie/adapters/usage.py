@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from openvigie.adapters.base import ActivityBatch, AdapterState, HostContext
+from openvigie.adapters.base import ActivityBatch, AdapterState, Backlog, HostContext
 from openvigie.safeio import FileCursor, UnsafeFileError, tail_jsonl, walk_bounded
 
 MiB = 1024 * 1024
@@ -66,10 +66,11 @@ def tail_files(
 
     Files untouched since their cursor are skipped with a ``stat`` only. On a first read, files
     last modified before ``state.backfill_since`` are skipped entirely (cursor set to the end).
+    Once the budget is spent, the remaining files are only ``stat``-ed: what they still hold
+    goes into ``batch.backlog``, so the hub can tell history is still being read.
     """
+    backlog = batch.backlog = Backlog()
     for path in walk_bounded(directory, pattern, max_depth=max_depth):
-        if budget.remaining <= 0:
-            return
         key = str(path.relative_to(root))
         saved = state.get(key)
         cursor = FileCursor.from_dict(saved) if saved else None
@@ -77,15 +78,17 @@ def tail_files(
             st = path.stat()
         except OSError:
             continue
-        if cursor and (cursor.dev, cursor.inode, cursor.offset) == (
-            st.st_dev,
-            st.st_ino,
-            st.st_size,
-        ):
+        same_file = cursor is not None and (cursor.dev, cursor.inode) == (st.st_dev, st.st_ino)
+        if cursor and same_file and cursor.offset == st.st_size:
             continue
+        modified = datetime.fromtimestamp(st.st_mtime, UTC)
         since = state.backfill_since
-        if cursor is None and since and datetime.fromtimestamp(st.st_mtime, UTC) < since:
+        if cursor is None and since and modified < since:
             state.stage(key, FileCursor(st.st_dev, st.st_ino, st.st_size).to_dict())
+            continue
+        if budget.remaining <= 0:
+            done = cursor.offset if cursor and same_file and cursor.offset <= st.st_size else 0
+            backlog.add(st.st_size - done, modified)
             continue
         try:
             result = tail_jsonl(path, cursor, budget=min(budget.per_file, budget.remaining))
@@ -94,6 +97,8 @@ def tail_files(
             continue
         start = 0 if result.reset or cursor is None else cursor.offset
         budget.remaining -= max(0, result.cursor.offset - start)
+        if result.more:
+            backlog.add(st.st_size - result.cursor.offset, modified)
         batch.stats.add(result.stats)
         for value in result.values:
             yield key, value

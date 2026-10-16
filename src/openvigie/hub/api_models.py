@@ -11,7 +11,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, Strict
 
-from openvigie.hub.reports import UsageRow
+from openvigie.hub.reports import Reading, UsageRow
 from openvigie.model import (
     AdapterHealth,
     AgentInstance,
@@ -25,6 +25,7 @@ from openvigie.model import (
     Span,
     StatusEvent,
     Timestamp,
+    UsageBackfill,
     UsageRecord,
 )
 from openvigie.risk import Flag
@@ -78,6 +79,8 @@ class IngestRequest(ApiModel):
     sandboxes: Annotated[list[OpenShellSandbox], Field(max_length=500)] | None = None
     # what became of commands sent in earlier replies (D14)
     command_results: Annotated[list[CommandResult], Field(max_length=100)] = []
+    # how far each agent's usage logs have been read, when that changed (FR-3)
+    usage_backfill: Annotated[list[UsageBackfill], Field(max_length=500)] = []
 
 
 class Accepted(ApiModel):
@@ -91,6 +94,7 @@ class Accepted(ApiModel):
     capabilities: int
     sandboxes: int = 0
     command_results: int = 0
+    usage_backfill: int = 0
     spans: int
 
 
@@ -193,7 +197,9 @@ class UsageRowOut(ApiModel):
     tokens: Tokens
     coverage: Coverage
     cost_usd: str  # a decimal string, to keep precision
-    cost_complete: bool  # false: part of the usage couldn't be priced, cost is a lower bound
+    # false: part of the usage couldn't be priced or isn't read yet, cost is a lower bound
+    cost_complete: bool
+    history_complete: bool  # false: usage not read yet may be missing from this row (FR-3)
     unverified_price_models: list[str]
 
     @classmethod
@@ -208,8 +214,23 @@ class UsageRowOut(ApiModel):
                               unpriced_tokens=row.unpriced_tokens),
             cost_usd=row.cost_usd,
             cost_complete=row.cost_complete,
+            history_complete=row.history_complete,
             unverified_price_models=sorted(row.unverified_models),
         )  # fmt: skip
+
+
+class ReadingOut(ApiModel):
+    """An agent whose collector is still reading its usage history (FR-3)."""
+
+    agent_id: str
+    label: str
+    read_until: Timestamp | None  # log files last written before this are all read
+    bytes_left: int | None
+
+    @classmethod
+    def of(cls, r: Reading) -> ReadingOut:
+        return cls(agent_id=r.agent_id, label=r.label, read_until=r.read_until,
+                   bytes_left=r.bytes_left)  # fmt: skip
 
 
 class UsageResponse(ApiModel):
@@ -218,6 +239,7 @@ class UsageResponse(ApiModel):
     group_by: list[str]
     rows: list[UsageRowOut]
     total: UsageRowOut
+    reading: list[ReadingOut]  # agents whose history is still being read: totals are partial
 
 
 # --- errors ------------------------------------------------------------------------------------
