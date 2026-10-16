@@ -258,18 +258,30 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
                 if "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype:
-                    target.execute(
-                        # names come from the schema of the DB we just copied
-                        f'update "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
-                        f"where typeof(\"{col}\") = 'text'",
-                        (col.lower(),),
-                    )
+                    scrub_column(target, table, col)
         target.commit()
         target.execute("vacuum")
     finally:
         source.close()
         target.close()
     return f"sqlite, {len(tables)} tables"
+
+
+def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
+    # names come from the schema of the DB we just copied
+    try:
+        db.execute(
+            f'update "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
+            f"where typeof(\"{col}\") = 'text'",
+            (col.lower(),),
+        )
+    except sqlite3.IntegrityError:
+        # a UNIQUE column: equal placeholders collide, so tell them apart by rowid
+        db.execute(
+            f'update "{table}" set "{col}" = scrub("{col}", ?) || \' #\' || rowid '  # noqa: S608
+            f"where typeof(\"{col}\") = 'text'",
+            (col.lower(),),
+        )
 
 
 def leftover_secrets(root: Path) -> list[str]:
