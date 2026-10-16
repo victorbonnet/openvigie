@@ -148,6 +148,12 @@ PEER_FIELD = re.compile(
     r"(?i)\b(?:chat|user|sender|from|peer|recipient|owner)_?id[\"']?[ \t]*[:=][ \t]*"
     r"[\"']?[+-]?(\d{5,})\b"
 )
+# broader names (home_channel, bot_id, thread…): long numbers only, and never a timestamp
+BROAD_PEER_WORDS = r"(?:chat|user|sender|peer|channel|group|bot|thread|topic)"
+BROAD_PEER_FIELD = re.compile(
+    rf"(?i)\b[\w-]*{BROAD_PEER_WORDS}[\w-]*[\"']?[ \t]*[:=][ \t]*[\"']?[+-]?(\d{{9,}})\b"
+)
+BROAD_PEER_COLUMN = re.compile(rf"(?i){BROAD_PEER_WORDS}")
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -280,8 +286,8 @@ def select_files(
         parts = Path(pattern).parts
         literal = list(itertools.takewhile(lambda p: not WILDCARD.search(p), parts[:-1]))
         base = source.joinpath(*literal)
-        if base.is_symlink():
-            continue
+        if any(source.joinpath(*literal[: n + 1]).is_symlink() for n in range(len(literal))):
+            continue  # never walk out of the source
         for path in walk_bounded(base, "*", max_depth=len(parts) - len(literal) - 1):
             rel = path.relative_to(source)
             if rel in seen or len(rel.parts) != len(parts):
@@ -482,6 +488,7 @@ def collect_peers(source: Path, files: list[Path]) -> set[str]:
             ids |= {m.group(0).lstrip("+-") for m in PEER_ID.finditer(key.group(0))}
         ids |= {m.group(1) for m in PEER_FIELD.finditer(text)}
         ids |= {m.group(0).lstrip("-") for m in TELEGRAM_GROUP.finditer(text)}
+        ids |= {d for m in BROAD_PEER_FIELD.finditer(text) if not timestamp(d := m.group(1))}
         for data in structured(path, text):
             ids |= allow_list_peers(data)
     return ids
@@ -504,6 +511,12 @@ def structured(path: Path, text: str) -> list[Any]:
     except (ValueError, SystemExit, yaml.YAMLError):
         pass
     return []
+
+
+def timestamp(digits: str) -> bool:
+    """Epoch seconds, ms, µs or ns between 2017 and 2036: not an id."""
+    n = int(digits)
+    return any(1_500_000_000 * 1000**k <= n <= 2_100_000_000 * 1000**k for k in range(4))
 
 
 def allow_list_peers(data: Any, listed: bool = False) -> set[str]:
@@ -533,9 +546,61 @@ def db_peers(path: Path) -> set[str]:
                 if PEER_KEY.match(col):
                     rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
                     ids |= {str(v).lstrip("+-") for (v,) in rows if PEER_DIGITS.fullmatch(str(v))}
+                elif BROAD_PEER_COLUMN.search(col):
+                    rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
+                    ids |= {
+                        d for (v,) in rows
+                        if re.fullmatch(r"[+-]?\d{9,}", str(v))
+                        and not timestamp(d := str(v).lstrip("+-"))
+                    }  # fmt: skip
     finally:
         db.close()
     return ids
+
+
+def long_numbers(root: Path, placeholders: set[str], per_place: int = 12) -> list[str]:
+    """Where numbers that could be a chat, group, bot or phone id remain, for review: 9 to 15
+    digits, not a placeholder, not a timestamp. One line per file, or per table.column."""
+    found: dict[tuple[str, str], set[str]] = {}
+
+    def add(file: str, where: str, text: str) -> None:
+        for d in LONG_ID.findall(text):
+            if len(d) <= 15 and d not in placeholders and not timestamp(d):
+                found.setdefault((file, where), set()).add(d)
+
+    for path in walk_bounded(root, "*", max_depth=8):
+        rel = str(path.relative_to(root))
+        add(rel, "", rel)
+        if path.suffix in SQLITE_SUFFIXES:
+            for where, value in sqlite_values(path):
+                add(rel, f" {where}", value)
+        else:
+            add(rel, "", read_text_bounded(path, max_bytes=64 * 1024 * 1024))
+    lines = []
+    for (file, where), numbers in sorted(found.items()):
+        shown = sorted(numbers)[:per_place]
+        more = f" (+{len(numbers) - per_place} more)" if len(numbers) > per_place else ""
+        lines.append(f"- `{file}`{where}: " + ", ".join(f"`{d}`" for d in shown) + more)
+    return lines
+
+
+def sqlite_values(path: Path) -> Iterator[tuple[str, str]]:
+    """Every text, blob and large integer value as text, with its table.column."""
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            cols = [c[1] for c in db.execute(f'pragma table_info("{table}")')]
+            for row in db.execute(f'select * from "{table}"'):  # noqa: S608
+                for col, value in zip(cols, row, strict=False):
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", errors="replace")
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        value = str(abs(value))
+                    if isinstance(value, str):
+                        yield f"{table}.{col}", value
+    finally:
+        db.close()
 
 
 def leftover_peers(root: Path, ids: set[str]) -> list[str]:
@@ -745,6 +810,13 @@ Recorded with `scripts/record_fixture.py` from a real install, then scrubbed.
 
 {dropped}
 
+## Long numbers left in the output (check each one by hand)
+
+Numbers of 9 to 15 digits that aren't a placeholder or a timestamp: hashes and tool ids are
+expected; a chat, group, bot or phone number is not.
+
+{numbers}
+
 ## To fill in by hand (SURVEY.md has the files, processes and ports seen)
 
 - Agent version (`<agent> --version`):
@@ -783,7 +855,9 @@ def record(
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
-    scrubber.add_peers(collect_peers(source, chosen) | name_peers(source))
+    # names of copied files too: name_peers' walk may stop before reaching them
+    in_names = {d for rel in chosen for d in LONG_ID.findall(str(rel))}
+    scrubber.add_peers(collect_peers(source, chosen) | name_peers(source) | in_names)
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
@@ -810,6 +884,7 @@ def record(
                 date=dt.date.today().isoformat(),
                 files="\n".join(notes),
                 dropped="\n".join(f"- `{scrubber.path(d)}`" for d in dropped) or "- none",
+                numbers="\n".join(long_numbers(staging, set(scrubber.peers.values()))) or "- none",
             )
         )
         if dest.exists():

@@ -278,7 +278,7 @@ def test_hermes_yaml_is_scrubbed_structurally(tmp_path: Path) -> None:
     assert "none running" in (dest / "SURVEY.md").read_text()
 
 
-# Shapes below come from a real Hermes 0.21.7 / OpenClaw 2026.9.4 install (#55).
+# Shapes below come from recording real agent installs (#55).
 @pytest.mark.parametrize(
     "text",
     [
@@ -542,7 +542,7 @@ def test_peer_ids_replaced_as_whole_numbers_only(tmp_path: Path) -> None:
     assert row == ("100000001", "2026-10-14T10:00:01.100014Z", 100014)
 
 
-# Leaks and gaps found recording a real Hermes 0.21.7 / OpenClaw 2026.9.4 install (#55)
+# Leaks and gaps found recording real agent installs (#55)
 GROUP, LEGACY_GROUP, BOT = "-1001234567890", "-4012345678", "7012345678"
 
 
@@ -656,3 +656,74 @@ def test_survey_summarises_big_folders_and_reaches_sessions(tmp_path: Path) -> N
     assert "`sessions/s1.jsonl`" in survey and "`logs/agent.log`" in survey
     assert "`cache/`: 500 files" in survey
     assert "c499.json" not in survey
+
+
+def test_id_in_a_copied_name_scrubbed_when_the_walk_stops_early(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = rf.walk_breadth_first
+    monkeypatch.setattr(
+        rf, "walk_breadth_first", lambda *a, **k: real(*a, **{**k, "max_entries": 30})
+    )
+    source = tmp_path / ".openclaw"
+    (source / "aaa").mkdir(parents=True)  # sorts first and uses up the walk
+    for i in range(100):
+        (source / "aaa" / f"f{i}").write_text("")
+    sessions = source / "agents" / "main" / "sessions"
+    sessions.mkdir(parents=True)
+    (source / "openclaw.json").write_text("{}")
+    (sessions / f"agent_main_telegram_group_{GROUP}.jsonl").write_text('{"type": "turn"}\n')
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    assert GROUP.lstrip("-") not in all_names(dest) + all_text(dest)
+
+
+def test_legacy_group_and_bot_ids_in_plain_values_scrubbed(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(
+        f"telegram:\n  home_channel: '{LEGACY_GROUP}'\n  bot_id: {BOT}\n"
+        "  group_timeout_ms: 30000\n  thread_updated_at: 1760000000\n"
+    )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    text = all_text(dest)
+    assert LEGACY_GROUP.lstrip("-") not in text and BOT not in text
+    import yaml
+
+    config = yaml.safe_load((dest / "config.yaml").read_text())["telegram"]
+    assert config["group_timeout_ms"] == 30000  # short numbers under these names are kept
+    assert config["thread_updated_at"] == 1760000000  # so are timestamps
+
+
+def test_manifest_lists_long_numbers_left_for_review(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(
+        "build: 123456789012\nsent_at_ms: 1760000000123\nhash: 12345678901234567890\n"
+        f"telegram:\n  chat_id: {PEER}\n"
+    )
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table events (ref text, n integer)")
+        conn.execute("insert into events values ('ticket 98765432101', 99887766554)")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    manifest = (dest / "MANIFEST.md").read_text()
+    section = manifest.split("## Long numbers left in the output", 1)[1].split("\n## ", 1)[0]
+    assert "- `config.yaml`: `123456789012`" in section
+    assert "- `state.db` events.ref: `98765432101`" in section
+    assert "- `state.db` events.n: `99887766554`" in section
+    assert "100000001" not in section  # placeholders aren't listed
+    assert "1760000000123" not in section  # nor timestamps
+    assert "12345678901234567890" not in section  # nor numbers too long to be an id
+
+
+def test_selection_never_walks_through_a_symlinked_folder(tmp_path: Path) -> None:
+    outside = tmp_path / "outside" / "b"
+    outside.mkdir(parents=True)
+    (outside / "secret.txt").write_text("x")
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "a").symlink_to(tmp_path / "outside")
+    chosen, _ = rf.select_files(source, ["a/b/*"], 20)
+    assert chosen == []
