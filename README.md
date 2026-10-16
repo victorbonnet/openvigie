@@ -35,7 +35,7 @@ run the hub on one of them, a collector on each, and connect them over Tailscale
 | Claude Code | yes | session logs, or its OpenTelemetry events | yes |
 | Codex CLI | yes | session logs, or its OpenTelemetry events | yes |
 | Hermes | yes | planned (M4) | planned |
-| OpenClaw | yes | planned (M4) | planned |
+| OpenClaw | yes, one row per agent of a gateway | per agent, from its transcripts and Codex sessions | planned |
 
 | Platform | Collector | Hub |
 | --- | --- | --- |

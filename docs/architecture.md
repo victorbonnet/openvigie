@@ -56,7 +56,7 @@ flowchart LR
 | `adapters/base` | The adapter contract (FR-7) | `Adapter` (`detect`, `collect`, `capabilities`, `processes`, `health`), `HostContext`, `AdapterState`, `ActivityBatch`, `Backlog` |
 | `adapters/registry` | Loading adapters and running them safely | `discover`, `run_detect`, `run_collect`, `run_capabilities` |
 | `adapters/usage`, `spans`, `caps` | Helpers shared by adapters | incremental JSONL tailing; span ids and content; capability parsing |
-| `adapters/claude_code`, `codex`, `hermes`, `openclaw` | One agent type each | an `Adapter` subclass, registered as an entry point |
+| `adapters/claude_code`, `codex`, `hermes`, `openclaw` | One agent type each | an `Adapter` subclass, registered as an entry point; `codex` also offers `read_rollouts` (OpenClaw reads its Codex harness sessions with it) |
 | `collector/daemon` | The collector loop | `Collector.tick`, `Collector.run` |
 | `collector/client` | HTTP to the hub (stdlib) | `HubClient.post`, `HubError` |
 | `collector/state` | Cursors, the outbound spool, command ids already seen | `StateStore` |

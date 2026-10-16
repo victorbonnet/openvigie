@@ -6,9 +6,10 @@ One install per state dir (``~/.openclaw`` or ``$OPENCLAW_STATE_DIR``); each age
 
 Version: the installed ``package.json`` next to the running gateway's ``dist/index.js``, else
 ``meta.lastTouchedVersion`` in ``openclaw.json``. Activity: newest mtime of the agent's session
-files and session database, stat only. Only ``openclaw.json`` and ``package.json`` are read;
-credentials, identity and auth files never are. A JSON5 ``openclaw.json`` still counts as an
-install, with the version unknown and health ``degraded``.
+files and session database, stat only. Usage: each agent's transcripts (``usage``). Only
+``openclaw.json``, ``package.json`` and the agents' transcripts are read; credentials, identity
+and auth files never are. A JSON5 ``openclaw.json`` still counts as an install, with the
+version unknown and health ``degraded``.
 """
 
 from __future__ import annotations
@@ -20,13 +21,14 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any
 
-from openvigie.adapters.base import Adapter, HostContext, ProcessInfo
+from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import (
     attribute_processes,
     candidate_roots,
     display_path,
     newest_mtime,
 )
+from openvigie.adapters.openclaw.usage import read_usage
 from openvigie.model import AgentInstance, SandboxState, stable_id
 from openvigie.safeio import UnsafeFileError, load_json_bounded
 
@@ -63,6 +65,7 @@ class OpenClawAdapter(Adapter):
     def __init__(self) -> None:
         super().__init__()
         self.roots: dict[str, Path] = {}
+        self.dirs: dict[str, Path] = {}  # agent id → agents/<id>
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         roots = [
@@ -82,6 +85,7 @@ class OpenClawAdapter(Adapter):
             for name in _agent_ids(root, config):
                 agent_id = stable_id(ctx.host.host_id, self.agent_type, str(root), name)
                 self.roots[agent_id] = root
+                self.dirs[agent_id] = root / "agents" / name
                 found.append(
                     AgentInstance(
                         agent_id=agent_id,
@@ -100,6 +104,14 @@ class OpenClawAdapter(Adapter):
 
     def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
         return ()
+
+    def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
+        agent_dir = self.dirs.get(agent.agent_id)
+        if agent_dir is None:
+            return ActivityBatch()
+        batch, notes = read_usage(ctx, agent, agent_dir, state)
+        self.notes += notes
+        return batch
 
     def _config(self, root: Path) -> dict[str, Any] | None:
         path = root / CONFIG
