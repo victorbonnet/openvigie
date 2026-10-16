@@ -277,7 +277,7 @@ def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
         dst.write_text(yaml.safe_dump(scrubber.value(data), sort_keys=False))
         return "yaml (comments dropped)"
     if src.suffix == ".db":
-        return scrub_sqlite(src, dst, scrubber)
+        return scrub_sqlite(src, dst, scrubber, max_rows=max_lines)
     lines = read_text_bounded(src).splitlines()[:max_lines]
     dst.write_text("".join(scrubber.text(line) + "\n" for line in lines))
     return f"{len(lines)} lines, only pattern-redacted: **check it by hand**"
@@ -318,15 +318,16 @@ def json5_data(text: str) -> Any:
         raise SystemExit(f"could not read a JSON5 file: {exc.__class__.__name__}") from None
 
 
-def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
+def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber, max_rows: int) -> str:
     source = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
     target = sqlite3.connect(dst)
     try:
         source.backup(target)
-        refuse_full_text_indexes(target, src.name)
+        notes = drop_indexes_and_triggers(target)
         tables = [
             r[0] for r in target.execute("select name from sqlite_master where type = 'table'")
         ]
+        notes += keep_newest_rows(target, tables, max_rows)
         target.create_function("scrub", 2, lambda v, k: scrubber.value(v, k))
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
@@ -338,11 +339,13 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
     finally:
         source.close()
         target.close()
-    return f"sqlite, {len(tables)} tables"
+    return "; ".join([f"sqlite, {len(tables)} tables", *notes])
 
 
-def refuse_full_text_indexes(db: sqlite3.Connection, name: str) -> None:
-    """A full-text index keeps the original terms after its content is scrubbed."""
+def drop_indexes_and_triggers(db: sqlite3.Connection) -> list[str]:
+    """Full-text indexes keep the original terms (prompt fragments, ids) after their content is
+    scrubbed, and triggers would re-index while we scrub. ANALYZE's sqlite_stat tables hold
+    sample values of indexed columns as blobs, which aren't scrubbed. Adapters need none."""
     virtual = [
         r[0]
         for r in db.execute(
@@ -350,11 +353,47 @@ def refuse_full_text_indexes(db: sqlite3.Connection, name: str) -> None:
             "and upper(sql) like 'CREATE VIRTUAL TABLE%'"
         )
     ]
-    if virtual:
-        raise SystemExit(
-            f"{name} has a full-text index ({', '.join(virtual)}), which keeps the original "
-            "text; not written"
+    triggers = [r[0] for r in db.execute("select name from sqlite_master where type = 'trigger'")]
+    stats = [
+        r[0]
+        for r in db.execute(
+            "select name from sqlite_master where type = 'table' and name like 'sqlite_stat%'"
         )
+    ]
+    try:
+        for name in stats:
+            db.execute(f'drop table "{name}"')
+        for name in triggers:
+            db.execute(f'drop trigger "{name}"')
+        for name in virtual:  # its shadow tables go with it
+            db.execute(f'drop table "{name}"')
+    except sqlite3.OperationalError as exc:  # e.g. the FTS module isn't built in
+        raise SystemExit(f"could not drop a full-text index: {exc}; not written") from None
+    db.commit()
+    notes = [f"dropped full-text index {', '.join(virtual)}"] if virtual else []
+    if triggers:
+        notes.append(f"dropped {len(triggers)} trigger{'s' if len(triggers) > 1 else ''}")
+    return notes
+
+
+def keep_newest_rows(db: sqlite3.Connection, tables: list[str], max_rows: int) -> list[str]:
+    """A sample, not the whole history: the newest rows by rowid (tables without one are kept)."""
+    notes = []
+    for table in tables:
+        total = db.execute(f'select count(*) from "{table}"').fetchone()[0]  # noqa: S608
+        if total <= max_rows:
+            continue
+        try:
+            db.execute(
+                f'delete from "{table}" where rowid not in '  # noqa: S608
+                f'(select rowid from "{table}" order by rowid desc limit ?)',
+                (max_rows,),
+            )
+        except sqlite3.OperationalError:  # WITHOUT ROWID
+            continue
+        notes.append(f"newest {max_rows} of {total} rows in {table}")
+    db.commit()
+    return notes
 
 
 def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
@@ -673,7 +712,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", type=Path)
     parser.add_argument("dest", type=Path)
     parser.add_argument("--max-files", type=int, default=20)
-    parser.add_argument("--max-lines", type=int, default=200)
+    parser.add_argument("--max-lines", type=int, default=200, help="per file; rows per table")
     parser.add_argument("--include", action="append", default=[], help="extra glob, repeatable")
     args = parser.parse_args(argv)
     dest = record(
