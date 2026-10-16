@@ -36,7 +36,7 @@
 </form>
 <table>
   <thead>
-    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th><a href="/?{{ sort_query }}" title="Most risky first">Risk{% if filters.get('sort') == 'risk' %} ↓{% endif %}</a></th><th>Sandboxed</th><th class="num" title="Tokens and list-price cost over the last {{ spend_days }} days">Usage ({{ spend_days }}d)</th><th>Last activity</th></tr>
+    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th><a href="/?{{ sort_query }}" title="Most risky first">Risk{% if filters.get('sort') == 'risk' %} ↓{% endif %}</a></th><th>Sandboxed</th><th class="num" title="List-price cost and tokens over the last {{ spend_days }} days">Usage ({{ spend_days }}d)</th><th>Last activity</th></tr>
   </thead>
   {% include "_agent_rows.html" %}
 </table>

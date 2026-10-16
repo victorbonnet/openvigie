@@ -1,0 +1,2 @@
+{# Token count; unknown counts are never shown as 0 ("Unknown ≠ zero"). #}
+{% macro tokens(u, suffix="") %}{% if u.tokens == 0 and u.unknown %}unknown{% else %}{% if not u.history_complete or u.unknown %}≥ {% endif %}{{ compact(u.tokens) }}{% endif %}{{ suffix }}{% endmacro %}

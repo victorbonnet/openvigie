@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -80,23 +81,39 @@ def _with_risk(
     return rows, risks
 
 
-SPEND_DAYS = 30
+_SPEND_DAYS = 30
+# The rows refresh every 5 s and usage barely moves between refreshes; the hub may share a Pi
+# with a collector, so the 30-day report is reused for this long.
+_SPEND_TTL = 30.0
 
 
-def agent_spend(request: Request) -> dict[str, UsageRow]:
-    """Agent id → its usage and estimated cost over the last 30 days, for the agent list
-    (FR-3, FR-4, FR-5). An agent with no usage has no entry: the list shows "—", not $0."""
+@dataclass(frozen=True)
+class _Spend:
+    rows: dict[str, UsageRow]  # agent id → usage; an agent with no usage has no entry
+    reading: frozenset[str]  # agents whose history is still being read
+    at: float
+
+
+def _agent_spend(request: Request) -> _Spend:
+    """Each agent's usage and estimated cost over the last ``_SPEND_DAYS`` days, for the agent
+    list (FR-3, FR-4, FR-5). Missing usage shows as "—", never $0."""
     state = request.app.state
-    begin, finish = date_range(state.tz, None, None, default_days=SPEND_DAYS)
+    cached: _Spend | None = getattr(state, "agent_spend", None)
+    now = time.monotonic()
+    if cached is not None and now - cached.at < _SPEND_TTL:
+        return cached
+    begin, finish = date_range(state.tz, None, None, default_days=_SPEND_DAYS)
     report = usage_report(state.db, state.prices, start=begin, end=finish, tz=state.tz,
                           group_by=["agent"])  # fmt: skip
-    return {r.key["agent"]: r for r in report.rows}
+    spend = _Spend({r.key["agent"]: r for r in report.rows},
+                   frozenset(r.agent_id for r in report.reading), now)  # fmt: skip
+    state.agent_spend = spend
+    return spend
 
 
-def spend_context(request: Request) -> dict[str, object]:
+def _spend_context(request: Request) -> dict[str, object]:
     """What ``_agent_rows.html`` needs to show each agent's usage column."""
-    return {"spend": agent_spend(request), "spend_days": SPEND_DAYS, "money": money,
-            "compact": compact}  # fmt: skip
+    return {"spend": _agent_spend(request), "spend_days": _SPEND_DAYS}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -127,7 +144,7 @@ def agents_page(
         statuses=[s.value for s in AgentStatus],
         any_agents=bool(everything),
         sandboxes=sandbox_badges(request),
-        **spend_context(request),
+        **_spend_context(request),
     )
 
 
@@ -143,7 +160,7 @@ def agent_rows(
     rows, risks = _with_risk(request, _inventory(request).agents(
         host_id=host, agent_type=type, status=status), sort)  # fmt: skip
     return render(request, "_agent_rows.html", rows=rows, risks=risks, query=urlencode(filters),
-                  sandboxes=sandbox_badges(request), **spend_context(request))  # fmt: skip
+                  sandboxes=sandbox_badges(request), **_spend_context(request))  # fmt: skip
 
 
 AgentId = Annotated[str, Path(max_length=64, pattern=r"^[A-Za-z0-9_.:-]+$")]
@@ -423,7 +440,7 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
         host_sandboxes=host_boxes,
         sandbox_changes={b.sandbox_id: store.changes(b.sandbox_id, limit=5) for b in host_boxes},
         agent_names={r.agent.agent_id: r.agent.name for r in rows},
-        **spend_context(request),
+        **_spend_context(request),
     )
 
 
