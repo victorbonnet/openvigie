@@ -29,6 +29,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -105,8 +106,30 @@ CONTENT_WORDS = ("prompt", "instruction", "persona", "personality", "soul", "des
                  "message", "note", "memory")  # fmt: skip
 # recorder-only and deliberately broad: a secret-looking key anywhere on a line, any quoting
 LOOSE_SECRET = re.compile(
-    r"(?i)([\w-]*(?:key|token|secret|passw(?:or)?d|auth)[\w-]*[\"']?\s*[:=]\s*)"
+    r"(?i)([\w-]*(?:key|token|secret|passw(?:or)?d|auth)[\w-]*[\"']?[ \t]*[:=][ \t]*)"
     r"(?:\"(?!\[REDACTED)[^\"]{4,}\"|'(?!\[REDACTED)[^']{4,}'|(?![\"'\[{])(?!\d+\b)[^\s,}\]]{4,})"
+)
+# Known non-secrets that LOOSE_SECRET catches, seen on real installs (#55)
+NOT_A_VALUE = {"true", "false", "null", "none"}
+ENV_NAME = re.compile(
+    r"[A-Z][A-Z0-9_]{2,}"
+)  # under a *_env key: the variable's name, not its value
+KEY_COMBO = re.compile(r"(?i)(?:ctrl|alt|shift|cmd|meta|super|option)(?:\+[\w-]+)+")
+PEER_DIGITS = re.compile(r"[+-]?\d{5,}")
+ROUTING_KEYS = {"sessionkey", "session_key"}  # OpenClaw's agent:<id>:<channel>:<kind>:<peer>
+SESSION_KEY = re.compile(r"\bagent:[\w.@+:-]{1,200}")
+PEER_ID = re.compile(r"(?<=:)[+-]?\d{5,}(?![\w])")  # chat ids, phone numbers
+# chat and user ids are personal: found before scrubbing, then replaced wherever they appear
+PEER_KEY = re.compile(r"(?i)^(?:chat|user|sender|from|peer|recipient|owner)_?id$")
+# lists of people allowed to reach the agent; narrow on purpose (an "allowed ports" list isn't)
+ALLOW_KEY = re.compile(
+    r"(?i)(?:allow_?from|allowed_?(?:users|chats|ids|senders|peers)|allow_?list|white_?list"
+    r"|trusted_?(?:users|ids)|admins?$|owners?$)"
+)
+WHOLE_DIGITS = re.compile(r"(?<!\d)\d{5,}(?!\d)")  # in tg:<id>, +<phone>, -100<group>
+PEER_FIELD = re.compile(
+    r"(?i)\b(?:chat|user|sender|from|peer|recipient|owner)_?id[\"']?[ \t]*[:=][ \t]*"
+    r"[\"']?[+-]?(\d{5,})\b"
 )
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -120,13 +143,40 @@ class Scrubber:
             self.replacements.append((user, "user"))
         if host and len(host) > 2:
             self.replacements.append((host, "host"))
+        self.peers: dict[str, str] = {}  # digits -> placeholder digits
+        self.peer_re: re.Pattern[str] | None = None
+
+    def add_peers(self, ids: set[str]) -> None:
+        for digits in sorted(ids):
+            self.peer_digits(digits)
+        if self.peers:
+            self.peer_re = whole_numbers(self.peers)
+
+    def swap_peers(self, text: str) -> str:
+        """Whole numbers only: an id inside a timestamp or a token count is left alone."""
+        if self.peer_re is None:
+            return text
+        return self.peer_re.sub(lambda m: self.peers[m.group(0)], text)
+
+    def peer_digits(self, digits: str) -> str:
+        """The same chat id or phone number always gets the same placeholder."""
+        return self.peers.setdefault(digits, str(100000001 + len(self.peers)))
 
     def text(self, value: str) -> str:
-        value = LOOSE_SECRET.sub(lambda m: f'{m.group(1)}"[REDACTED:key]"', redact(value))
+        value = SESSION_KEY.sub(lambda m: PEER_ID.sub(self.peer, m.group(0)), value)
+        value = LOOSE_SECRET.sub(
+            lambda m: m.group(0) if benign(m) else f'{m.group(1)}"[REDACTED:key]"', redact(value)
+        )
         for old, new in self.replacements:
             value = value.replace(old, new)
+        value = self.swap_peers(value)
         value = EMAIL.sub("user@example.com", value)
         return IPV4.sub("192.0.2.1", value)
+
+    def peer(self, match: re.Match[str]) -> str:
+        found = match.group(0)
+        sign = found[0] if found[0] in "+-" else ""
+        return sign + self.peer_digits(found.lstrip("+-"))
 
     def path(self, rel: Path) -> Path:
         """Scrub user and host names out of path components (Claude Code encodes cwd in dirs)."""
@@ -134,7 +184,7 @@ class Scrubber:
         for part in rel.parts:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
-            parts.append(part)
+            parts.append(self.swap_peers(part))
         return Path(*parts)
 
     @staticmethod
@@ -157,11 +207,33 @@ class Scrubber:
             if len(value) > LONG_TEXT:
                 return self.placeholder(value)
             return self.text(value)
+        if isinstance(value, int) and str(abs(value)) in self.peers:
+            return int(self.peers[str(abs(value))]) * (-1 if value < 0 else 1)
         if isinstance(value, dict):
             return {k: self.value(v, k, in_content) for k, v in value.items()}
         if isinstance(value, list):
             return [self.value(v, key, in_content) for v in value]
         return value
+
+
+def benign(match: re.Match[str]) -> bool:
+    """A LOOSE_SECRET match that is no secret: a boolean, a scrubber placeholder, an env var
+    name under a *_env key, a key binding, or a session routing key (its peer ids are replaced
+    by the Scrubber)."""
+    key_match = re.match(r"[\w-]*", match.group(1))
+    key = key_match.group(0).lower() if key_match else ""
+    value = match.group(0)[len(match.group(1)) :].strip("\"'")
+    return (
+        value.lower() in NOT_A_VALUE
+        or value.startswith("[scrubbed text <=")  # our own placeholder
+        or (key.endswith("_env") and ENV_NAME.fullmatch(value) is not None)
+        or KEY_COMBO.fullmatch(value) is not None
+        or (key in ROUTING_KEYS and value.startswith("agent:"))
+    )
+
+
+def has_secret(text: str) -> bool:
+    return redact(text) != text or any(not benign(m) for m in LOOSE_SECRET.finditer(text))
 
 
 def denied(path: Path) -> bool:
@@ -251,13 +323,15 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
     target = sqlite3.connect(dst)
     try:
         source.backup(target)
+        refuse_full_text_indexes(target, src.name)
         tables = [
             r[0] for r in target.execute("select name from sqlite_master where type = 'table'")
         ]
         target.create_function("scrub", 2, lambda v, k: scrubber.value(v, k))
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
-                if "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype:
+                textual = "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype
+                if textual or PEER_KEY.match(col):
                     scrub_column(target, table, col)
         target.commit()
         target.execute("vacuum")
@@ -267,6 +341,22 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
     return f"sqlite, {len(tables)} tables"
 
 
+def refuse_full_text_indexes(db: sqlite3.Connection, name: str) -> None:
+    """A full-text index keeps the original terms after its content is scrubbed."""
+    virtual = [
+        r[0]
+        for r in db.execute(
+            "select name from sqlite_master where type = 'table' "
+            "and upper(sql) like 'CREATE VIRTUAL TABLE%'"
+        )
+    ]
+    if virtual:
+        raise SystemExit(
+            f"{name} has a full-text index ({', '.join(virtual)}), which keeps the original "
+            "text; not written"
+        )
+
+
 def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
     # names come from the schema of the DB we just copied. OR ABORT overrides the table's own
     # ON CONFLICT clause: rollback would undo earlier scrubs, ignore and replace keep raw text
@@ -274,7 +364,7 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
     try:
         db.execute(
             f'update or abort "{table}" set "{col}" = scrub("{col}", ?) '  # noqa: S608
-            f"where typeof(\"{col}\") = 'text'",
+            f"where typeof(\"{col}\") in ('text', 'integer')",
             (col.lower(),),
         )
     except sqlite3.IntegrityError:
@@ -291,14 +381,129 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
             ) from None
 
 
+def whole_numbers(ids: Iterable[str]) -> re.Pattern[str]:
+    alternatives = "|".join(sorted(map(re.escape, ids), key=len, reverse=True))
+    return re.compile(rf"(?<!\d)(?:{alternatives})(?!\d)")
+
+
+def collect_peers(source: Path, files: list[Path]) -> set[str]:
+    """Chat and user ids in the sample: peers in session keys, values of chat_id-like fields
+    and columns, and entries of allow lists. Collected first so every file replaces them the
+    same way."""
+    ids: set[str] = set()
+    for rel in files:
+        path = source / rel
+        if path.suffix == ".db":
+            ids |= db_peers(path)
+            continue
+        text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
+        for key in SESSION_KEY.finditer(text):
+            ids |= {m.group(0).lstrip("+-") for m in PEER_ID.finditer(key.group(0))}
+        ids |= {m.group(1) for m in PEER_FIELD.finditer(text)}
+        for data in structured(path, text):
+            ids |= allow_list_peers(data)
+    return ids
+
+
+def structured(path: Path, text: str) -> list[Any]:
+    """The parsed file for walking by key; nothing if it doesn't parse (scrub_file will say)."""
+    import yaml
+
+    try:
+        if path.suffix == ".jsonl":
+            return [json.loads(line) for line in text.splitlines() if line.strip()]
+        if path.suffix == ".json":
+            try:
+                return [json.loads(text)]
+            except ValueError:
+                return [json5_data(text)]
+        if path.suffix in (".yaml", ".yml"):
+            return [yaml.safe_load(text)]
+    except (ValueError, SystemExit, yaml.YAMLError):
+        pass
+    return []
+
+
+def allow_list_peers(data: Any, listed: bool = False) -> set[str]:
+    if isinstance(data, dict):
+        return set().union(
+            *(
+                allow_list_peers(v, listed or bool(ALLOW_KEY.search(str(k))))
+                for k, v in data.items()
+            )
+        )
+    if isinstance(data, list):
+        return set().union(*(allow_list_peers(v, listed) for v in data))
+    if listed and isinstance(data, (str, int)) and not isinstance(data, bool):
+        return set(WHOLE_DIGITS.findall(str(data)))
+    return set()
+
+
+def db_peers(path: Path) -> set[str]:
+    ids: set[str] = set()
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            for _, col, *_ in db.execute(f'pragma table_info("{table}")').fetchall():
+                if PEER_KEY.match(col):
+                    rows = db.execute(f'select distinct "{col}" from "{table}"')  # noqa: S608
+                    ids |= {str(v).lstrip("+-") for (v,) in rows if PEER_DIGITS.fullmatch(str(v))}
+    finally:
+        db.close()
+    return ids
+
+
+def leftover_peers(root: Path, ids: set[str]) -> list[str]:
+    """Files that still hold a collected id as a whole number anywhere in their bytes (a .db's
+    raw pages too). Each file is read once."""
+    if not ids:
+        return []
+    pattern = re.compile(whole_numbers(ids).pattern.encode())
+    return [
+        str(path.relative_to(root))
+        for path in walk_bounded(root, "*", max_depth=8)
+        if pattern.search(path.read_bytes())
+    ]
+
+
+def text_has_secret(text: str) -> bool:
+    """Line by line: redact() truncates past 1 MB, so a whole large file would always differ.
+    Private keys span lines, so any key block fails closed."""
+    return "PRIVATE KEY-----" in text or any(has_secret(line) for line in text.splitlines())
+
+
+def db_has_secret(path: Path) -> bool:
+    """Check each value on its own: raw file bytes run adjacent values together into false
+    `key=value` matches. The schema is the agent's DDL, checked for real secret shapes only."""
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        if db.execute("pragma freelist_count").fetchone()[0]:
+            return True  # free pages aren't values we can read: fail closed
+        for (sql,) in db.execute("select sql from sqlite_master where sql is not null"):
+            if redact(sql) != sql:
+                return True
+        tables = [r[0] for r in db.execute("select name from sqlite_master where type = 'table'")]
+        for table in tables:
+            for row in db.execute(f'select * from "{table}"'):  # noqa: S608
+                for value in row:
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", errors="replace")
+                    if isinstance(value, str) and has_secret(value):
+                        return True
+        return False
+    finally:
+        db.close()
+
+
 def leftover_secrets(root: Path) -> list[str]:
     hits = []
     for path in walk_bounded(root, "*", max_depth=8):
         if path.suffix == ".db":
-            text = path.read_bytes().decode("utf-8", errors="replace")
+            found = db_has_secret(path)
         else:
-            text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
-        if redact(text) != text or LOOSE_SECRET.search(text):
+            found = text_has_secret(read_text_bounded(path, max_bytes=64 * 1024 * 1024))
+        if found:
             hits.append(str(path.relative_to(root)))
     return hits
 
@@ -427,6 +632,7 @@ def record(
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
+    scrubber.add_peers(collect_peers(source, chosen))
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
@@ -444,6 +650,9 @@ def record(
         hits = leftover_secrets(staging)
         if hits:
             raise SystemExit(f"secret patterns still match after scrubbing: {hits}; not written")
+        hits = leftover_peers(staging, set(scrubber.peers))
+        if hits:
+            raise SystemExit(f"chat or user ids still present after scrubbing: {hits}; not written")
         (staging / "MANIFEST.md").write_text(
             MANIFEST.format(
                 agent=agent,
