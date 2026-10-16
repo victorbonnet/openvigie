@@ -29,6 +29,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +121,12 @@ SESSION_KEY = re.compile(r"\bagent:[\w.@+:-]{1,200}")
 PEER_ID = re.compile(r"(?<=:)[+-]?\d{5,}(?![\w])")  # chat ids, phone numbers
 # chat and user ids are personal: found before scrubbing, then replaced wherever they appear
 PEER_KEY = re.compile(r"(?i)^(?:chat|user|sender|from|peer|recipient|owner)_?id$")
+# lists of people allowed to reach the agent; narrow on purpose (an "allowed ports" list isn't)
+ALLOW_KEY = re.compile(
+    r"(?i)(?:allow_?from|allowed_?(?:users|chats|ids|senders|peers)|allow_?list|white_?list"
+    r"|trusted_?(?:users|ids)|admins?$|owners?$)"
+)
+WHOLE_DIGITS = re.compile(r"(?<!\d)\d{5,}(?!\d)")  # in tg:<id>, +<phone>, -100<group>
 PEER_FIELD = re.compile(
     r"(?i)\b(?:chat|user|sender|from|peer|recipient|owner)_?id[\"']?[ \t]*[:=][ \t]*"
     r"[\"']?[+-]?(\d{5,})\b"
@@ -137,10 +144,19 @@ class Scrubber:
         if host and len(host) > 2:
             self.replacements.append((host, "host"))
         self.peers: dict[str, str] = {}  # digits -> placeholder digits
+        self.peer_re: re.Pattern[str] | None = None
 
     def add_peers(self, ids: set[str]) -> None:
         for digits in sorted(ids):
-            self.replacements.append((digits, self.peer_digits(digits)))
+            self.peer_digits(digits)
+        if self.peers:
+            self.peer_re = whole_numbers(self.peers)
+
+    def swap_peers(self, text: str) -> str:
+        """Whole numbers only: an id inside a timestamp or a token count is left alone."""
+        if self.peer_re is None:
+            return text
+        return self.peer_re.sub(lambda m: self.peers[m.group(0)], text)
 
     def peer_digits(self, digits: str) -> str:
         """The same chat id or phone number always gets the same placeholder."""
@@ -153,6 +169,7 @@ class Scrubber:
         )
         for old, new in self.replacements:
             value = value.replace(old, new)
+        value = self.swap_peers(value)
         value = EMAIL.sub("user@example.com", value)
         return IPV4.sub("192.0.2.1", value)
 
@@ -167,7 +184,7 @@ class Scrubber:
         for part in rel.parts:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
-            parts.append(part)
+            parts.append(self.swap_peers(part))
         return Path(*parts)
 
     @staticmethod
@@ -306,6 +323,7 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
     target = sqlite3.connect(dst)
     try:
         source.backup(target)
+        refuse_full_text_indexes(target, src.name)
         tables = [
             r[0] for r in target.execute("select name from sqlite_master where type = 'table'")
         ]
@@ -321,6 +339,22 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber) -> str:
         source.close()
         target.close()
     return f"sqlite, {len(tables)} tables"
+
+
+def refuse_full_text_indexes(db: sqlite3.Connection, name: str) -> None:
+    """A full-text index keeps the original terms after its content is scrubbed."""
+    virtual = [
+        r[0]
+        for r in db.execute(
+            "select name from sqlite_master where type = 'table' "
+            "and upper(sql) like 'CREATE VIRTUAL TABLE%'"
+        )
+    ]
+    if virtual:
+        raise SystemExit(
+            f"{name} has a full-text index ({', '.join(virtual)}), which keeps the original "
+            "text; not written"
+        )
 
 
 def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
@@ -347,9 +381,15 @@ def scrub_column(db: sqlite3.Connection, table: str, col: str) -> None:
             ) from None
 
 
+def whole_numbers(ids: Iterable[str]) -> re.Pattern[str]:
+    alternatives = "|".join(sorted(map(re.escape, ids), key=len, reverse=True))
+    return re.compile(rf"(?<!\d)(?:{alternatives})(?!\d)")
+
+
 def collect_peers(source: Path, files: list[Path]) -> set[str]:
     """Chat and user ids in the sample: peers in session keys, values of chat_id-like fields
-    and columns. Collected first so every file replaces them the same way."""
+    and columns, and entries of allow lists. Collected first so every file replaces them the
+    same way."""
     ids: set[str] = set()
     for rel in files:
         path = source / rel
@@ -360,7 +400,43 @@ def collect_peers(source: Path, files: list[Path]) -> set[str]:
         for key in SESSION_KEY.finditer(text):
             ids |= {m.group(0).lstrip("+-") for m in PEER_ID.finditer(key.group(0))}
         ids |= {m.group(1) for m in PEER_FIELD.finditer(text)}
+        for data in structured(path, text):
+            ids |= allow_list_peers(data)
     return ids
+
+
+def structured(path: Path, text: str) -> list[Any]:
+    """The parsed file for walking by key; nothing if it doesn't parse (scrub_file will say)."""
+    import yaml
+
+    try:
+        if path.suffix == ".jsonl":
+            return [json.loads(line) for line in text.splitlines() if line.strip()]
+        if path.suffix == ".json":
+            try:
+                return [json.loads(text)]
+            except ValueError:
+                return [json5_data(text)]
+        if path.suffix in (".yaml", ".yml"):
+            return [yaml.safe_load(text)]
+    except (ValueError, SystemExit, yaml.YAMLError):
+        pass
+    return []
+
+
+def allow_list_peers(data: Any, listed: bool = False) -> set[str]:
+    if isinstance(data, dict):
+        return set().union(
+            *(
+                allow_list_peers(v, listed or bool(ALLOW_KEY.search(str(k))))
+                for k, v in data.items()
+            )
+        )
+    if isinstance(data, list):
+        return set().union(*(allow_list_peers(v, listed) for v in data))
+    if listed and isinstance(data, (str, int)) and not isinstance(data, bool):
+        return set(WHOLE_DIGITS.findall(str(data)))
+    return set()
 
 
 def db_peers(path: Path) -> set[str]:
@@ -379,12 +455,15 @@ def db_peers(path: Path) -> set[str]:
 
 
 def leftover_peers(root: Path, ids: set[str]) -> list[str]:
-    """Files that still hold a collected id anywhere in their bytes (a .db's raw pages too)."""
-    needles = [i.encode() for i in ids]
+    """Files that still hold a collected id as a whole number anywhere in their bytes (a .db's
+    raw pages too). Each file is read once."""
+    if not ids:
+        return []
+    pattern = re.compile(whole_numbers(ids).pattern.encode())
     return [
         str(path.relative_to(root))
         for path in walk_bounded(root, "*", max_depth=8)
-        if any(n in path.read_bytes() for n in needles)
+        if pattern.search(path.read_bytes())
     ]
 
 
