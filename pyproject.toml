@@ -22,6 +22,7 @@ openvigie = "openvigie.cli:main"
 claude-code = "openvigie.adapters.claude_code:ClaudeCodeAdapter"
 codex = "openvigie.adapters.codex:CodexAdapter"
 hermes = "openvigie.adapters.hermes:HermesAdapter"
+openclaw = "openvigie.adapters.openclaw:OpenClawAdapter"
 
 [dependency-groups]
 dev = [
