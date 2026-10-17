@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -59,8 +60,10 @@ def tail_files(
     budget: TailBudget,
     *,
     max_depth: int = 6,
+    exclude: str | None = None,
 ) -> Iterator[tuple[str, Any]]:
-    """Yield ``(file key, JSON value)`` for new lines in every matching file.
+    """Yield ``(file key, JSON value)`` for new lines in every file matching ``pattern`` and
+    not ``exclude`` (file name globs).
 
     A cursor is staged per file once its new lines have been consumed.
 
@@ -73,6 +76,8 @@ def tail_files(
     backlog = batch.backlog = Backlog()
     walk = WalkReport()
     for path in walk_bounded(directory, pattern, max_depth=max_depth, report=walk):
+        if exclude and fnmatch.fnmatchcase(path.name, exclude):
+            continue
         key = str(path.relative_to(root))
         saved = state.get(key)
         cursor = FileCursor.from_dict(saved) if saved else None
