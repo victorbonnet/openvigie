@@ -102,15 +102,19 @@ run net-policy-update.txt openshell policy update ov-net --rule-name ov_probe \
 run net-policy-list.txt openshell policy list ov-net
 run net-policy-base-v2.json openshell policy get ov-net --base --output json
 
-# Blocked requests (FR-18): a host no rule allows, and an allowed host from a binary its rule
-# doesn't list; then an allowed one, to tell denials apart in the logs
+# Blocked requests (FR-18). The default image has no curl or python, so bash's /dev/tcp makes
+# them: straight out to a host no rule allows, then through the sandbox proxy to that host and
+# to one whose rule allows only curl
 in_net() { openshell sandbox exec ov-net --no-tty --no-login-shell --timeout 30 -- "$@"; }
-run net-exec-denied-host.txt in_net curl -sS -m 10 -o /dev/null -w '%{http_code}\n' \
-  https://www.wikipedia.org/
-run net-exec-denied-binary.txt in_net python3 -c \
-  'import urllib.request; urllib.request.urlopen("https://example.com/", timeout=10)'
-run net-exec-allowed.txt in_net curl -sS -m 10 -o /dev/null -w '%{http_code}\n' \
-  https://example.com/
+connect() {  # CONNECT <host>:443 through the proxy, print its status line
+  in_net bash -c "exec 3<>/dev/tcp/127.0.0.1/3128 || exit 1
+    printf 'CONNECT $1:443 HTTP/1.1\r\nHost: $1:443\r\n\r\n' >&3
+    timeout 10 head -n 1 <&3"
+}
+run net-exec-tools.txt in_net bash -c 'ls /usr/bin /usr/local/bin /bin 2>/dev/null | sort -u | tr "\n" " "'
+run net-exec-direct.txt in_net bash -c 'timeout 10 bash -c "exec 3<>/dev/tcp/www.wikipedia.org/443" && echo connected'
+run net-exec-denied-host.txt connect www.wikipedia.org
+run net-exec-denied-binary.txt connect example.com
 sleep 5
 run net-logs.txt openshell logs ov-net -n 500 --since 15m --source sandbox
 run net-logs-gateway.txt openshell logs ov-net -n 500 --since 15m --source gateway
