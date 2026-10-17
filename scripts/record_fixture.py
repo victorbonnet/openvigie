@@ -169,6 +169,9 @@ LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
 TAILNET = re.compile(r"\b[\w.-]+\.ts\.net\b")  # MagicDNS names the tailnet, not just the host
+# a note's file name says what it is about; dated notes (OpenClaw's daily memory) say nothing
+MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\s\"'`\\]+\.md)(?![\w])")
+DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
 
 
 class Scrubber:
@@ -180,6 +183,29 @@ class Scrubber:
             self.replacements.append((host, "host"))
         self.peers: dict[str, str] = {}  # digits -> placeholder digits
         self.peer_re: re.Pattern[str] | None = None
+        self.names: list[tuple[re.Pattern[str], str]] = []
+        self.notes: dict[str, str] = {}
+
+    def add_names(self, names: Iterable[str], label: str) -> None:
+        """Whole words only, any of ``-``, ``_`` or a space between parts: ``job-search`` also
+        matches ``Job Search`` and ``job_search_mcp``, and ``dede`` not the hash ``3dede4``."""
+        known = {placeholder for _, placeholder in self.names}
+        for name in sorted(set(names) - {""}, key=lambda n: (-len(n), n)):
+            parts = r"[-_ ]?".join(map(re.escape, re.split(r"[-_ ]+", name.strip("-_ "))))
+            n = sum(p.startswith(f"{label}-") for p in known) + 1
+            known.add(placeholder := f"{label}-{n}")
+            self.names.append((re.compile(rf"(?i)(?<![\w-]){parts}(?![^\W_])"), placeholder))
+
+    def swap_names(self, text: str) -> str:
+        for pattern, placeholder in self.names:
+            text = pattern.sub(placeholder, text)
+        return MEMORY_NOTE.sub(self.note, text)
+
+    def note(self, match: re.Match[str]) -> str:
+        folder, name = match.groups()
+        if DATED_NOTE.fullmatch(name):
+            return match.group(0)
+        return folder + self.notes.setdefault(name, f"note-{len(self.notes) + 1}.md")
 
     def add_peers(self, ids: set[str]) -> None:
         for digits in sorted(ids):
@@ -204,7 +230,7 @@ class Scrubber:
         )
         for old, new in self.replacements:
             value = value.replace(old, new)
-        value = self.swap_peers(value)
+        value = self.swap_names(self.swap_peers(value))
         value = EMAIL.sub("user@example.com", value)
         value = TAILNET.sub("host.example.ts.net", value)
         return IPV4.sub("192.0.2.1", value)
@@ -224,7 +250,7 @@ class Scrubber:
         for part in rel.parts:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
-            parts.append(self.swap_peers(part))
+            parts.append(self.swap_names(self.swap_peers(part)))
         return Path(*parts)
 
     @staticmethod
@@ -629,6 +655,18 @@ def leftover_peers(root: Path, ids: set[str]) -> list[str]:
     ]
 
 
+def leftover_names(root: Path, scrubber: Scrubber) -> list[str]:
+    """Files that still hold a profile name or a private word anywhere in their bytes."""
+    return [
+        str(path.relative_to(root))
+        for path in walk_bounded(root, "*", max_depth=8)
+        if any(
+            p.search(f"{path.relative_to(root)}\n" + path.read_bytes().decode("utf-8", "replace"))
+            for p, _ in scrubber.names
+        )
+    ]
+
+
 def text_has_secret(text: str) -> bool:
     """Line by line: redact() truncates past 1 MB, so a whole large file would always differ.
     Private keys span lines, so any key block fails closed."""
@@ -712,6 +750,21 @@ def walk_breadth_first(
             if depth < max_depth and entry.is_dir(follow_symlinks=False):
                 queue.append((Path(entry.path), depth + 1))
         yield directory, depth, entries
+
+
+def profile_names(source: Path) -> set[str]:
+    """Hermes profiles are often named after people or projects: the ``profiles/`` folders and
+    the gateway's ``served_profiles``. ``default`` says nothing."""
+    names = {p.name for p in itertools.islice((source / "profiles").glob("*"), 500) if p.is_dir()}
+    state = source / "gateway_state.json"
+    if state.is_file():
+        try:
+            served = json.loads(read_text_bounded(state)).get("served_profiles")
+        except (ValueError, AttributeError):
+            served = None
+        if isinstance(served, list):
+            names |= {s for s in served if isinstance(s, str)}
+    return names - {"default"}
 
 
 def name_peers(source: Path) -> set[str]:
@@ -858,6 +911,7 @@ def record(
     max_files: int = 20,
     max_lines: int = 200,
     extra_include: list[str] | None = None,
+    words: list[str] | None = None,
     scrubber: Scrubber | None = None,
     ps: Any = None,
 ) -> Path:
@@ -865,6 +919,8 @@ def record(
         raise SystemExit(f"unknown agent type {agent!r}; expected one of {sorted(INCLUDE)}")
     patterns = INCLUDE[agent] + (extra_include or [])
     scrubber = scrubber or Scrubber(str(Path.home()), getpass.getuser(), socket.gethostname())
+    scrubber.add_names(profile_names(source), "profile")
+    scrubber.add_names(words or [], "word")
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
@@ -891,6 +947,9 @@ def record(
         hits = leftover_peers(staging, set(scrubber.peers))
         if hits:
             raise SystemExit(f"chat or user ids still present after scrubbing: {hits}; not written")
+        hits = leftover_names(staging, scrubber)
+        if hits:
+            raise SystemExit(f"profile names or words still present after scrubbing: {hits}")
         (staging / "MANIFEST.md").write_text(
             MANIFEST.format(
                 agent=agent,
@@ -914,6 +973,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-files", type=int, default=20)
     parser.add_argument("--max-lines", type=int, default=200, help="per file; rows per table")
     parser.add_argument("--include", action="append", default=[], help="extra glob, repeatable")
+    parser.add_argument(
+        "--scrub-word",
+        action="append",
+        default=[],
+        help="a private word to replace (a project, a place), repeatable",
+    )
     args = parser.parse_args(argv)
     dest = record(
         args.agent,
@@ -922,6 +987,7 @@ def main(argv: list[str] | None = None) -> int:
         max_files=args.max_files,
         max_lines=args.max_lines,
         extra_include=args.include,
+        words=args.scrub_word,
     )
     print(f"wrote {dest}. Review {dest / 'MANIFEST.md'} before committing.")
     return 0

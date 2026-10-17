@@ -783,3 +783,64 @@ def test_tailnet_name_scrubbed() -> None:
     out = rf.Scrubber(HOME, "alice", "alice-mbp").text(origins)
     assert "tail0f00ba" not in out and "alice" not in out
     assert out.count("host.example.ts.net") == 2
+
+
+def test_hermes_profile_names_scrubbed(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    (source / "profiles" / "bob").mkdir(parents=True)
+    (source / "gateway_state.json").write_text(
+        json.dumps({"served_profiles": ["default", "bob", "acme-dev", "dede"]})
+    )
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (session_key text, adapter_profile text, hash text)")
+        conn.execute(
+            "insert into sessions values ('agent:bob:telegram:dm:7', 'acme-dev', 'a3dede4f')"
+        )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    served = json.loads((dest / "gateway_state.json").read_text())["served_profiles"]
+    assert served == ["default", "profile-3", "profile-1", "profile-2"]
+    with sqlite3.connect(dest / "state.db") as conn:
+        row = conn.execute("select * from sessions").fetchone()
+    assert row == ("agent:profile-3:telegram:dm:7", "profile-1", "a3dede4f")
+    text = all_text(dest)
+    assert "bob" not in text and "acme" not in text
+
+
+def test_memory_note_names_scrubbed_dated_notes_kept() -> None:
+    s = rf.Scrubber(HOME, "alice", "alice-mbp")
+    assert s.text("memory/trip-to-lyon.md") == "memory/note-1.md"
+    assert s.text("see memory/dreaming/light/trip-to-lyon.md") == (
+        "see memory/dreaming/light/note-1.md"
+    )
+    assert s.text("memory/groupe.md") == "memory/note-2.md"
+    assert s.text("memory/2026-05-14.md") == "memory/2026-05-14.md"
+    assert s.text("memory/2026-05-08-0420.md") == "memory/2026-05-08-0420.md"
+    assert s.text("memory/2026-04-19-skill-safety.md") == "memory/note-3.md"
+    assert s.text("dist/memory/index.js") == "dist/memory/index.js"
+
+
+def test_private_words_scrubbed(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "config.yaml").write_text(
+        "skills:\n  enabled: [job-search-mcp, web]\n  label_hint: Job Search MCP\n"
+    )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, words=["job-search"], scrubber=scrubber(), ps=FakePs())
+    text = (dest / "config.yaml").read_text()
+    assert "job" not in text.lower()
+    assert "word-1-mcp" in text and "web" in text
+
+
+def test_refuses_when_a_profile_name_survives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / ".hermes"
+    source.mkdir()
+    (source / "gateway_state.json").write_text(json.dumps({"served_profiles": ["bob"]}))
+    s = rf.Scrubber(HOME, "alice", "alice-mbp")
+    monkeypatch.setattr(s, "swap_names", lambda text: text)
+    with pytest.raises(SystemExit, match="profile names"):
+        rf.record("hermes", source, tmp_path / "fixture", scrubber=s, ps=FakePs())
+    assert not (tmp_path / "fixture").exists()
