@@ -1,8 +1,9 @@
 """Who may message a Hermes profile (FR-8, FR-9), counted from its access settings.
 
-Offers ``read_access`` and ``Access.channel``. Hermes keeps access rules only in environment
-variables, normally the profile's ``.env``, the same file as its API keys and bot tokens. So this
-is the one place openvigie opens a credential file, under three rules:
+Offers ``read_access`` and ``Access.channel``; ``access_settings``, ``entries`` and ``is_flag``
+also serve the fixture recorder. Hermes keeps access rules only in environment variables,
+normally the profile's ``.env``, the same file as its API keys and bot tokens. So this is the one
+place openvigie opens a credential file, under three rules:
 
 * the file is read line by line, and a line's value is looked at only when its name is an access
   setting (``ACCESS_NAME``); every other line is skipped without being split;
@@ -92,17 +93,30 @@ def read_access(home: Path) -> Access:
         return Access(readable=False)
     lists: dict[str, frozenset[str]] = {}
     flags: set[str] = set()
-    for line in text.splitlines():
-        match = ACCESS_NAME.match(line.strip())
-        if match is None:
-            continue  # not an access setting: its value is never looked at
-        name, value = match.group(1), _value(line.strip()[match.end() :])
-        if name.endswith("_ALLOW_ALL_USERS"):
+    for name, value in access_settings(text):
+        if is_flag(name):
             if value.lower() in TRUTHY:
                 flags.add(name)
         else:
-            lists[name] = _hashed(_entries(value))
+            lists[name] = _hashed(entries(value))
     return Access(lists, frozenset(flags), _approved(home))
+
+
+def access_settings(text: str) -> list[tuple[str, str]]:
+    """(name, value) of each access setting in a dotenv text, values read as dotenv does. Any
+    other line is skipped without its value being looked at. Also used by the fixture recorder,
+    so recorded samples keep exactly what this module reads."""
+    found = []
+    for line in text.splitlines():
+        match = ACCESS_NAME.match(line.strip())
+        if match is not None:
+            found.append((match.group(1), _value(line.strip()[match.end() :])))
+    return found
+
+
+def is_flag(name: str) -> bool:
+    """An allow-all switch rather than a list."""
+    return name.endswith("_ALLOW_ALL_USERS")
 
 
 def _value(raw: str) -> str:
@@ -115,7 +129,7 @@ def _value(raw: str) -> str:
     return (raw[: comment.start()] if comment else raw).strip()
 
 
-def _entries(value: str) -> list[str]:
+def entries(value: str) -> list[str]:
     """Hermes' list forms: a JSON list literal or comma-separated values."""
     if value.startswith("["):
         try:

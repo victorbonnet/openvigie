@@ -147,3 +147,12 @@ def test_profile_capabilities_count_people(tmp_path: Path, monkeypatch: pytest.M
     assert caps.channels == (Channel("telegram", "allowlist", False, 1, False),)
     assert "never-read" not in repr(caps)
     assert not any(p.endswith("auth.json") for p in opened)
+
+
+def test_recorded_env_files() -> None:
+    owner_only = read_access(FIXTURE).channel("telegram")
+    assert owner_only == Channel("telegram", "allowlist", False, 1, False)
+    assert reachable_by_others((owner_only,)) is False
+    shared = read_access(FIXTURE / "profiles" / "profile-7").channel("telegram")
+    assert shared == Channel("telegram", "allowlist", False, 3, True)
+    assert reached_by((shared,)) == "members of its group chats and 3 allowlisted people"

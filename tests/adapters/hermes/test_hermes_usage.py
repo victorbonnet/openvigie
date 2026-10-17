@@ -13,6 +13,7 @@ from openvigie.model import AgentInstance, UsageQuality
 from openvigie.safeio import open_sqlite_readonly
 
 FIXTURE = Path(__file__).parent / "fixtures" / "0.21.7" / "home" / ".hermes"
+NO_PROFILES = shutil.ignore_patterns("profiles")  # recorded .env samples: test_hermes_access
 ROWS = 196
 OUTPUT_TOKENS = 2_639_349
 INPUT_TOKENS = 465_513_459  # OpenAI rows count their cache reads inside input
@@ -21,7 +22,7 @@ CODEX_SESSION = "20260912_101456_b71ea675"
 
 def setup(tmp_path: Path) -> tuple[HermesAdapter, AgentInstance, Path]:
     root = tmp_path / "home" / ".hermes"
-    shutil.copytree(FIXTURE, root)
+    shutil.copytree(FIXTURE, root, ignore=NO_PROFILES)
     adapter = HermesAdapter()
     (agent,) = adapter.detect(fake_context(homes=[tmp_path / "home"]))
     return adapter, agent, root / "state.db"

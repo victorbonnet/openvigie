@@ -14,4 +14,6 @@ dist/
 !tests/adapters/*/fixtures/**/*.sqlite
 .env
 .env.*
+# recorded with access settings only (scripts/record_fixture.py, ACCESS_ONLY)
+!tests/adapters/hermes/fixtures/**/.env
 .claude/settings.local.json

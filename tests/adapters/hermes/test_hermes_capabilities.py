@@ -10,6 +10,7 @@ from openvigie.adapters.testing import fake_context
 from openvigie.model import ApprovalLevel, Capabilities, Channel, FsAccess, NetAccess
 
 FIXTURE = Path(__file__).parent / "fixtures" / "0.21.7" / "home" / ".hermes"
+NO_PROFILES = shutil.ignore_patterns("profiles")  # recorded .env samples: test_hermes_access
 
 
 def known(caps: Capabilities) -> tuple[Channel, ...]:
@@ -19,7 +20,7 @@ def known(caps: Capabilities) -> tuple[Channel, ...]:
 
 def capabilities(tmp_path: Path, profile: str = "default", **config: object) -> Capabilities:
     home = tmp_path / "home"
-    shutil.copytree(FIXTURE, home / ".hermes")
+    shutil.copytree(FIXTURE, home / ".hermes", ignore=NO_PROFILES)
     target = home / ".hermes"
     if profile != "default":
         target = target / "profiles" / profile
@@ -45,7 +46,7 @@ def test_recorded_profile(tmp_path: Path) -> None:
     assert caps.network is NetAccess.UNKNOWN
     assert caps.shell is True
     assert "hermes-cli" in caps.tools_allowed and "terminal" in caps.tools_allowed
-    assert caps.channels == (Channel("telegram"),)  # no .env recorded: who may write is unknown
+    assert caps.channels == (Channel("telegram", "allowlist", False, 1, False),)  # recorded .env
     assert caps.sources == ("~/.hermes/config.yaml", "~/.hermes/gateway_state.json")
 
 
@@ -88,7 +89,7 @@ def test_mcp_servers_and_secret_names_only(tmp_path: Path) -> None:
 
 def test_skills_are_listed_by_name(tmp_path: Path) -> None:
     home = tmp_path / "home" / ".hermes"
-    shutil.copytree(FIXTURE, home)
+    shutil.copytree(FIXTURE, home, ignore=NO_PROFILES)
     for path in ("research/arxiv", "github/pr-review"):
         (home / "skills" / path).mkdir(parents=True)
         (home / "skills" / path / "SKILL.md").write_text("---\nname: x\n---\n")
@@ -101,7 +102,7 @@ def test_skills_are_listed_by_name(tmp_path: Path) -> None:
 
 def test_broken_config_reports_nothing(tmp_path: Path) -> None:
     home = tmp_path / "home" / ".hermes"
-    shutil.copytree(FIXTURE, home)
+    shutil.copytree(FIXTURE, home, ignore=NO_PROFILES)
     (home / "config.yaml").write_text("model: [unclosed\n")
     ctx = fake_context(homes=[tmp_path / "home"])
     adapter = HermesAdapter()
@@ -119,7 +120,7 @@ def test_platforms_by_profile_skips_odd_keys() -> None:
 
 def gateway_with(tmp_path: Path, **changes: object) -> tuple[HermesAdapter, Capabilities, str]:
     home = tmp_path / "home"
-    shutil.copytree(FIXTURE, home / ".hermes")
+    shutil.copytree(FIXTURE, home / ".hermes", ignore=NO_PROFILES)
     path = home / ".hermes" / "gateway_state.json"
     state = json.loads(path.read_text())
     for key, value in changes.items():
@@ -172,7 +173,7 @@ def test_matrix_rooms_in_config_let_nobody_in(tmp_path: Path) -> None:
     state = json.loads((FIXTURE / "gateway_state.json").read_text())
     platforms = {**state["platforms"], "profile-1:matrix": {}}
     home = tmp_path / "home" / ".hermes"
-    shutil.copytree(FIXTURE, home)
+    shutil.copytree(FIXTURE, home, ignore=NO_PROFILES)
     (home / "gateway_state.json").write_text(json.dumps({**state, "platforms": platforms}))
     profile = home / "profiles" / "profile-1"
     profile.mkdir(parents=True)

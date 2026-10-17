@@ -16,12 +16,13 @@ from openvigie.adapters.testing import AdapterContract, fake_context, fake_proce
 from openvigie.model import HealthState, SandboxState
 
 FIXTURE = Path(__file__).parent / "fixtures" / "0.21.7" / "home" / ".hermes"
+NO_PROFILES = shutil.ignore_patterns("profiles")  # recorded .env samples: test_hermes_access
 NEWEST_MESSAGE = datetime(2026, 10, 14, 11, 58, 10, tzinfo=UTC)
 
 
 def make_home(tmp_path: Path, name: str = "home") -> Path:
     home = tmp_path / name
-    shutil.copytree(FIXTURE, home / ".hermes")
+    shutil.copytree(FIXTURE, home / ".hermes", ignore=NO_PROFILES)
     return home
 
 
@@ -109,7 +110,7 @@ def test_empty_message_store_has_no_activity(tmp_path: Path) -> None:
 
 def test_hermes_home_override(tmp_path: Path) -> None:
     custom = tmp_path / "hermes-home"
-    shutil.copytree(FIXTURE, custom)
+    shutil.copytree(FIXTURE, custom, ignore=NO_PROFILES)
     ctx = fake_context(homes=[tmp_path / "nohome"], env={"HERMES_HOME": str(custom)})
     (agent,) = HermesAdapter().detect(ctx)
     assert agent.config_root == str(custom)
@@ -328,7 +329,7 @@ def test_home_set_to_a_profile_is_reported_once(tmp_path: Path) -> None:
 def test_nested_home_gets_its_own_processes(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     inner = home / ".hermes" / "inner"
-    shutil.copytree(FIXTURE, inner)
+    shutil.copytree(FIXTURE, inner, ignore=NO_PROFILES)
     python = f"{inner}/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
     inner_gateway = fake_process(700, "hermes", (python, "gateway", "run"), exe=python)
     adapter = HermesAdapter()

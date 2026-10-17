@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -822,6 +823,15 @@ def test_memory_note_names_scrubbed_dated_notes_kept() -> None:
     assert s.text("memory/a.md and memory/b c.md") == "memory/note-5.md and memory/note-6.md"
 
 
+def test_memory_note_names_scrubbed_in_paths() -> None:
+    s = rf.Scrubber(HOME, "alice", "alice-mbp")
+    assert s.path(Path("workspace/memory/trip-to-lyon.md")) == Path("workspace/memory/note-1.md")
+    assert s.path(Path("workspace/memory/2026-05-14.md")) == Path("workspace/memory/2026-05-14.md")
+    assert s.path(Path("workspace/memory/acme-merger/plan.md")) == Path(
+        "workspace/memory/folder-1/note-2.md")  # fmt: skip
+    assert s.text("memory/dreaming/light/2026-05-14.md") == "memory/dreaming/light/2026-05-14.md"
+
+
 def test_names_after_a_dash_or_underscore_scrubbed_uuids_kept() -> None:
     s = rf.Scrubber(HOME, "alice", "alice-mbp")
     s.add_names(["bob", "cafe"], "profile")
@@ -863,3 +873,85 @@ def test_refuses_when_a_profile_name_survives(
     with pytest.raises(SystemExit, match="still present"):
         rf.record("hermes", source, tmp_path / "fixture", scrubber=s, ps=FakePs())
     assert not (tmp_path / "fixture").exists()
+
+
+def test_hermes_env_keeps_only_access_settings(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    (source / "profiles" / "bob").mkdir(parents=True)
+    (source / "config.yaml").write_text("terminal:\n  backend: local\n")
+    (source / ".env").write_text(
+        f"OPENAI_API_KEY={KEY}\nTELEGRAM_BOT_TOKEN=123456:ABCdefGHIjkl\n"
+        f"TELEGRAM_ALLOWED_USERS={PEER},@alice_handle  # the owner\n"
+        "GATEWAY_ALLOW_ALL_USERS=false\nexport DISCORD_ALLOWED_USERS=*\n"
+    )
+    (source / "profiles" / "bob" / ".env").write_text(
+        f'TELEGRAM_ALLOWED_USERS="{PEER},987654321"\nTELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890\n'
+    )
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs(), max_files=50)
+    default = (dest / ".env").read_text().splitlines()
+    owner = default[0].split("=")[1].split(",")[0]
+    assert re.fullmatch(r"1000000\d\d", owner)
+    assert default == [f"TELEGRAM_ALLOWED_USERS={owner},user-1", "GATEWAY_ALLOW_ALL_USERS=false",
+                       "DISCORD_ALLOWED_USERS=*"]  # fmt: skip
+    (profile,) = (dest / "profiles").iterdir()
+    assert profile.name != "bob"
+    lines = (profile / ".env").read_text().splitlines()
+    assert lines[0].startswith(f"TELEGRAM_ALLOWED_USERS={owner},")  # same person, same id
+    assert re.fullmatch(r"TELEGRAM_GROUP_ALLOWED_CHATS=-1000000\d\d", lines[1])
+    text = all_text(dest)
+    for secret in (KEY, "ABCdefGHIjkl", PEER, "987654321", "1234567890", "alice_handle"):
+        assert secret not in text
+
+
+def test_claude_code_env_is_still_never_copied(tmp_path: Path) -> None:
+    source = make_claude_home(tmp_path / "home")
+    (source / ".env").write_text(f"TELEGRAM_ALLOWED_USERS={PEER}\n")
+    dest = tmp_path / "fixture"
+    rf.record("claude-code", source, dest, extra_include=[".env"], scrubber=scrubber())
+    assert not (dest / ".env").exists()
+
+
+def test_openclaw_transcript_events_keep_only_usage_fields(tmp_path: Path) -> None:
+    source = tmp_path / ".openclaw"
+    (source / "agents" / "main" / "agent").mkdir(parents=True)
+    (source / "openclaw.json").write_text("{}")
+    event = {"type": "message", "id": "e1a2b3c4", "parentId": "p0",
+             "timestamp": "2026-10-14T10:00:00.000Z",
+             "message": {"role": "assistant", "model": "gpt-5.5", "provider": "openai-codex",
+                         "timestamp": 1792237771053, "stopReason": "stop", "api": "responses",
+                         "content": [{"type": "text", "text": "Alice's tax return is done"}],
+                         "usage": {"input": 10, "output": 5, "cacheRead": 7, "cacheWrite": 0,
+                                   "cost": {"total": 0.01, "alice": 1},
+                                   "alice.smith": 3}}}  # fmt: skip
+    odd = {"type": "alice_notes", "id": "msg:1",
+           "message": {"role": "alice", "provider": "acme-internal",
+                       "stopReason": "bob"}}  # fmt: skip
+    twin = {"type": "message", "id": "msg:2", "message": {"role": "user"}}
+    blob = json.dumps({"type": "message", "id": "msg:3",
+                       "message": {"content": "hello from alice"}}).encode()  # fmt: skip
+    with sqlite3.connect(source / "agents" / "main" / "agent" / "openclaw-agent.sqlite") as db:
+        db.execute("create table transcript_events (session_id text, seq integer, event_json text)")
+        db.executemany("insert into transcript_events values ('s1', ?, ?)",
+                       [(0, json.dumps(event)), (1, json.dumps(odd)), (2, json.dumps(twin)),
+                        (3, blob), (4, "{not json")])  # fmt: skip
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
+    with sqlite3.connect(dest / "agents" / "main" / "agent" / "openclaw-agent.sqlite") as db:
+        rows = [r[0] for r in db.execute("select event_json from transcript_events order by seq")]
+    assert json.loads(rows[0]) == {
+        "type": "message", "id": "e1a2b3c4", "timestamp": "2026-10-14T10:00:00.000Z",
+        "message": {"role": "assistant", "stopReason": "stop", "model": "gpt-5.5",
+                    "provider": "openai-codex", "timestamp": 1792237771053,
+                    "usage": {"cacheRead": 7, "cacheWrite": 0, "cost": {"total": 0.01},
+                              "input": 10, "output": 5}},
+    }  # fmt: skip
+    odd_kept, twin_kept, blob_kept = (json.loads(r) for r in rows[1:4])
+    assert odd_kept == {"type": "[not recorded]", "id": "event-1",
+                        "message": {"role": "[not recorded]", "stopReason": "[not recorded]",
+                                    "provider": "[not recorded]"}}  # fmt: skip
+    assert twin_kept["id"] == "event-2"  # distinct ids stay distinct
+    assert blob_kept == {"type": "message", "id": "event-3", "message": {}}
+    assert rows[4].startswith("[scrubbed text")
+    text = all_text(dest)
+    assert "alice" not in text.lower() and "acme" not in text and "bob" not in text

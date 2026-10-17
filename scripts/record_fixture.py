@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import functools
 import getpass
 import itertools
 import json
@@ -35,6 +36,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
+from openvigie.adapters.hermes import access as hermes_access
 from openvigie.redact import is_sensitive_key, redact
 from openvigie.safeio import iter_jsonl, read_text_bounded, walk_bounded
 
@@ -48,6 +50,9 @@ INCLUDE: dict[str, list[str]] = {
         "gateway.pid",
         # the adapter's store; kanban.db and verification_evidence.db hold project paths
         "state.db",
+        # access settings only (ACCESS_ONLY): who may message each profile
+        ".env",
+        "profiles/*/.env",
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",
@@ -174,6 +179,31 @@ MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}
 DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
 SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
 HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
+EVENT_HEX = re.compile(r"(?i)[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?")
+# Hermes keeps who may message a profile in its .env, next to its keys: such a file is copied
+# with only its access lines (as the adapter reads them), ids replaced, other lines dropped unread
+ACCESS_ONLY: dict[str, frozenset[str]] = {"hermes": frozenset({".env"})}
+FLAGS = {"true", "false", "1", "0", "yes", "no"}
+# OpenClaw's transcript events: rebuilt from only what the usage reader needs (#219). Every kept
+# word comes from a list of known values, so no free text (a name) can pass a shape check
+EVENT_TYPES = {"message", "custom", "custom_message", "session", "model_change",
+               "thinking_level_change", "compaction", "branch_summary"}  # fmt: skip
+ROLES = {"assistant", "user", "toolResult", "system"}
+STOP_REASONS = {"stop", "toolUse", "error", "aborted", "length", "refusal"}
+PROVIDERS = {"anthropic", "openai", "openai-codex", "huggingface", "openrouter", "google",
+             "deepinfra", "groq", "mistral", "xai", "ollama", "amazon-bedrock", "deepseek",
+             "moonshot", "minimax", "zai", "github-copilot", "vercel-ai-gateway",
+             "nous"}  # fmt: skip
+USAGE_KEYS = {"input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "totalTokens",
+              "cost", "contextUsage"}  # fmt: skip
+USAGE_PARTS = {"input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "total",
+               "promptTokens", "totalTokens"}  # fmt: skip
+ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]{5,20}(?:Z|[+-]\d{2}:\d{2})?")
+UNKNOWN_WORD = "[not recorded]"  # a value outside the known lists
+STRUCTURED_COLUMNS = {("transcript_events", "event_json")}
+MAX_EVENT = 4 * 1024 * 1024
+# OpenClaw's own memory folders; any other folder name under memory/ is replaced
+MEMORY_FOLDERS = {"dreaming", "light", "deep", "rem"}
 
 
 class Scrubber:
@@ -187,6 +217,9 @@ class Scrubber:
         self.peer_re: re.Pattern[str] | None = None
         self.names: list[tuple[re.Pattern[str], str]] = []
         self.notes: dict[str, str] = {}
+        self.handles: dict[str, str] = {}  # non-numeric allowlist entries -> user-N
+        self.event_ids: dict[str, str] = {}  # event ids of another shape -> event-N
+        self.folders: dict[str, str] = {}  # folder names under memory/ -> folder-N
 
     def add_names(self, names: Iterable[str], label: str) -> None:
         """Between any non-alphanumerics, with any of ``-``, ``_`` or a space between parts:
@@ -217,9 +250,23 @@ class Scrubber:
 
     def note(self, match: re.Match[str]) -> str:
         folder, name = match.groups()
+        parts = folder.rstrip("/").split("/")  # memory, then its subfolders
+        folder = "/".join([parts[0], *map(self.memory_folder, parts[1:])]) + "/"
         if DATED_NOTE.fullmatch(name):
-            return match.group(0)
+            return folder + name
         return folder + self.notes.setdefault(name, f"note-{len(self.notes) + 1}.md")
+
+    def memory_folder(self, name: str) -> str:
+        if name in MEMORY_FOLDERS:
+            return name
+        return self.folders.setdefault(name, f"folder-{len(self.folders) + 1}")
+
+    def event_id(self, value: Any) -> str:
+        """A uuid or short hex id as is; any other id a numbered placeholder, so two events
+        never share one."""
+        if isinstance(value, str) and EVENT_HEX.fullmatch(value):
+            return value
+        return self.event_ids.setdefault(repr(value), f"event-{len(self.event_ids) + 1}")
 
     def add_peers(self, ids: set[str]) -> None:
         for digits in sorted(ids):
@@ -265,7 +312,8 @@ class Scrubber:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
             parts.append(self.swap_names(self.swap_peers(part)))
-        return Path(*parts)
+        # a note name is only recognisable with its memory/ folder, which is another part
+        return Path(MEMORY_NOTE.sub(self.note, str(Path(*parts))))
 
     @staticmethod
     def placeholder(value: str) -> str:
@@ -328,7 +376,7 @@ def denied(path: Path) -> bool:
 
 
 def select_files(
-    source: Path, patterns: list[str], max_files: int
+    source: Path, patterns: list[str], max_files: int, access_only: frozenset[str] = frozenset()
 ) -> tuple[list[Path], list[Path]]:
     """Each pattern is walked from its literal folder, to its own depth (``*.db`` is the top
     level only), so a big unrelated folder (a git checkout) can't use up the walk's budget."""
@@ -348,15 +396,23 @@ def select_files(
             if not fnmatch.fnmatch(str(rel), pattern):
                 continue
             seen.add(rel)
-            if denied(path):
+            if denied(path) and path.name not in access_only:
                 dropped.append(rel)
             elif len(chosen) < max_files:
                 chosen.append(rel)
     return chosen, dropped
 
 
-def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
+def scrub_file(
+    src: Path,
+    dst: Path,
+    scrubber: Scrubber,
+    max_lines: int,
+    access_only: frozenset[str] = frozenset(),
+) -> str:
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.name in access_only:
+        return scrub_access_file(src, dst, scrubber)
     if src.suffix == ".jsonl":
         values = list(iter_jsonl(src, max_lines=max_lines))
         dst.write_text("".join(json.dumps(scrubber.value(v)) + "\n" for v in values))
@@ -380,6 +436,114 @@ def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
     lines = read_text_bounded(src).splitlines()[:max_lines]
     dst.write_text("".join(scrubber.text(line) + "\n" for line in lines))
     return f"{len(lines)} lines, only pattern-redacted: **check it by hand**"
+
+
+@functools.cache
+def access_file(src: Path) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """(name, entries) of each access setting, parsed once by the adapter's own reader; a flag
+    has its value as its one entry. No other line is looked into."""
+    text = read_text_bounded(src, max_bytes=256 * 1024)
+    return tuple(
+        (name, (value,) if hermes_access.is_flag(name) else tuple(hermes_access.entries(value)))
+        for name, value in hermes_access.access_settings(text)
+    )
+
+
+def whole_id(entry: str) -> str | None:
+    """The digits of an entry that is a number (a chat or user id), with an optional sign."""
+    digits = WHOLE_DIGITS.search(entry)
+    return digits.group(0) if digits and digits.group(0) == entry.lstrip("+-") else None
+
+
+def scrub_access_file(src: Path, dst: Path, scrubber: Scrubber) -> str:
+    """Only the access settings: ids become the stable placeholders, names ``user-N``, ``*`` and
+    flags stay."""
+    out = []
+    for name, entries in access_file(src):
+        if hermes_access.is_flag(name):
+            value = entries[0].lower() if entries else ""
+            out.append(f"{name}={value if value in FLAGS else 'unknown'}")
+            continue
+        kept = []
+        for entry in entries:
+            if entry == "*":
+                kept.append(entry)
+            elif (digits := whole_id(entry)) is not None:
+                kept.append(entry[: len(entry) - len(digits)] + scrubber.peer_digits(digits))
+            else:
+                kept.append(scrubber.handles.setdefault(entry, f"user-{len(scrubber.handles) + 1}"))
+        out.append(f"{name}={','.join(kept)}")
+    dst.write_text("".join(line + "\n" for line in out))
+    return f"access settings only: {len(out)} kept, every other line dropped unread"
+
+
+def access_peers(src: Path) -> set[str]:
+    return {
+        digits
+        for name, entries in access_file(src)
+        if not hermes_access.is_flag(name)
+        for entry in entries
+        if (digits := whole_id(entry)) is not None
+    }
+
+
+def transcript_event(raw: Any, scrubber: Scrubber) -> Any:
+    """An OpenClaw transcript event, rebuilt from the fields the usage reader needs: its type,
+    id and time, and its message's role, model, provider, time, stop reason and token counts.
+    Everything else, message content included, is left out. Words must be known values, ids get
+    numbered placeholders, and anything else becomes a placeholder."""
+    if isinstance(raw, bytes):  # stored as a BLOB: rebuilt like text, never copied as is
+        raw = raw[:MAX_EVENT].decode("utf-8", errors="replace")
+    if not isinstance(raw, str):
+        return None if raw is None else UNKNOWN_WORD
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        return scrubber.placeholder(raw)
+    out: dict[str, Any] = {}
+    if "type" in data:
+        out["type"] = known(data["type"], EVENT_TYPES)
+    if "id" in data:
+        out["id"] = scrubber.event_id(data["id"])
+    if "timestamp" in data:
+        stamp = data["timestamp"]
+        out["timestamp"] = stamp if isinstance(stamp, str) and ISO_TIME.fullmatch(stamp) else None
+    message = data.get("message")
+    if isinstance(message, dict):
+        kept: dict[str, Any] = {}
+        if "role" in message:
+            kept["role"] = known(message["role"], ROLES)
+        if "stopReason" in message:
+            kept["stopReason"] = known(message["stopReason"], STOP_REASONS)
+        if isinstance(message.get("model"), str):
+            kept["model"] = scrubber.value(message["model"], "model")
+        if "provider" in message:  # the adapter maps it to a price table vendor
+            kept["provider"] = known(message["provider"], PROVIDERS)
+        if isinstance(message.get("timestamp"), int | float):
+            kept["timestamp"] = message["timestamp"]
+        if isinstance(message.get("usage"), dict):
+            kept["usage"] = usage_numbers(message["usage"])
+        out["message"] = kept
+    return json.dumps(out, separators=(",", ":"))
+
+
+def known(value: Any, words: set[str]) -> str:
+    return value if isinstance(value, str) and value in words else UNKNOWN_WORD
+
+
+def usage_numbers(usage: dict[str, Any]) -> dict[str, Any]:
+    """Known token and cost fields: numbers, or dicts of known numbers (``cost``)."""
+    out: dict[str, Any] = {}
+    for key in USAGE_KEYS & usage.keys():
+        item = usage[key]
+        if isinstance(item, int | float) and not isinstance(item, bool):
+            out[key] = item
+        elif isinstance(item, dict):
+            out[key] = {k: v for k, v in item.items() if k in USAGE_PARTS
+                        and isinstance(v, int | float) and not isinstance(v, bool)}  # fmt: skip
+    return dict(sorted(out.items()))
 
 
 def json5_data(text: str) -> Any:
@@ -428,8 +592,12 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber, max_rows: int) -> str
         ]
         notes += keep_newest_rows(target, tables, max_rows)
         target.create_function("scrub", 2, lambda v, k: scrubber.value(v, k))
+        target.create_function("event", 1, lambda v: transcript_event(v, scrubber))
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
+                if (table, col) in STRUCTURED_COLUMNS:
+                    target.execute(f'update "{table}" set "{col}" = event("{col}")')  # noqa: S608
+                    continue
                 textual = "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype
                 if textual or PEER_KEY.match(col):
                     scrub_column(target, table, col)
@@ -526,7 +694,9 @@ def whole_numbers(ids: Iterable[str]) -> re.Pattern[str]:
     return re.compile(rf"(?<!\d)(?:{alternatives})(?!\d)")
 
 
-def collect_peers(source: Path, files: list[Path]) -> set[str]:
+def collect_peers(
+    source: Path, files: list[Path], access_only: frozenset[str] = frozenset()
+) -> set[str]:
     """Chat and user ids in the sample: peers in session keys, values of chat_id-like fields
     and columns, and entries of allow lists. Collected first so every file replaces them the
     same way."""
@@ -535,6 +705,9 @@ def collect_peers(source: Path, files: list[Path]) -> set[str]:
         path = source / rel
         if path.suffix in SQLITE_SUFFIXES:
             ids |= db_peers(path)
+            continue
+        if path.name in access_only:  # only its access lines are ever read
+            ids |= access_peers(path)
             continue
         text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
         for key in SESSION_KEY.finditer(text):
@@ -943,17 +1116,20 @@ def record(
     scrubber = scrubber or Scrubber(str(Path.home()), getpass.getuser(), socket.gethostname())
     scrubber.add_names(profile_names(source), "profile")
     scrubber.add_names(words or [], "word")
-    chosen, dropped = select_files(source, patterns, max_files)
+    access_only = ACCESS_ONLY.get(agent, frozenset())
+    chosen, dropped = select_files(source, patterns, max_files, access_only)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
     # names of copied files too: name_peers' walk may stop before reaching them
     in_names = {d for rel in chosen for d in LONG_ID.findall(str(rel))}
-    scrubber.add_peers(collect_peers(source, chosen) | name_peers(source) | in_names)
+    scrubber.add_peers(collect_peers(source, chosen, access_only) | name_peers(source) | in_names)
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
             f"- `{scrubber.path(rel)}`: "
-            + scrub_file(source / rel, staging / scrubber.path(rel), scrubber, max_lines)
+            + scrub_file(
+                source / rel, staging / scrubber.path(rel), scrubber, max_lines, access_only
+            )
             for rel in chosen
         ]
         import psutil
