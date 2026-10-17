@@ -15,11 +15,15 @@ Scrubbing does this:
 
 - Secrets are redacted.
 - Credential files are never copied (`.env`, `auth*`, `*token*`, keys…).
-- Home paths, user and host names, e-mails and IP addresses are replaced.
+- Home paths, user and host names, Tailscale names, e-mails and IP addresses are replaced.
 - Chat, group, user and bot ids are replaced by the same placeholder everywhere: values,
   dictionary keys and file names.
 - Dictionary keys are scrubbed like values.
-- Free text (prompts, replies, tool output, system prompts) becomes `[scrubbed text <= N chars]`.
+- Hermes profile names (except `default`) become `profile-N`, and memory note names
+  `memory/note-N.md` (dated notes are kept). Words passed with `--scrub-word` (a project, a
+  place, a skill that says too much) become `word-N`.
+- Free text (prompts, replies, reasoning, tool output, system prompts) and chat display names
+  become `[scrubbed text <= N chars]`.
 - Structure, ids, timestamps, model names and usage numbers are kept.
 - Finally, the output is checked again. If anything still looks like a secret, nothing is written.
 
@@ -67,8 +71,9 @@ ports.
      the manifest and I'll find another way.
 
 6. **Review before committing.**
-   - Agent and profile names (folder names, `served_profiles`, `agents.list`) are kept: rename
-     any that are people's names.
+   - OpenClaw agent names (folder names, `agents.list`) are kept: rename any that are people's
+     names. Search the output for skill, project and place names; record again with
+     `--scrub-word` for each one you find.
    - Open each `MANIFEST.md` and answer the *To fill in by hand* questions. SURVEY.md has the
      processes and ports.
    - Read every file the manifest flags with **check it by hand** (logs are only

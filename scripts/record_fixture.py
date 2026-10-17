@@ -46,7 +46,8 @@ INCLUDE: dict[str, list[str]] = {
         "config.yaml",
         "gateway_state.json",
         "gateway.pid",
-        "*.db",
+        # the adapter's store; kanban.db and verification_evidence.db hold project paths
+        "state.db",
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",
@@ -91,6 +92,15 @@ CONTENT_KEYS = {
     "text",
     "content",
     "thinking",
+    "reasoning",
+    "reasoning_content",
+    "api_content",
+    "assistantTexts",
+    "toolMetas",
+    "label",
+    "display_name",
+    "displayName",
+    "ownerDisplay",
     "prompt",
     "input",
     "output",
@@ -158,6 +168,12 @@ BROAD_PEER_COLUMN = re.compile(rf"(?i){BROAD_PEER_WORDS}")
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
+TAILNET = re.compile(r"\b[\w.-]+\.ts\.net\b")  # MagicDNS names the tailnet, not just the host
+# a note's file name says what it is about; dated notes (OpenClaw's daily memory) say nothing
+MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}?\.md)(?![\w])")
+DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
+SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
+HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
 
 
 class Scrubber:
@@ -169,6 +185,41 @@ class Scrubber:
             self.replacements.append((host, "host"))
         self.peers: dict[str, str] = {}  # digits -> placeholder digits
         self.peer_re: re.Pattern[str] | None = None
+        self.names: list[tuple[re.Pattern[str], str]] = []
+        self.notes: dict[str, str] = {}
+
+    def add_names(self, names: Iterable[str], label: str) -> None:
+        """Between any non-alphanumerics, with any of ``-``, ``_`` or a space between parts:
+        ``tax-return`` also matches ``Tax Return`` and ``workspace_tax_return``, and ``cafe`` not
+        the hash ``3cafe4`` nor the uuid segment ``12-cafe-34``."""
+        known = {placeholder for _, placeholder in self.names}
+        for name in sorted(set(names) - {""}, key=lambda n: (-len(n), n)):
+            parts = r"[-_ ]?".join(map(re.escape, re.split(r"[-_ ]+", name.strip("-_ "))))
+            n = sum(p.startswith(f"{label}-") for p in known) + 1
+            known.add(placeholder := f"{label}-{n}")
+            self.names.append((re.compile(rf"(?i)(?<![^\W_]){parts}(?![^\W_])"), placeholder))
+
+    def swap_names(self, text: str) -> str:
+        for pattern, placeholder in self.names:
+
+            def swap(m: re.Match[str], placeholder: str = placeholder) -> str:
+                return m.group(0) if in_hex(m) else placeholder
+
+            text = pattern.sub(swap, text)
+        return MEMORY_NOTE.sub(self.note, text)
+
+    def names_left(self, text: str) -> bool:
+        """The last check: a name not in a uuid or hash, or a note name we didn't replace."""
+        return any(not in_hex(m) for p, _ in self.names for m in p.finditer(text)) or any(
+            not (DATED_NOTE.fullmatch(m.group(2)) or SCRUBBED_NOTE.fullmatch(m.group(2)))
+            for m in MEMORY_NOTE.finditer(text)
+        )
+
+    def note(self, match: re.Match[str]) -> str:
+        folder, name = match.groups()
+        if DATED_NOTE.fullmatch(name):
+            return match.group(0)
+        return folder + self.notes.setdefault(name, f"note-{len(self.notes) + 1}.md")
 
     def add_peers(self, ids: set[str]) -> None:
         for digits in sorted(ids):
@@ -193,8 +244,9 @@ class Scrubber:
         )
         for old, new in self.replacements:
             value = value.replace(old, new)
-        value = self.swap_peers(value)
+        value = self.swap_names(self.swap_peers(value))
         value = EMAIL.sub("user@example.com", value)
+        value = TAILNET.sub("host.example.ts.net", value)
         return IPV4.sub("192.0.2.1", value)
 
     def peer(self, match: re.Match[str]) -> str:
@@ -212,7 +264,7 @@ class Scrubber:
         for part in rel.parts:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
-            parts.append(self.swap_peers(part))
+            parts.append(self.swap_names(self.swap_peers(part)))
         return Path(*parts)
 
     @staticmethod
@@ -617,6 +669,26 @@ def leftover_peers(root: Path, ids: set[str]) -> list[str]:
     ]
 
 
+def in_hex(match: re.Match[str]) -> bool:
+    text, start, end = match.string, match.start(), match.end()
+    while start and (text[start - 1].isalnum() or text[start - 1] in "-_"):
+        start -= 1
+    while end < len(text) and (text[end].isalnum() or text[end] in "-_"):
+        end += 1
+    return HEX_TOKEN.fullmatch(text, start, end) is not None
+
+
+def leftover_names(root: Path, scrubber: Scrubber) -> list[str]:
+    """Files that still hold a profile name, a private word or a note name in their bytes."""
+    return [
+        str(path.relative_to(root))
+        for path in walk_bounded(root, "*", max_depth=8)
+        if scrubber.names_left(
+            f"{path.relative_to(root)}\n" + path.read_bytes().decode("utf-8", "replace")
+        )
+    ]
+
+
 def text_has_secret(text: str) -> bool:
     """Line by line: redact() truncates past 1 MB, so a whole large file would always differ.
     Private keys span lines, so any key block fails closed."""
@@ -700,6 +772,21 @@ def walk_breadth_first(
             if depth < max_depth and entry.is_dir(follow_symlinks=False):
                 queue.append((Path(entry.path), depth + 1))
         yield directory, depth, entries
+
+
+def profile_names(source: Path) -> set[str]:
+    """Hermes profiles are often named after people or projects: the ``profiles/`` folders and
+    the gateway's ``served_profiles``. ``default`` says nothing."""
+    names = {p.name for p in itertools.islice((source / "profiles").glob("*"), 500) if p.is_dir()}
+    state = source / "gateway_state.json"
+    if state.is_file():
+        try:
+            served = json.loads(read_text_bounded(state)).get("served_profiles")
+        except (ValueError, AttributeError):
+            served = None
+        if isinstance(served, list):
+            names |= {s for s in served if isinstance(s, str)}
+    return names - {"default"}
 
 
 def name_peers(source: Path) -> set[str]:
@@ -846,6 +933,7 @@ def record(
     max_files: int = 20,
     max_lines: int = 200,
     extra_include: list[str] | None = None,
+    words: list[str] | None = None,
     scrubber: Scrubber | None = None,
     ps: Any = None,
 ) -> Path:
@@ -853,6 +941,8 @@ def record(
         raise SystemExit(f"unknown agent type {agent!r}; expected one of {sorted(INCLUDE)}")
     patterns = INCLUDE[agent] + (extra_include or [])
     scrubber = scrubber or Scrubber(str(Path.home()), getpass.getuser(), socket.gethostname())
+    scrubber.add_names(profile_names(source), "profile")
+    scrubber.add_names(words or [], "word")
     chosen, dropped = select_files(source, patterns, max_files)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
@@ -879,6 +969,9 @@ def record(
         hits = leftover_peers(staging, set(scrubber.peers))
         if hits:
             raise SystemExit(f"chat or user ids still present after scrubbing: {hits}; not written")
+        hits = leftover_names(staging, scrubber)
+        if hits:
+            raise SystemExit(f"profile, note names or words still present after scrubbing: {hits}")
         (staging / "MANIFEST.md").write_text(
             MANIFEST.format(
                 agent=agent,
@@ -902,6 +995,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-files", type=int, default=20)
     parser.add_argument("--max-lines", type=int, default=200, help="per file; rows per table")
     parser.add_argument("--include", action="append", default=[], help="extra glob, repeatable")
+    parser.add_argument(
+        "--scrub-word",
+        action="append",
+        default=[],
+        help="a private word to replace (a project, a place), repeatable",
+    )
     args = parser.parse_args(argv)
     dest = record(
         args.agent,
@@ -910,6 +1009,7 @@ def main(argv: list[str] | None = None) -> int:
         max_files=args.max_files,
         max_lines=args.max_lines,
         extra_include=args.include,
+        words=args.scrub_word,
     )
     print(f"wrote {dest}. Review {dest / 'MANIFEST.md'} before committing.")
     return 0
