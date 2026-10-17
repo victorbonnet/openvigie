@@ -10,10 +10,10 @@ default-profile process (``hermes chat``, helpers). A profile's own ``gateway_st
 over from before gateways were merged: ignored.
 
 The version comes from the home's ``gateway_state.json``: the install's packaging files carry
-placeholder versions. Activity is the newest message in each ``state.db``; ``gateway_state.json``
-is rewritten as a heartbeat, so its mtime isn't activity. The gateway listens on no port:
-processes are matched by running from the install, helpers by their parent. ``.env*``,
-``auth.json`` and ``auth/`` are never opened.
+placeholder versions. Activity is the newest message in each ``state.db``, and usage its
+per-model totals (``usage``); ``gateway_state.json`` is rewritten as a heartbeat, so its mtime
+isn't activity. The gateway listens on no port: processes are matched by running from the
+install, helpers by their parent. ``.env*``, ``auth.json`` and ``auth/`` are never opened.
 """
 
 from __future__ import annotations
@@ -31,8 +31,9 @@ from typing import Annotated
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from openvigie.adapters.base import Adapter, HostContext, ProcessInfo
+from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import candidate_roots, display_path, owner_name
+from openvigie.adapters.hermes.usage import read_usage
 from openvigie.model import AgentInstance, SandboxState, stable_id
 from openvigie.safeio import (
     UnsafeFileError,
@@ -181,10 +182,11 @@ class HermesAdapter(Adapter):
         super().__init__()
         self.roots: dict[str, Path] = {}
         self.procs: dict[str, list[ProcessInfo]] = {}
+        self.profile_names: dict[str, str] = {}  # agent id → profile name
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
-        self.roots, self.procs = {}, {}
+        self.roots, self.procs, self.profile_names = {}, {}, {}
         roots = hermes_roots(ctx)
         by_root = assign(ctx.processes(), roots)
         found = []
@@ -220,7 +222,7 @@ class HermesAdapter(Adapter):
         # the default profile keeps the id it had before profiles were told apart
         key = (str(root),) if name == DEFAULT else (str(root), name)
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
-        self.roots[agent_id] = home
+        self.roots[agent_id], self.profile_names[agent_id] = home, name
         self._check_config(home, name)
         sandboxed, kind = SandboxState.UNKNOWN, None
         if running and procs:
@@ -241,8 +243,18 @@ class HermesAdapter(Adapter):
     def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
         return tuple(self.procs.get(agent_id, ()))
 
+    def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
+        batch = ActivityBatch()
+        home = self.roots.get(agent.agent_id)
+        if home is not None:
+            for note in read_usage(agent, home, state, batch):
+                self._note(self.profile_names.get(agent.agent_id, DEFAULT), note)
+        return batch
+
     def _note(self, profile: str, message: str) -> None:
-        self.notes.append(message if profile == DEFAULT else f"profile {profile}: {message}")
+        note = message if profile == DEFAULT else f"profile {profile}: {message}"
+        if note not in self.notes:  # detection and usage may both hit one broken state.db
+            self.notes.append(note)
 
     def _check_config(self, home: Path, profile: str) -> None:
         config = home / "config.yaml"
