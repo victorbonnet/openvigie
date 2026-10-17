@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -94,3 +95,44 @@ def test_ago() -> None:
     assert ago(None) == "unknown"
     assert ago(NOW - timedelta(hours=3), NOW) == "3h ago"
     assert ago(NOW + timedelta(seconds=30), NOW) == "just now"
+
+
+def order(html: str) -> list[str]:
+    return re.findall(r'<td><a href="/agents/(\w+)">', html)
+
+
+def seed_versions(inv: Inventory) -> None:
+    inv.upsert_host(PI, NOW)
+    inv.upsert_agents([
+        AgentInstance("old", "h-pi", "hermes", "Bravo", version="0.21.5",
+                      last_activity_at=NOW - timedelta(days=3)),
+        AgentInstance("new", "h-pi", "hermes", "alpha", version="0.162.0",
+                      last_activity_at=NOW - timedelta(hours=1)),
+        AgentInstance("none", "h-pi", "hermes", "Charlie"),
+    ], NOW)  # fmt: skip
+
+
+def test_sorts_by_any_column_with_unknown_last(inv: Inventory) -> None:
+    seed_versions(inv)
+    client = client_for(inv)
+    assert order(client.get("/?sort=name").text) == ["new", "old", "none"]
+    assert order(client.get("/?sort=-name").text) == ["none", "old", "new"]
+    assert order(client.get("/?sort=version").text) == ["old", "new", "none"]
+    assert order(client.get("/?sort=-version").text) == ["new", "old", "none"]
+    assert order(client.get("/?sort=activity").text) == ["new", "old", "none"]
+    assert order(client.get("/agents/rows?sort=-activity").text) == ["old", "new", "none"]
+
+
+def test_header_click_sorts_then_reverses_and_keeps_filters(inv: Inventory) -> None:
+    seed_versions(inv)
+    client = client_for(inv)
+    assert 'href="/?type=hermes&amp;sort=name">Name</a>' in client.get("/?type=hermes").text
+    html = client.get("/?type=hermes&sort=name").text
+    assert 'href="/?type=hermes&amp;sort=-name">Name ↓</a>' in html
+    assert 'hx-get="/agents/rows?type=hermes&amp;sort=name"' in html
+    assert "Name ↑" in client.get("/?sort=-name").text
+
+
+def test_unknown_sort_column_keeps_inventory_order(inv: Inventory) -> None:
+    seed_versions(inv)
+    assert client_for(inv).get("/?sort=bogus").status_code == 200

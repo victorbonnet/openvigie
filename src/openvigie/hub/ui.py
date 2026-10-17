@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import partial
 from pathlib import Path as FilePath
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
@@ -31,7 +32,7 @@ from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.hub.store.spans import SpanQueue
 from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.templating import render
-from openvigie.model import AgentStatus, HealthState, OpenShellSandbox, Session
+from openvigie.model import AgentStatus, HealthState, OpenShellSandbox, SandboxState, Session
 from openvigie.openshell.starter import StarterPolicy, generate
 from openvigie.pricing import PriceTable
 
@@ -76,9 +77,56 @@ def _with_risk(
     request: Request, rows: list[AgentRow], sort: str | None
 ) -> tuple[list[AgentRow], dict[str, AgentRisk]]:
     risks = agent_risks(request.app.state.db, request.app.state.risk_rules, rows)
-    if sort == "risk":
-        rows = sorted(rows, key=lambda r: SEVERITY_ORDER[risks[r.agent.agent_id].level])
+    if sort:
+        rows = _sort_rows(rows, sort, risks, _agent_spend(request))
     return rows, risks
+
+
+SORT_COLUMNS = ("name", "type", "host", "version", "status", "risk", "sandboxed", "usage",
+                "activity")  # fmt: skip
+_DESCENDING = {"usage", "activity"}
+_STATUS_ORDER = {AgentStatus.ACTIVE: 0, AgentStatus.IDLE: 1, AgentStatus.STOPPED: 2}
+_SANDBOX_ORDER = {SandboxState.YES: 0, SandboxState.NO: 1}
+
+
+def _version_key(version: str) -> tuple[tuple[int, str], ...]:
+    """Numbers compare as numbers, so 0.21.5 sorts before 0.162.0."""
+    return tuple(
+        (int(p), "") if p.isdigit() else (-1, p) for p in re.findall(r"\d+|[^\d.]+", version)
+    )
+
+
+def _sort_rows(
+    rows: list[AgentRow], sort: str, risks: dict[str, AgentRisk], spend: _Spend
+) -> list[AgentRow]:
+    """Sorts the agent list by one column (FR-5): ``sort=usage`` in the column's natural order,
+    ``sort=-usage`` reversed. Rows whose value is unknown stay last either way."""
+    column = sort.removeprefix("-")
+    keys: dict[str, Callable[[AgentRow], Any]] = {
+        "name": lambda r: r.agent.name.casefold(),
+        "type": lambda r: r.agent.agent_type,
+        "host": lambda r: r.hostname.casefold(),
+        "version": lambda r: _version_key(r.agent.version) if r.agent.version else None,
+        "status": lambda r: _STATUS_ORDER.get(r.agent.status),
+        "risk": lambda r: SEVERITY_ORDER[risks[r.agent.agent_id].level],
+        "sandboxed": lambda r: _SANDBOX_ORDER.get(r.agent.sandboxed),
+        "usage": lambda r: u.cost if (u := spend.rows.get(r.agent.agent_id)) else None,
+        "activity": lambda r: r.agent.last_activity_at,
+    }
+    key = keys.get(column)
+    if key is None:
+        return rows
+    known = [r for r in rows if key(r) is not None]
+    unknown = [r for r in rows if key(r) is None]
+    descending = (column in _DESCENDING) != sort.startswith("-")
+    return sorted(known, key=key, reverse=descending) + unknown
+
+
+def _sort_links(filters: dict[str, str]) -> dict[str, str]:
+    """Column → query for its header link: a click sorts by it, a second click reverses."""
+    current = filters.get("sort")
+    return {c: urlencode({**filters, "sort": f"-{c}" if current == c else c})
+            for c in SORT_COLUMNS}  # fmt: skip
 
 
 _SPEND_DAYS = 30
@@ -138,7 +186,7 @@ def agents_page(
         rule_problems=request.app.state.risk_rules.problems,
         filters=filters,
         query=urlencode(filters),
-        sort_query=urlencode({**_filters(type, host, status), "sort": "risk"}),
+        sort_links=_sort_links(filters),
         types=sorted({r.agent.agent_type for r in everything}),
         hosts=sorted({(r.agent.host_id, r.hostname) for r in everything}, key=lambda h: h[1]),
         statuses=[s.value for s in AgentStatus],
