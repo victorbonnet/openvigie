@@ -46,7 +46,8 @@ INCLUDE: dict[str, list[str]] = {
         "config.yaml",
         "gateway_state.json",
         "gateway.pid",
-        "*.db",
+        # the adapter's store; kanban.db and verification_evidence.db hold project paths
+        "state.db",
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",
@@ -91,6 +92,15 @@ CONTENT_KEYS = {
     "text",
     "content",
     "thinking",
+    "reasoning",
+    "reasoning_content",
+    "api_content",
+    "assistantTexts",
+    "toolMetas",
+    "label",
+    "display_name",
+    "displayName",
+    "ownerDisplay",
     "prompt",
     "input",
     "output",
@@ -158,6 +168,7 @@ BROAD_PEER_COLUMN = re.compile(rf"(?i){BROAD_PEER_WORDS}")
 LONG_TEXT = 120
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
+TAILNET = re.compile(r"\b[\w.-]+\.ts\.net\b")  # MagicDNS names the tailnet, not just the host
 
 
 class Scrubber:
@@ -195,6 +206,7 @@ class Scrubber:
             value = value.replace(old, new)
         value = self.swap_peers(value)
         value = EMAIL.sub("user@example.com", value)
+        value = TAILNET.sub("host.example.ts.net", value)
         return IPV4.sub("192.0.2.1", value)
 
     def peer(self, match: re.Match[str]) -> str:

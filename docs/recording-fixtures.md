@@ -15,11 +15,12 @@ Scrubbing does this:
 
 - Secrets are redacted.
 - Credential files are never copied (`.env`, `auth*`, `*token*`, keys…).
-- Home paths, user and host names, e-mails and IP addresses are replaced.
+- Home paths, user and host names, Tailscale names, e-mails and IP addresses are replaced.
 - Chat, group, user and bot ids are replaced by the same placeholder everywhere: values,
   dictionary keys and file names.
 - Dictionary keys are scrubbed like values.
-- Free text (prompts, replies, tool output, system prompts) becomes `[scrubbed text <= N chars]`.
+- Free text (prompts, replies, reasoning, tool output, system prompts) and chat display names
+  become `[scrubbed text <= N chars]`.
 - Structure, ids, timestamps, model names and usage numbers are kept.
 - Finally, the output is checked again. If anything still looks like a secret, nothing is written.
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from openvigie.redact import redact
+from openvigie.redact import MAX_INPUT, redact
 
 # hand-written fixtures holding deliberate fake secrets (ghp_FAKE…), to prove they never leak
 SYNTHETIC = {
@@ -26,7 +26,11 @@ def test_no_secret_patterns(path: Path) -> None:
         assert "FAKE" in path.read_text()  # only ever fake values here
         return
     text = path.read_bytes().decode("utf-8", errors="replace")
-    redacted = redact(text)
-    if redacted != text:
-        first = next(i for i, (a, b) in enumerate(zip(text, redacted, strict=False)) if a != b)
-        pytest.fail(f"a secret pattern matches near character {first}; scrub this fixture")
+    # line by line: redact() truncates past MAX_INPUT, so a whole large file would always differ
+    for number, line in enumerate(text.splitlines(), start=1):
+        if len(line) > MAX_INPUT:
+            pytest.fail(f"line {number} is too long to scan; record a smaller fixture")
+        redacted = redact(line)
+        if redacted != line:
+            first = next(i for i, (a, b) in enumerate(zip(line, redacted, strict=False)) if a != b)
+            pytest.fail(f"a secret pattern matches on line {number} near character {first}")

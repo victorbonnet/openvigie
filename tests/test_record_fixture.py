@@ -637,7 +637,7 @@ def test_selection_not_starved_by_a_big_folder(
     (source / "cron" / "executions.db").write_bytes(b"")
     chosen, _ = rf.select_files(source, rf.INCLUDE["hermes"], 20)
     assert Path("sessions/20260101_120000_abcdef12.jsonl") in chosen
-    assert Path("cron/executions.db") not in chosen  # "*.db" means top level only
+    assert Path("cron/executions.db") not in chosen
 
 
 def test_survey_summarises_big_folders_and_reaches_sessions(tmp_path: Path) -> None:
@@ -738,3 +738,48 @@ def test_hermes_store_taken_before_session_logs(tmp_path: Path) -> None:
         conn.execute("create table messages (id integer primary key, timestamp real)")
     chosen, _ = rf.select_files(source, rf.INCLUDE["hermes"], 20)
     assert Path("state.db") in chosen
+
+
+def test_hermes_reasoning_names_and_other_stores_not_kept(tmp_path: Path) -> None:
+    source = tmp_path / ".hermes"
+    (source / "sessions").mkdir(parents=True)
+    turn = {"role": "assistant", "reasoning": "Alice is saying hello.",
+            "reasoning_content": "Alice is saying hello."}  # fmt: skip
+    (source / "sessions" / "20260101_120000_abcdef12.jsonl").write_text(json.dumps(turn) + "\n")
+    with sqlite3.connect(source / "state.db") as conn:
+        conn.execute("create table sessions (id text, display_name text, api_content text)")
+        conn.execute("insert into sessions values ('s1', 'Alice', 'Hi Alice')")
+    with sqlite3.connect(source / "verification_evidence.db") as conn:
+        conn.execute("create table runs (root text)")
+    dest = tmp_path / "fixture"
+    rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
+    session = json.loads((dest / "sessions" / "20260101_120000_abcdef12.jsonl").read_text())
+    assert session["reasoning"].startswith("[scrubbed text")
+    assert session["reasoning_content"].startswith("[scrubbed text")
+    with sqlite3.connect(dest / "state.db") as conn:
+        row = conn.execute("select id, display_name, api_content from sessions").fetchone()
+    assert row[0] == "s1"
+    assert row[1].startswith("[scrubbed text") and row[2].startswith("[scrubbed text")
+    assert not (dest / "verification_evidence.db").exists()
+
+
+def test_openclaw_assistant_texts_tool_metas_and_labels_scrubbed(tmp_path: Path) -> None:
+    sessions = tmp_path / ".openclaw" / "agents" / "main" / "sessions"
+    sessions.mkdir(parents=True)
+    event = {"data": {"assistantTexts": ["Hi Alice!"],
+                      "toolMetas": [{"toolName": "exec", "meta": "cat ~/alice-notes"}]},
+             "label": "Alice", "displayName": "Alice", "ownerDisplay": "Alice",
+             "meta": {"lastTouchedVersion": "2026.9.4"}}  # fmt: skip
+    (sessions / "s1.trajectory.jsonl").write_text(json.dumps(event) + "\n")
+    dest = tmp_path / "fixture"
+    rf.record("openclaw", tmp_path / ".openclaw", dest, scrubber=scrubber(), ps=FakePs())
+    text = (dest / "agents" / "main" / "sessions" / "s1.trajectory.jsonl").read_text()
+    assert "Alice" not in text and "alice" not in text
+    assert json.loads(text)["meta"] == {"lastTouchedVersion": "2026.9.4"}
+
+
+def test_tailnet_name_scrubbed() -> None:
+    origins = '["https://pi.tail0f00ba.ts.net", "http://alice-mbp.tail0f00ba.ts.net:18789"]'
+    out = rf.Scrubber(HOME, "alice", "alice-mbp").text(origins)
+    assert "tail0f00ba" not in out and "alice" not in out
+    assert out.count("host.example.ts.net") == 2
