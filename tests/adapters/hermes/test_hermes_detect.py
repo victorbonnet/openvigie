@@ -168,27 +168,27 @@ def add_profile(home: Path, name: str) -> Path:
 
 def test_one_agent_per_profile(tmp_path: Path) -> None:
     home = make_home(tmp_path)
-    add_profile(home, "argos")
-    add_profile(home, "comptoir-dev")
+    add_profile(home, "profile-1")
+    add_profile(home, "profile-2")
     ctx = fake_context(homes=[home], processes=[gateway(home)],
                        sandboxed={1302: (SandboxState.NO, None)})  # fmt: skip
     adapter = HermesAdapter()
     agents = {a.name: a for a in adapter.detect(ctx)}
-    assert list(agents) == ["Hermes · default", "Hermes · argos", "Hermes · comptoir-dev"]
-    argos = agents["Hermes · argos"]
-    assert argos.config_root == "~/.hermes/profiles/argos"
-    assert argos.version == "0.21.7"
-    assert argos.process_running is True
-    assert argos.sandboxed is SandboxState.NO
-    assert argos.last_activity_at is not None
-    assert adapter.processes(argos.agent_id) == ()
+    assert list(agents) == ["Hermes · default", "Hermes · profile-1", "Hermes · profile-2"]
+    served = agents["Hermes · profile-1"]
+    assert served.config_root == "~/.hermes/profiles/profile-1"
+    assert served.version == "0.21.7"
+    assert served.process_running is True
+    assert served.sandboxed is SandboxState.NO
+    assert served.last_activity_at is not None
+    assert adapter.processes(served.agent_id) == ()
     assert [p.pid for p in adapter.processes(agents["Hermes · default"].agent_id)] == [1302]
 
 
 def test_default_profile_keeps_its_id(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     (before,) = HermesAdapter().detect(fake_context(homes=[home]))
-    add_profile(home, "argos")
+    add_profile(home, "profile-1")
     after = HermesAdapter().detect(fake_context(homes=[home]))
     assert after[0].agent_id == before.agent_id
     assert after[1].agent_id != before.agent_id
@@ -230,7 +230,7 @@ def test_odd_profile_folders_are_skipped(tmp_path: Path) -> None:
 
 def test_broken_profile_config_names_the_profile(tmp_path: Path) -> None:
     home = make_home(tmp_path)
-    (add_profile(home, "argos") / "config.yaml").write_text("model: [unclosed\n")
+    (add_profile(home, "profile-1") / "config.yaml").write_text("model: [unclosed\n")
     adapter = HermesAdapter()
     assert len(adapter.detect(fake_context(homes=[home]))) == 2
-    assert adapter.health().reason == "profile argos: config.yaml is not valid YAML"
+    assert adapter.health().reason == "profile profile-1: config.yaml is not valid YAML"
