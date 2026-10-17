@@ -5,7 +5,8 @@ route and task, updated in place while a session goes on. Each tick reads the ro
 ``last_seen`` moved since the cursor and reports how much each grew since the totals remembered
 for it. A row met for the first time although it started before the cursor (a session resumed
 after its totals were forgotten) only sets the baseline: missing one resume beats counting a
-whole session twice.
+whole session twice. That holds only once a read got every row: while history spans several
+pages, an unseen row is one not reached yet, and counts in full.
 
 Hermes leaves cached tokens out of ``input_tokens`` for every provider. For providers that count
 them inside (OpenAI), cache reads are added back so pricing sees each provider's own convention.
@@ -43,6 +44,8 @@ CACHED_INPUT_INCLUDED = {"openai"}
 class Cursor:
     seen: float | None = None  # last_seen of the newest row read
     rows: dict[str, list[float]] = field(default_factory=dict)  # row key → [*counts, last_seen]
+    # whether the last read got every row; until then an unseen row is just not reached yet
+    caught_up: bool = True
 
     @classmethod
     def load(cls, saved: dict[str, Any] | None) -> Cursor:
@@ -53,6 +56,7 @@ class Cursor:
         return cls(
             seen if isinstance(seen, int | float) else None,
             dict(rows) if isinstance(rows, dict) else {},
+            saved.get("caught_up") is not False,
         )
 
     def dump(self) -> dict[str, Any]:
@@ -62,7 +66,7 @@ class Cursor:
         if len(self.rows) > MAX_REMEMBERED:
             newest = sorted(self.rows.items(), key=lambda kv: kv[1][-1])[-MAX_REMEMBERED:]
             self.rows = dict(newest)
-        return {"seen": self.seen, "rows": self.rows}
+        return {"seen": self.seen, "rows": self.rows, "caught_up": self.caught_up}
 
 
 def provider_of(billing_provider: str, model: str) -> str | None:
@@ -101,7 +105,7 @@ def read_usage(
     finally:
         conn.close()
     sessions: dict[str, Session] = {}
-    previous_tick = cursor.seen
+    previous_tick = cursor.seen if cursor.caught_up else None
     for row in rows:
         record = _record(agent, row, cursor, resumed_before=previous_tick)
         if record is None:
@@ -114,6 +118,7 @@ def read_usage(
     backlog = Backlog()
     backlog.truncated = len(rows) == ROWS_PER_TICK  # more rows wait: how many is unknown
     batch.backlog = backlog
+    cursor.caught_up = not backlog.truncated
     state.stage(key, cursor.dump())
     return []
 

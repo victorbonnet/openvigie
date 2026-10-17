@@ -88,3 +88,19 @@ def mcp_server(name: str, spec: Any, where: str) -> tuple[McpServer, list[Secret
 
 def unique[T](items: Iterable[T]) -> tuple[T, ...]:
     return tuple(dict.fromkeys(items))
+
+
+def secret_paths(value: Any, depth: int, prefix: str = "") -> list[str]:
+    """Dotted paths of non-empty strings under secret-looking keys, ``depth`` levels down at
+    most; values are never kept."""
+    found: list[str] = []
+    for key, item in list(table(value).items())[:MAX_ITEMS]:
+        if not isinstance(key, str):
+            continue
+        if isinstance(item, str) and item and SECRET_NAME.search(key):
+            found.append(prefix + key)
+        elif depth > 1:
+            found += secret_paths(item, depth - 1, f"{prefix}{key}.")
+        if len(found) >= MAX_ITEMS:
+            break
+    return found[:MAX_ITEMS]
