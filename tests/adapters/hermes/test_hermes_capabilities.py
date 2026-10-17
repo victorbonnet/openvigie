@@ -12,6 +12,11 @@ from openvigie.model import ApprovalLevel, Capabilities, Channel, FsAccess, NetA
 FIXTURE = Path(__file__).parent / "fixtures" / "0.21.7" / "home" / ".hermes"
 
 
+def known(caps: Capabilities) -> tuple[Channel, ...]:
+    assert caps.channels is not None
+    return caps.channels
+
+
 def capabilities(tmp_path: Path, profile: str = "default", **config: object) -> Capabilities:
     home = tmp_path / "home"
     shutil.copytree(FIXTURE, home / ".hermes")
@@ -135,12 +140,12 @@ def test_an_odd_platform_key_loses_only_itself(tmp_path: Path) -> None:
     state = json.loads((FIXTURE / "gateway_state.json").read_text())
     _, caps, version = gateway_with(tmp_path, platforms={**state["platforms"], "x" * 200: {}})
     assert version == "0.21.7"
-    assert [c.platform for c in caps.channels] == ["telegram"]
+    assert [c.platform for c in known(caps)] == ["telegram"]
 
 
 def test_unknown_platforms_are_noted(tmp_path: Path) -> None:
     adapter, caps, _ = gateway_with(tmp_path, platforms=None)
-    assert caps.channels == ()
+    assert caps.channels is None
     assert "messaging platforms unknown" in (adapter.health().reason or "")
     assert caps.sources == ("~/.hermes/config.yaml",)
 
@@ -176,7 +181,7 @@ def test_matrix_rooms_in_config_let_nobody_in(tmp_path: Path) -> None:
     adapter = HermesAdapter()
     (agent,) = [a for a in adapter.detect(ctx) if a.name == "Hermes · profile-1"]
     caps = adapter.capabilities(ctx, agent)
-    assert caps is not None and Channel("matrix") in caps.channels  # reach comes from .env
+    assert caps is not None and Channel("matrix") in known(caps)  # reach comes from .env
 
 
 def test_malformed_settings_are_unknown(tmp_path: Path) -> None:

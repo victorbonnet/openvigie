@@ -45,7 +45,11 @@ def _keyed(caps: Capabilities) -> dict[str, dict[str, str]]:
         },
         "hooks": {f"{h.event}: {h.command or '?'}": "" for h in caps.hooks},
         "secrets": {f"{s.name} ({s.where})": "" for s in caps.secrets},
-        "channels": {c.platform: _channel(c) for c in caps.channels},
+        "channels": (
+            {"(unknown)": ""}
+            if caps.channels is None
+            else {c.platform: _channel(c) for c in caps.channels}
+        ),
         **{name: dict.fromkeys(getattr(caps, name), "") for name in LISTS},
     }
 
