@@ -40,6 +40,7 @@ SHELL_PROFILES = {"coding", "full"}
 NO_SHELL_PROFILES = {"minimal", "messaging"}
 SHELL_TOOLS = {"exec", "group:runtime", "*"}
 MAX_DEPTH = 4
+GROUP_POLICIES = {"allowlist", "open", "disabled"}
 
 
 def read_capabilities(
@@ -52,13 +53,14 @@ def read_capabilities(
 ) -> Capabilities:
     agents = caps.table(config.get("agents"))
     entry = caps.table(caps.table(agents.get("entries")).get(name))
-    tools = {**caps.table(config.get("tools")), **caps.table(entry.get("tools"))}
+    root_tools, own_tools = caps.table(config.get("tools")), caps.table(entry.get("tools"))
+    tools = {**root_tools, **own_tools}
     exec_ = {**caps.table(caps.table(config.get("tools")).get("exec")),
              **caps.table(caps.table(entry.get("tools")).get("exec"))}  # fmt: skip
     sandbox = caps.table(entry.get("sandbox")) or caps.table(
         caps.table(agents.get("defaults")).get("sandbox")
     )
-    allowed, denied = caps.texts(tools.get("allow")), caps.texts(tools.get("deny"))
+    allowed, denied = _narrowed(root_tools, own_tools)
     sandboxed = caps.text(sandbox.get("mode")) == "all"
     approvals, mode = _approvals(exec_)
     servers, mcp_secrets = _mcp(caps.table(config.get("mcp")).get("servers"))
@@ -77,10 +79,22 @@ def read_capabilities(
         skills=_enabled(caps.table(config.get("skills")).get("entries")),
         hooks=tuple(Hook("internal", n) for n in _enabled(
             caps.table(caps.table(config.get("hooks")).get("internal")).get("entries"))),
-        secrets=caps.unique([*mcp_secrets, *_secrets(config, accounts)]),
+        secrets=caps.unique([*mcp_secrets, *_secrets(config, accounts)])[: caps.MAX_ITEMS],
         sources=(display_path(root / CONFIG, homes),),
         channels=tuple(_channel(config, c, a, own, claimed) for c, a in accounts),
     )  # fmt: skip
+
+
+def _narrowed(root: dict[str, Any], own: dict[str, Any]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Allowed and denied tools. An agent can only narrow the root policy: denials add up, and
+    when both levels list allowed tools, only those in both are allowed."""
+    allow_root, allow_own = caps.texts(root.get("allow")), caps.texts(own.get("allow"))
+    if allow_root and allow_own:
+        allowed = tuple(t for t in allow_own if t in allow_root)
+    else:
+        allowed = allow_own or allow_root
+    denied = caps.unique([*caps.texts(root.get("deny")), *caps.texts(own.get("deny"))])
+    return allowed[: caps.MAX_ITEMS], denied[: caps.MAX_ITEMS]
 
 
 def _approvals(exec_: dict[str, Any]) -> tuple[ApprovalLevel, str | None]:
@@ -148,9 +162,15 @@ def _bindings(config: dict[str, Any], name: str) -> tuple[list[tuple[str, str]],
             if binding.get("agentId") == name:
                 own.setdefault(channel, {})[peer["id"]] = settings
             continue
-        account = caps.text(match.get("accountId"))
-        if binding.get("agentId") == name and account and (channel, account) not in accounts:
-            accounts.append((channel, account))
+        if binding.get("agentId") != name:
+            continue
+        # no accountId: the channel's default account; "*": every account it has
+        account = caps.text(match.get("accountId")) or "default"
+        names = [account]
+        if account == "*":
+            configured = caps.table(caps.table(channels.get(channel)).get("accounts"))
+            names = [a for a in configured if isinstance(a, str)][: caps.MAX_ITEMS] or ["default"]
+        accounts += [(channel, a) for a in names if (channel, a) not in accounts]
     for channel in own:  # a group bound without an account goes through the default one
         if not any(c == channel for c, _ in accounts):
             accounts.append((channel, "default"))
@@ -169,33 +189,51 @@ def _channel(
     dm = caps.text(settings.get("dmPolicy")) or "pairing"
     allow_from = set(caps.texts(settings.get("allowFrom")))
     group_policy = caps.text(settings.get("groupPolicy")) or "allowlist"
-    open_groups = group_policy == "open" or any(
-        caps.text(g.get("groupPolicy")) == "open" or "*" in caps.texts(g.get("allowFrom"))
-        for g in chats
-    )
-    people = None if dm == "pairing" else (set() if dm == "disabled" else allow_from)
-    if people is not None and group_policy == "allowlist":
-        people |= set(caps.texts(settings.get("groupAllowFrom")))
+    chat_policies = {caps.text(g.get("groupPolicy")) or group_policy for g in chats}
+    open_dms: bool | None = None
+    people: set[str] | None = None  # who can instruct it; None: can't be counted
+    if dm == "allowlist":
+        open_dms, people = "*" in allow_from, set(allow_from)
+    elif dm in ("pairing", "disabled", "open"):
+        open_dms = dm == "open"
+        people = set() if dm == "disabled" else None  # pairing: approvals aren't read
+    groups: bool | None = None
+    if group_policy == "disabled":
+        groups = False
+    elif chat_policies <= GROUP_POLICIES:  # an unknown policy leaves group reach unknown
+        groups = "open" in chat_policies or any(
+            "*" in caps.texts(g.get("allowFrom")) for g in chats
+        )
+        if people is not None and group_policy == "allowlist":
+            people |= set(caps.texts(settings.get("groupAllowFrom")))
+            for chat in chats:
+                people |= set(caps.texts(chat.get("allowFrom")))
     label = channel if account == "default" else f"{channel}:{account}"
     return Channel(
         platform=label[: caps.MAX_TEXT],
         dm_policy=dm[: caps.MAX_TEXT],
-        open_dms=dm == "open" or (dm == "allowlist" and "*" in allow_from),
+        open_dms=open_dms,
         allowed_users=None if people is None or "*" in people else len(people),
-        groups=False if group_policy == "disabled" else open_groups,
+        groups=groups,
     )
 
 
 def _secrets(config: dict[str, Any], accounts: list[tuple[str, str]]) -> list[SecretRef]:
     refs = []
     channels = caps.table(config.get("channels"))
+    for channel in dict.fromkeys(c for c, _ in accounts):  # settings all its accounts inherit
+        shared = {k: v for k, v in caps.table(channels.get(channel)).items()
+                  if k not in ("accounts", "groups")}  # fmt: skip
+        refs += [SecretRef(f"channels.{channel}.{k}"[: caps.MAX_TEXT], CONFIG)
+                 for k in _secret_keys(shared, 1)]  # fmt: skip
     for channel, account in accounts:
         settings = caps.table(
             caps.table(caps.table(channels.get(channel)).get("accounts")).get(account)
         )
         refs += [SecretRef(f"channels.{channel}.accounts.{account}.{k}"[: caps.MAX_TEXT], CONFIG)
                  for k in _secret_keys(settings, 1)]  # fmt: skip
-    for plugin, entry in caps.table(caps.table(config.get("plugins")).get("entries")).items():
+    plugins = caps.table(caps.table(config.get("plugins")).get("entries"))
+    for plugin, entry in list(plugins.items())[: caps.MAX_ITEMS]:
         if caps.table(entry).get("enabled") is not False and isinstance(plugin, str):
             refs += [SecretRef(f"plugins.{plugin}.{k}"[: caps.MAX_TEXT], CONFIG)
                      for k in _secret_keys(caps.table(entry).get("config"), MAX_DEPTH)]  # fmt: skip

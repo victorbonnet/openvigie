@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from openvigie.adapters import caps as caps_helpers
 from openvigie.adapters.openclaw import OpenClawAdapter
 from openvigie.adapters.testing import fake_context
 from openvigie.model import ApprovalLevel, Capabilities, Channel, FsAccess, NetAccess, to_dict
@@ -150,3 +151,69 @@ def test_json5_config_reports_nothing(tmp_path: Path) -> None:
     adapter = OpenClawAdapter()
     (agent, *_) = adapter.detect(ctx)
     assert adapter.capabilities(ctx, agent) is None
+
+
+def test_unknown_policies_leave_reach_unknown(tmp_path: Path) -> None:
+    channels = recorded_channels()
+    accounts = channels["telegram"]["accounts"]
+    accounts["lutra"] |= {"dmPolicy": "allowAll", "groupPolicy": "everyone"}
+    accounts["default"] |= {"dmPolicy": "open"}
+    caps = capabilities(tmp_path, channels=channels)
+    assert caps["lutra"].channels == (Channel("telegram:lutra", "allowAll", None, None, None),)
+    (main,) = caps["main"].channels
+    assert main.open_dms is True and main.allowed_users is None
+
+
+def test_binding_without_an_account_uses_the_default_one(tmp_path: Path) -> None:
+    config = json.loads((FIXTURE / "openclaw.json").read_text())
+    bindings = [
+        {"agentId": "lutra", "match": {"channel": "telegram"}},
+        {"agentId": "main", "match": {"channel": "telegram", "accountId": "*"}},
+    ]
+    caps = capabilities(tmp_path, bindings=bindings)
+    assert [c.platform for c in caps["lutra"].channels] == ["telegram"]
+    assert {c.platform for c in caps["main"].channels} == {
+        "telegram", "telegram:lutra", "telegram:vulpes"}  # fmt: skip
+    assert config["bindings"] != bindings
+
+
+def test_group_senders_count_as_people(tmp_path: Path) -> None:
+    channels = recorded_channels()
+    channels["telegram"]["accounts"]["lutra"] |= {"dmPolicy": "allowlist", "allowFrom": ["tg:1"]}
+    channels["telegram"]["groups"]["-1009"] = {"allowFrom": ["tg:2", "tg:3"]}
+    config = json.loads((FIXTURE / "openclaw.json").read_text())
+    bindings = [
+        *config["bindings"],
+        {
+            "agentId": "lutra",
+            "match": {
+                "channel": "telegram",
+                "accountId": "lutra",
+                "peer": {"kind": "group", "id": "-1009"},
+            },
+        },
+    ]
+    (channel,) = capabilities(tmp_path, channels=channels, bindings=bindings)["lutra"].channels
+    assert channel.allowed_users == 3
+
+
+def test_channel_level_bot_token_is_a_secret(tmp_path: Path) -> None:
+    channels = {"telegram": {"botToken": "123:never-read", "dmPolicy": "pairing"}}
+    bindings = [{"agentId": "main", "match": {"channel": "telegram"}}]
+    main = capabilities(tmp_path, channels=channels, bindings=bindings)["main"]
+    assert "channels.telegram.botToken" in {s.name for s in main.secrets}
+    assert "never-read" not in repr(main)
+
+
+def test_an_agent_can_only_narrow_the_tool_policy(tmp_path: Path) -> None:
+    config = json.loads((FIXTURE / "openclaw.json").read_text())
+    config["agents"]["entries"]["main"]["tools"] = {"deny": ["browser"], "allow": ["read", "x"]}
+    tools = {"profile": "coding", "deny": ["exec"], "allow": ["read", "write"]}
+    main = capabilities(tmp_path, tools=tools, agents=config["agents"])["main"]
+    assert main.shell is False
+    assert main.tools_denied == ("exec", "browser") and main.tools_allowed == ("read",)
+
+
+def test_many_secrets_are_capped(tmp_path: Path) -> None:
+    plugins = {"entries": {f"p{i}": {"config": {"apiKey": "k"}} for i in range(1100)}}
+    assert len(capabilities(tmp_path, plugins=plugins)["main"].secrets) == caps_helpers.MAX_ITEMS
