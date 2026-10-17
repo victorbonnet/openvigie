@@ -28,7 +28,7 @@
     <tr>
       <td>{{ p.provider }}</td>
       <td>{{ p.model_id }}{% if p.aliases %}<br><span class="muted">also {{ p.aliases | join(", ") }}</span>{% endif %}
-        {% if p.above %}<br><span class="muted">above {{ compact(p.above_prompt_tokens) }} prompt tokens: {{ p.above.input }} / {{ p.above.output }}{% if p.above.cache_read is not none %} / cached {{ p.above.cache_read }}{% endif %}</span>{% endif %}</td>
+        {% if p.above %}<br><span class="muted">above {{ compact(p.above_prompt_tokens) }} prompt tokens: {{ p.above.input }} / {{ p.above.output }}{% if p.above.cache_read is not none %} / cached {{ p.above.cache_read }}{% endif %}{% if p.above.cache_write_5m is not none %} / cache write {{ p.above.cache_write_5m }}{% endif %}</span>{% endif %}</td>
       <td class="num">{{ p.rates.input }}</td>
       <td class="num">{{ p.rates.output }}</td>
       <td class="num">{{ p.rates.cache_read if p.rates.cache_read is not none else "—" }}</td>

@@ -6,11 +6,12 @@ from typing import Any
 from openvigie.adapters.base import AdapterState
 from openvigie.adapters.codex import CodexAdapter
 from openvigie.adapters.testing import fake_context
-from openvigie.model import AgentInstance, UsageQuality, UsageRecord
+from openvigie.model import AgentInstance, UsageQuality, UsageRecord, stable_id
 
 FIXTURE = Path(__file__).parent / "fixtures" / "home" / ".codex"
 S1 = "0199e5a0-1111-7000-8000-000000000001"
 S2 = "0199e0b0-2222-7000-8000-000000000002"
+S3 = "0199dc00-3333-7000-8000-000000000003"
 
 
 def setup(tmp_path: Path) -> tuple[CodexAdapter, AgentInstance, Any, Path]:
@@ -38,12 +39,66 @@ def test_fixture_totals_match_manifest(tmp_path: Path) -> None:
     assert sums(batch.usage, S1) == (12000, 4800, 650, 128)
     assert sums(batch.usage, S2) == (3000, 0, 120, 0)
     assert len([r for r in batch.usage if r.session_id == S1]) == 2  # duplicate event skipped
-    assert {r.response_model for r in batch.usage} == {"gpt-5-codex", "gpt-5"}
+    assert {r.response_model for r in batch.usage} == {"gpt-5-codex", "gpt-5", "gpt-6.1-sol"}
     assert all(r.provider == "openai" and r.quality is UsageQuality.EXACT for r in batch.usage)
     assert {s.session_id: s.models for s in batch.sessions} == {
         S1: ("gpt-5-codex",),
         S2: ("gpt-5",),
+        S3: ("gpt-6.1-sol",),
     }
+
+
+def test_cache_writes_are_mapped_per_turn(tmp_path: Path) -> None:
+    adapter, agent, ctx, _ = setup(tmp_path)
+    batch = adapter.collect(ctx, agent, AdapterState())
+    mine = [r for r in batch.usage if r.session_id == S3]
+    tokens = [
+        (r.input_tokens, r.cache_read_input_tokens, r.cache_creation_input_tokens, r.output_tokens)
+        for r in mine
+    ]
+    assert tokens == [(10000, 0, 6000, 300), (12000, 9000, 2000, 200)]
+    assert {r.cache_creation_input_tokens for r in batch.usage if r.session_id != S3} == {None}
+
+
+def test_record_ids_ignore_cache_writes(tmp_path: Path) -> None:
+    """Ids hash the four original totals, so records read before cache writes were mapped keep
+    their id and are not stored twice."""
+    adapter, agent, ctx, _ = setup(tmp_path)
+    usage = adapter.collect(ctx, agent, AdapterState()).usage
+    first = next(r for r in usage if r.session_id == S3)
+    assert first.record_id == stable_id(agent.agent_id, S3, "10000", "0", "300", "64")
+
+
+def upgrade(tmp_path: Path, *, with_last_turn: bool) -> UsageRecord:
+    """Turn 1 of …-0003 read by a release that saved totals without cache writes, then turn 2."""
+    adapter, agent, ctx, root = setup(tmp_path)
+    rollout = next((root / "sessions" / "2026" / "10" / "12").glob("rollout-*.jsonl"))
+    lines = rollout.read_text().splitlines(keepends=True)
+    rollout.write_text("".join(lines[:4]))
+    state = AdapterState()
+    adapter.collect(ctx, agent, state)
+    state.commit()
+    key = next(k for k in state.committed if k.startswith("ctx:") and S3 in k)
+    del state.committed[key]["total"]["cache_write_input_tokens"]
+    turn = json.loads(lines[5])
+    if not with_last_turn:
+        del turn["payload"]["info"]["last_token_usage"]
+    with rollout.open("a") as fh:
+        fh.write(lines[4] + json.dumps(turn) + "\n")
+    (record,) = adapter.collect(ctx, agent, state).usage
+    return record
+
+
+def test_totals_saved_before_cache_writes_were_read(tmp_path: Path) -> None:
+    record = upgrade(tmp_path, with_last_turn=True)
+    assert (record.input_tokens, record.cache_creation_input_tokens) == (12000, 2000)
+    assert record.quality is UsageQuality.EXACT
+
+
+def test_cache_writes_without_baseline_or_last_turn_are_estimated(tmp_path: Path) -> None:
+    record = upgrade(tmp_path, with_last_turn=False)
+    assert (record.input_tokens, record.cache_creation_input_tokens) == (12000, None)
+    assert record.quality is UsageQuality.ESTIMATED
 
 
 def test_incremental_reads_keep_running_totals(tmp_path: Path) -> None:

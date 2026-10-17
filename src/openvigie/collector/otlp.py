@@ -169,6 +169,7 @@ def codex_event(attrs: dict[str, Scalar], record: dict[str, Any]) -> OtlpUsage |
         input_tokens=_int(attrs.get("input_token_count")),
         output_tokens=_int(attrs.get("output_token_count")),
         cache_read_input_tokens=_int(attrs.get("cached_token_count")),
+        cache_creation_input_tokens=_int(attrs.get("cache_write_token_count")),
         reasoning_tokens=_int(attrs.get("reasoning_token_count")),
     )
 
