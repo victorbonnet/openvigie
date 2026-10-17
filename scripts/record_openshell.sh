@@ -10,7 +10,7 @@ run() { local file=$1; shift; section "$file"; "$@" 2>&1; printf '\n--- exit %s 
 run version.txt openshell --version
 run status.txt openshell status
 for cmd in "sandbox create" "sandbox list" "sandbox get" "policy get" "policy list" \
-           "policy update" "policy set"; do
+           "policy update" "policy set" "logs" "sandbox exec"; do
   # shellcheck disable=SC2086
   run "help-${cmd// /-}.txt" openshell $cmd --help
 done
@@ -101,6 +101,20 @@ run net-policy-update.txt openshell policy update ov-net --rule-name ov_probe \
   --binary /usr/bin/curl --add-endpoint example.com:443:read-only:rest:enforce --wait
 run net-policy-list.txt openshell policy list ov-net
 run net-policy-base-v2.json openshell policy get ov-net --base --output json
+
+# Blocked requests (FR-18): a host no rule allows, and an allowed host from a binary its rule
+# doesn't list; then an allowed one, to tell denials apart in the logs
+in_net() { openshell sandbox exec ov-net --no-tty --no-login-shell --timeout 30 -- "$@"; }
+run net-exec-denied-host.txt in_net curl -sS -m 10 -o /dev/null -w '%{http_code}\n' \
+  https://www.wikipedia.org/
+run net-exec-denied-binary.txt in_net python3 -c \
+  'import urllib.request; urllib.request.urlopen("https://example.com/", timeout=10)'
+run net-exec-allowed.txt in_net curl -sS -m 10 -o /dev/null -w '%{http_code}\n' \
+  https://example.com/
+sleep 5
+run net-logs.txt openshell logs ov-net -n 500 --since 15m --source sandbox
+run net-logs-gateway.txt openshell logs ov-net -n 500 --since 15m --source gateway
+run net-logs-debug.txt openshell logs ov-net -n 1000 --since 15m --level debug
 run net-delete.txt openshell sandbox delete ov-net
 
 run delete.txt openshell sandbox delete "$NAME"
