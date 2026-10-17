@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 
 from openvigie.adapters.base import HostContext, ProcessInfo
+from openvigie.adapters.common import owner_name
 from openvigie.adapters.openclaw import OpenClawAdapter
-from openvigie.adapters.openclaw.adapter import is_openclaw_process
+from openvigie.adapters.openclaw.adapter import MAX_AGENTS, is_gateway
 from openvigie.adapters.registry import discover
 from openvigie.adapters.testing import AdapterContract, fake_context, fake_process
 from openvigie.model import AgentInstance, HealthState, SandboxState
@@ -189,18 +190,73 @@ def test_gateway_processes_not_offered_for_stop(tmp_path: Path) -> None:
         ),
         (
             "node",
-            ("node", "/opt/homebrew/lib/node_modules/openclaw/dist/index.js"),
+            ("node", "/opt/homebrew/lib/node_modules/openclaw/dist/index.js", "gateway"),
             "/opt/homebrew/bin/node",
             True,
         ),
-        ("openclaw", ("openclaw", "tui"), "/home/u/.npm-global/bin/openclaw", True),
-        ("clawdbot", ("clawdbot",), "/usr/local/bin/clawdbot", True),
-        ("node", ("node", "/srv/app/dist/index.js"), "/usr/bin/node", False),
-        ("MainThread", ("/usr/bin/python3", "server.py"), "/usr/bin/python3", False),
+        ("openclaw", ("openclaw", "gateway", "run"), "/home/u/.npm-global/bin/openclaw", True),
+        ("openclaw-gateway", ("openclaw-gateway",), "/usr/local/bin/openclaw-gateway", True),
+        ("openclaw", ("openclaw", "tui"), "/home/u/.npm-global/bin/openclaw", False),
+        ("clawdbot", ("clawdbot", "status"), "/usr/local/bin/clawdbot", False),
+        ("node", ("node", "/opt/homebrew/lib/node_modules/openclaw/dist/index.js"),
+         "/opt/homebrew/bin/node", False),
+        ("node", ("node", "/srv/app/dist/index.js", "gateway"), "/usr/bin/node", False),
+        ("MainThread", ("/usr/bin/python3", "server.py", "gateway"), "/usr/bin/python3", False),
     ],
-)
-def test_process_signature(name: str, args: tuple[str, ...], exe: str, expected: bool) -> None:
-    assert is_openclaw_process(fake_process(1, name, args, exe=exe)) is expected
+)  # fmt: skip
+def test_gateway_signature(name: str, args: tuple[str, ...], exe: str, expected: bool) -> None:
+    assert is_gateway(fake_process(1, name, args, exe=exe)) is expected
+
+
+def test_cli_alone_is_not_a_running_gateway(tmp_path: Path) -> None:
+    cli = fake_process(77, "openclaw", ("openclaw", "tui"), exe="/usr/local/bin/openclaw")
+    agents = OpenClawAdapter().detect(fake_context(homes=[make_home(tmp_path)], processes=[cli]))
+    assert agents and all(a.process_running is False for a in agents)
+    assert {a.sandboxed for a in agents} == {SandboxState.UNKNOWN}
+
+
+def test_gateway_shared_by_two_installs_of_one_owner_goes_to_neither(tmp_path: Path) -> None:
+    custom = tmp_path / "state"
+    shutil.copytree(FIXTURE, custom)
+    script = install_package(tmp_path, "2026.9.4")
+    owner = owner_name(custom)
+    proc = fake_process(4242, "MainThread", [a.format(script=script) for a in GATEWAY_ARGS],
+                        exe="/usr/bin/node", username=owner or "")  # fmt: skip
+    ctx = fake_context(homes=[make_home(tmp_path)], env={"OPENCLAW_STATE_DIR": str(custom)},
+                       processes=[proc])  # fmt: skip
+    agents = OpenClawAdapter().detect(ctx)
+    assert len(agents) == 6
+    assert all(a.process_running is False for a in agents)
+
+
+def test_agent_list_is_bounded(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    config_path = home / ".openclaw" / "openclaw.json"
+    config = json.loads(config_path.read_text())
+    config["agents"]["entries"] = {f"a{i:04}": {} for i in range(5000)}
+    config_path.write_text(json.dumps(config))
+    adapter = OpenClawAdapter()
+    assert len(adapter.detect(fake_context(homes=[home]))) == MAX_AGENTS
+    assert "more than 100 agents" in (adapter.health().reason or "")
+
+
+@pytest.mark.parametrize("text", ["[" * 200_000, '{"meta": [], "agents": {"entries": 3}}'])
+def test_odd_config_still_detects(tmp_path: Path, text: str) -> None:
+    home = make_home(tmp_path)
+    (home / ".openclaw" / "openclaw.json").write_text(text)
+    adapter = OpenClawAdapter()
+    agents = adapter.detect(fake_context(homes=[home]))
+    assert sorted(a.name for a in agents) == [
+        "OpenClaw · lutra", "OpenClaw · main", "OpenClaw · vulpes"]  # fmt: skip
+    assert adapter.health().state is HealthState.DEGRADED
+
+
+def test_uninstalled_agents_are_forgotten(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    adapter = OpenClawAdapter()
+    assert adapter.detect(fake_context(homes=[home]))
+    shutil.rmtree(home / ".openclaw")
+    assert adapter.detect(fake_context(homes=[home])) == [] and adapter.roots == {}
 
 
 def test_registered_as_builtin() -> None:
