@@ -75,7 +75,7 @@ def test_stopped_gateway(tmp_path: Path) -> None:
 
 
 def test_not_installed(tmp_path: Path) -> None:
-    (tmp_path / "home" / ".hermes").mkdir(parents=True)
+    (tmp_path / "home" / ".hermes").mkdir(parents=True, exist_ok=True)
     assert HermesAdapter().detect(fake_context(homes=[tmp_path / "home"])) == []
 
 
@@ -165,7 +165,7 @@ def test_registered() -> None:
 
 def add_profile(home: Path, name: str) -> Path:
     profile = home / ".hermes" / "profiles" / name
-    profile.mkdir(parents=True)
+    profile.mkdir(parents=True, exist_ok=True)
     for file in ("config.yaml", "state.db"):
         shutil.copy(FIXTURE / file, profile / file)
     return profile
@@ -225,7 +225,7 @@ def test_profile_with_its_own_gateway(tmp_path: Path) -> None:
 def test_odd_profile_folders_are_skipped(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     profiles = home / ".hermes" / "profiles"
-    (profiles / "empty").mkdir(parents=True)
+    (profiles / "empty").mkdir(parents=True, exist_ok=True)
     (profiles / ".hidden").mkdir()
     (profiles / "linked").symlink_to(FIXTURE)
     (profiles / "file").write_text("")
@@ -352,7 +352,7 @@ def test_junk_in_profiles_does_not_hide_real_ones(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     profiles = home / ".hermes" / "profiles"
     for i in range(150):
-        (profiles / f".cache-{i:03}").mkdir(parents=True)
+        (profiles / f".cache-{i:03}").mkdir(parents=True, exist_ok=True)
     add_profile(home, "zeta")
     agents = HermesAdapter().detect(fake_context(homes=[home]))
     assert [a.name for a in agents] == ["Hermes · default", "Hermes · zeta"]
@@ -363,6 +363,7 @@ def test_long_profile_listing_is_cut_and_noted(
 ) -> None:
     monkeypatch.setattr(hermes, "MAX_PROFILE_ENTRIES", 3)
     home = make_home(tmp_path)
+    shutil.rmtree(home / ".hermes" / "profiles")  # only the profiles below
     for i in range(5):
         add_profile(home, f"profile-{i}")
     adapter = HermesAdapter()

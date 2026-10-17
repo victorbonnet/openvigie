@@ -47,7 +47,8 @@ def move_to_database(agent_dir: Path, lines: list[str]) -> None:
 
 
 def test_reads_transcripts_but_not_trajectories(tmp_path: Path) -> None:
-    adapter, agents, _ = setup(tmp_path)
+    adapter, agents, root = setup(tmp_path)
+    move_to_database(root / "main", [])
     state = AdapterState()
     batch = collect(adapter, agents["main"], state)
     totals = {
@@ -72,6 +73,7 @@ def test_reads_transcripts_but_not_trajectories(tmp_path: Path) -> None:
 
 def test_database_events_count_once_with_the_transcript(tmp_path: Path) -> None:
     adapter, agents, root = setup(tmp_path)
+    move_to_database(root / "main", [])
     from_file = collect(adapter, agents["main"], AdapterState()).usage
     move_to_database(root / "main", TRANSCRIPT.read_text().splitlines())
     both = collect(adapter, agents["main"], AdapterState()).usage
@@ -104,6 +106,7 @@ def test_openai_input_counts_cache_reads(tmp_path: Path) -> None:
 
 def test_codex_harness_sessions(tmp_path: Path) -> None:
     adapter, agents, root = setup(tmp_path)
+    move_to_database(root / "lutra", [])
     shutil.copytree(CODEX / "sessions", root / "lutra" / "agent" / "codex-home" / "sessions")
     codex = CodexAdapter()
     (codex_agent,) = codex.detect(fake_context(homes=[CODEX.parent]))
@@ -120,13 +123,35 @@ def test_codex_harness_sessions(tmp_path: Path) -> None:
 
 
 def test_backfill_window(tmp_path: Path) -> None:
-    adapter, agents, _ = setup(tmp_path)
+    adapter, agents, root = setup(tmp_path)
+    move_to_database(root / "main", [])
     late = AdapterState(backfill_since=datetime(2026, 6, 19, 6, 0, 30, tzinfo=UTC))
     assert len(collect(adapter, agents["main"], late).usage) == 3  # two routed, one unknown
 
 
+@pytest.mark.parametrize(
+    ("name", "known", "output", "cache_read", "unknown"),
+    [("main", 18, 2_309, 99_298, 0), ("lutra", 14, 1_479, 68_469, 0),
+     ("vulpes", 6, 1_280, 49_088, 4)],
+)  # fmt: skip
+def test_recorded_database_rows(
+    tmp_path: Path, name: str, known: int, output: int, cache_read: int, unknown: int
+) -> None:
+    adapter, agents, root = setup(tmp_path)
+    shutil.rmtree(root / name / "sessions", ignore_errors=True)  # the database only
+    batch = collect(adapter, agents[name], AdapterState())
+    assert batch.stats.parse_errors == 0
+    counted = [r for r in batch.usage if r.quality is not UsageQuality.UNKNOWN]
+    assert len(counted) == known
+    assert sum(r.output_tokens or 0 for r in counted) == output
+    assert sum(r.cache_read_input_tokens or 0 for r in counted) == cache_read
+    # zero counters on calls that didn't fail (stopReason stop or toolUse): unknown, not zero
+    assert len(batch.usage) - known == unknown
+
+
 def test_agent_without_sessions(tmp_path: Path) -> None:
-    adapter, agents, _ = setup(tmp_path)
+    adapter, agents, root = setup(tmp_path)
+    move_to_database(root / "lutra", [])
     batch = collect(adapter, agents["lutra"], AdapterState())
     assert batch.usage == []
     assert batch.backlog is not None and batch.backlog.complete

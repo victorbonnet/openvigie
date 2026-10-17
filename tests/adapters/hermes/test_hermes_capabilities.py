@@ -23,7 +23,7 @@ def capabilities(tmp_path: Path, profile: str = "default", **config: object) -> 
     target = home / ".hermes"
     if profile != "default":
         target = target / "profiles" / profile
-        target.mkdir(parents=True)
+        target.mkdir(parents=True, exist_ok=True)
         shutil.copy(FIXTURE / "state.db", target / "state.db")
         (target / "config.yaml").write_text(yaml.safe_dump(config))
     elif config:
@@ -45,7 +45,7 @@ def test_recorded_profile(tmp_path: Path) -> None:
     assert caps.network is NetAccess.UNKNOWN
     assert caps.shell is True
     assert "hermes-cli" in caps.tools_allowed and "terminal" in caps.tools_allowed
-    assert caps.channels == (Channel("telegram"),)  # no .env recorded: who may write is unknown
+    assert caps.channels == (Channel("telegram", "allowlist", False, 1, False),)  # from .env
     assert caps.sources == ("~/.hermes/config.yaml", "~/.hermes/gateway_state.json")
 
 
@@ -54,7 +54,7 @@ def test_profile_defaults_and_its_platforms(tmp_path: Path) -> None:
     assert caps.approvals is ApprovalLevel.AUTO_EDIT and caps.approval_mode == "smart"
     assert caps.filesystem is FsAccess.FULL and caps.network is NetAccess.FULL  # local backend
     assert caps.shell is True and caps.tools_allowed == ("hermes-cli",)
-    assert caps.channels == (Channel("telegram"),)
+    assert caps.channels == (Channel("telegram", "allowlist", False, 1, False),)
     assert caps.sources == (
         "~/.hermes/profiles/profile-1/config.yaml",
         "~/.hermes/gateway_state.json",
@@ -90,7 +90,7 @@ def test_skills_are_listed_by_name(tmp_path: Path) -> None:
     home = tmp_path / "home" / ".hermes"
     shutil.copytree(FIXTURE, home)
     for path in ("research/arxiv", "github/pr-review"):
-        (home / "skills" / path).mkdir(parents=True)
+        (home / "skills" / path).mkdir(parents=True, exist_ok=True)
         (home / "skills" / path / "SKILL.md").write_text("---\nname: x\n---\n")
     ctx = fake_context(homes=[tmp_path / "home"])
     adapter = HermesAdapter()
@@ -175,7 +175,7 @@ def test_matrix_rooms_in_config_let_nobody_in(tmp_path: Path) -> None:
     shutil.copytree(FIXTURE, home)
     (home / "gateway_state.json").write_text(json.dumps({**state, "platforms": platforms}))
     profile = home / "profiles" / "profile-1"
-    profile.mkdir(parents=True)
+    profile.mkdir(parents=True, exist_ok=True)
     (profile / "config.yaml").write_text(yaml.safe_dump({"matrix": {"allowed_rooms": "!r:x"}}))
     ctx = fake_context(homes=[tmp_path / "home"])
     adapter = HermesAdapter()

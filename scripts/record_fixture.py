@@ -48,6 +48,9 @@ INCLUDE: dict[str, list[str]] = {
         "gateway.pid",
         # the adapter's store; kanban.db and verification_evidence.db hold project paths
         "state.db",
+        # access settings only (ACCESS_ONLY): who may message each profile
+        ".env",
+        "profiles/*/.env",
         "sessions/*",
         "sessions/*/*",
         "logs/*.log",
@@ -174,6 +177,19 @@ MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}
 DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
 SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
 HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
+# Hermes keeps who may message a profile in its .env, next to its keys: such a file is copied
+# with only its access lines, ids replaced, every other line dropped unread
+ACCESS_ONLY: dict[str, frozenset[str]] = {"hermes": frozenset({".env"})}
+ACCESS_LINE = re.compile(
+    r"^(?:export\s+)?([A-Z][A-Z0-9_]{0,40}_(?:ALLOWED_USERS|ALLOW_ALL_USERS|GROUP_ALLOWED_CHATS"
+    r"|GROUP_ALLOWED_USERS|ALLOWED_ROLES))\s*=(.*)$"
+)
+FLAGS = {"true", "false", "1", "0", "yes", "no"}
+# OpenClaw's transcript events: rebuilt from only what the usage reader needs (#219)
+TOKEN = re.compile(r"[A-Za-z_][\w.-]{0,40}")
+EVENT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]{5,20}(?:Z|[+-]\d{2}:\d{2})?")
+STRUCTURED_COLUMNS = {("transcript_events", "event_json")}
 
 
 class Scrubber:
@@ -187,6 +203,7 @@ class Scrubber:
         self.peer_re: re.Pattern[str] | None = None
         self.names: list[tuple[re.Pattern[str], str]] = []
         self.notes: dict[str, str] = {}
+        self.handles: dict[str, str] = {}  # non-numeric allowlist entries -> user-N
 
     def add_names(self, names: Iterable[str], label: str) -> None:
         """Between any non-alphanumerics, with any of ``-``, ``_`` or a space between parts:
@@ -265,7 +282,8 @@ class Scrubber:
             for old, new in self.replacements[1:]:
                 part = part.replace(old, new)
             parts.append(self.swap_names(self.swap_peers(part)))
-        return Path(*parts)
+        # a note name is only recognisable with its memory/ folder, which is another part
+        return Path(MEMORY_NOTE.sub(self.note, str(Path(*parts))))
 
     @staticmethod
     def placeholder(value: str) -> str:
@@ -328,7 +346,7 @@ def denied(path: Path) -> bool:
 
 
 def select_files(
-    source: Path, patterns: list[str], max_files: int
+    source: Path, patterns: list[str], max_files: int, access_only: frozenset[str] = frozenset()
 ) -> tuple[list[Path], list[Path]]:
     """Each pattern is walked from its literal folder, to its own depth (``*.db`` is the top
     level only), so a big unrelated folder (a git checkout) can't use up the walk's budget."""
@@ -348,15 +366,23 @@ def select_files(
             if not fnmatch.fnmatch(str(rel), pattern):
                 continue
             seen.add(rel)
-            if denied(path):
+            if denied(path) and path.name not in access_only:
                 dropped.append(rel)
             elif len(chosen) < max_files:
                 chosen.append(rel)
     return chosen, dropped
 
 
-def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
+def scrub_file(
+    src: Path,
+    dst: Path,
+    scrubber: Scrubber,
+    max_lines: int,
+    access_only: frozenset[str] = frozenset(),
+) -> str:
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.name in access_only:
+        return scrub_access_file(src, dst, scrubber)
     if src.suffix == ".jsonl":
         values = list(iter_jsonl(src, max_lines=max_lines))
         dst.write_text("".join(json.dumps(scrubber.value(v)) + "\n" for v in values))
@@ -380,6 +406,117 @@ def scrub_file(src: Path, dst: Path, scrubber: Scrubber, max_lines: int) -> str:
     lines = read_text_bounded(src).splitlines()[:max_lines]
     dst.write_text("".join(scrubber.text(line) + "\n" for line in lines))
     return f"{len(lines)} lines, only pattern-redacted: **check it by hand**"
+
+
+def access_lines(src: Path) -> Iterator[tuple[str, str]]:
+    """(name, value) of the access settings in a dotenv file; no other line is looked into."""
+    for line in read_text_bounded(src, max_bytes=256 * 1024).splitlines():
+        m = ACCESS_LINE.match(line.strip())
+        if m is None:
+            continue
+        value = m.group(2).strip()
+        if value[:1] in ("'", '"'):
+            end = value.find(value[0], 1)
+            value = value[1:end] if end > 0 else value[1:]
+        else:
+            value = re.split(r"\s#", value, maxsplit=1)[0].strip()
+        yield m.group(1), value
+
+
+def access_entries(value: str) -> list[str]:
+    try:
+        parsed = json.loads(value) if value.startswith("[") else None
+    except ValueError:
+        parsed = None
+    raw = parsed if isinstance(parsed, list) else value.split(",")
+    return [str(e).strip() for e in raw if str(e).strip()]
+
+
+def scrub_access_file(src: Path, dst: Path, scrubber: Scrubber) -> str:
+    """Only the access settings, as Hermes reads them: ids become the stable placeholders,
+    names ``user-N``, ``*`` and flags stay."""
+    out = []
+    for name, value in access_lines(src):
+        if name.endswith("_ALLOW_ALL_USERS"):
+            out.append(f"{name}={value.lower() if value.lower() in FLAGS else 'unknown'}")
+            continue
+        entries = []
+        for entry in access_entries(value):
+            digits = WHOLE_DIGITS.search(entry)
+            if entry == "*":
+                entries.append(entry)
+            elif digits and digits.group(0) == entry.lstrip("+-"):
+                entries.append(entry[: len(entry) - len(digits.group(0))]
+                               + scrubber.peer_digits(digits.group(0)))  # fmt: skip
+            else:
+                entries.append(
+                    scrubber.handles.setdefault(entry, f"user-{len(scrubber.handles) + 1}")
+                )
+        out.append(f"{name}={','.join(entries)}")
+    dst.write_text("".join(line + "\n" for line in out))
+    return f"access settings only: {len(out)} kept, every other line dropped unread"
+
+
+def access_peers(src: Path) -> set[str]:
+    return {
+        d.group(0)
+        for name, value in access_lines(src)
+        if not name.endswith("_ALLOW_ALL_USERS")
+        for entry in access_entries(value)
+        if (d := WHOLE_DIGITS.search(entry)) and d.group(0) == entry.lstrip("+-")
+    }
+
+
+def transcript_event(text: Any, scrubber: Scrubber) -> Any:
+    """An OpenClaw transcript event, rebuilt from the fields the usage reader needs: its type,
+    id and time, and its message's role, model, provider, time, stop reason and token counts.
+    Everything else, message content included, is left out; a value of the wrong shape is a
+    placeholder."""
+    try:
+        data = json.loads(text) if isinstance(text, str) else None
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        return scrubber.placeholder(text) if isinstance(text, str) else text
+    out: dict[str, Any] = {}
+    for key, pattern in (("type", TOKEN), ("id", EVENT_ID), ("timestamp", ISO_TIME)):
+        if key in data:
+            out[key] = shaped(data[key], pattern, scrubber)
+    message = data.get("message")
+    if isinstance(message, dict):
+        kept: dict[str, Any] = {}
+        for key, pattern in (("role", TOKEN), ("stopReason", TOKEN)):
+            if key in message:
+                kept[key] = shaped(message[key], pattern, scrubber)
+        if isinstance(message.get("model"), str):
+            kept["model"] = scrubber.value(message["model"], "model")
+        if "provider" in message:  # scrubbed like the JSONL transcripts'
+            kept["provider"] = scrubber.value(message["provider"], "provider", in_content=True)
+        if isinstance(message.get("timestamp"), int | float):
+            kept["timestamp"] = message["timestamp"]
+        if isinstance(message.get("usage"), dict):
+            kept["usage"] = numbers_only(message["usage"])
+        out["message"] = kept
+    return json.dumps(out, separators=(",", ":"))
+
+
+def shaped(value: Any, pattern: re.Pattern[str], scrubber: Scrubber) -> Any:
+    if isinstance(value, str):
+        return value if pattern.fullmatch(value) else scrubber.placeholder(value)
+    return value if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def numbers_only(value: dict[str, Any], depth: int = 2) -> dict[str, Any]:
+    """Token counts and costs: numbers, and dicts of numbers; keys must be plain words."""
+    out: dict[str, Any] = {}
+    for key, item in list(value.items())[:64]:
+        if not (isinstance(key, str) and TOKEN.fullmatch(key)):
+            continue
+        if isinstance(item, int | float) and not isinstance(item, bool):
+            out[key] = item
+        elif isinstance(item, dict) and depth > 1:
+            out[key] = numbers_only(item, depth - 1)
+    return out
 
 
 def json5_data(text: str) -> Any:
@@ -428,8 +565,12 @@ def scrub_sqlite(src: Path, dst: Path, scrubber: Scrubber, max_rows: int) -> str
         ]
         notes += keep_newest_rows(target, tables, max_rows)
         target.create_function("scrub", 2, lambda v, k: scrubber.value(v, k))
+        target.create_function("event", 1, lambda v: transcript_event(v, scrubber))
         for table in tables:
             for _, col, coltype, *_ in target.execute(f'pragma table_info("{table}")'):
+                if (table, col) in STRUCTURED_COLUMNS:
+                    target.execute(f'update "{table}" set "{col}" = event("{col}")')  # noqa: S608
+                    continue
                 textual = "CHAR" in coltype.upper() or "TEXT" in coltype.upper() or not coltype
                 if textual or PEER_KEY.match(col):
                     scrub_column(target, table, col)
@@ -526,7 +667,9 @@ def whole_numbers(ids: Iterable[str]) -> re.Pattern[str]:
     return re.compile(rf"(?<!\d)(?:{alternatives})(?!\d)")
 
 
-def collect_peers(source: Path, files: list[Path]) -> set[str]:
+def collect_peers(
+    source: Path, files: list[Path], access_only: frozenset[str] = frozenset()
+) -> set[str]:
     """Chat and user ids in the sample: peers in session keys, values of chat_id-like fields
     and columns, and entries of allow lists. Collected first so every file replaces them the
     same way."""
@@ -535,6 +678,9 @@ def collect_peers(source: Path, files: list[Path]) -> set[str]:
         path = source / rel
         if path.suffix in SQLITE_SUFFIXES:
             ids |= db_peers(path)
+            continue
+        if path.name in access_only:  # only its access lines are ever read
+            ids |= access_peers(path)
             continue
         text = read_text_bounded(path, max_bytes=64 * 1024 * 1024)
         for key in SESSION_KEY.finditer(text):
@@ -943,17 +1089,20 @@ def record(
     scrubber = scrubber or Scrubber(str(Path.home()), getpass.getuser(), socket.gethostname())
     scrubber.add_names(profile_names(source), "profile")
     scrubber.add_names(words or [], "word")
-    chosen, dropped = select_files(source, patterns, max_files)
+    access_only = ACCESS_ONLY.get(agent, frozenset())
+    chosen, dropped = select_files(source, patterns, max_files, access_only)
     if not chosen:
         raise SystemExit(f"no files matched {patterns} under {source}")
     # names of copied files too: name_peers' walk may stop before reaching them
     in_names = {d for rel in chosen for d in LONG_ID.findall(str(rel))}
-    scrubber.add_peers(collect_peers(source, chosen) | name_peers(source) | in_names)
+    scrubber.add_peers(collect_peers(source, chosen, access_only) | name_peers(source) | in_names)
     with tempfile.TemporaryDirectory() as tmp:
         staging = Path(tmp) / "fixture"
         notes = [
             f"- `{scrubber.path(rel)}`: "
-            + scrub_file(source / rel, staging / scrubber.path(rel), scrubber, max_lines)
+            + scrub_file(
+                source / rel, staging / scrubber.path(rel), scrubber, max_lines, access_only
+            )
             for rel in chosen
         ]
         import psutil

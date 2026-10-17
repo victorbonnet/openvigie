@@ -7,6 +7,10 @@ Recorded with `scripts/record_fixture.py` from a real install, then scrubbed.
 - `config.yaml`: yaml (comments dropped)
 - `gateway_state.json`: json
 - `gateway.pid`: 1 lines, only pattern-redacted: **check it by hand**
+- `.env`, `profiles/<profile>/.env` (added 2026-10-17, #219): access settings only, every
+  other line dropped unread; chat and user ids replaced by placeholders. A profile folder here
+  holds only its `.env`, so detection doesn't count it as a profile. The `pairing/` and
+  `platforms/pairing/` folders were empty on the recorded install: no approvals sample
 - `state.db`: sqlite, 15 tables; dropped full-text index messages_fts, messages_fts_trigram; dropped 11 triggers; newest 200 of 24374 rows in messages
 - `sessions/20260509_215746_c9848bfd.jsonl`: 30 lines
 - `sessions/20260510_082739_9be81c1f.jsonl`: 82 lines

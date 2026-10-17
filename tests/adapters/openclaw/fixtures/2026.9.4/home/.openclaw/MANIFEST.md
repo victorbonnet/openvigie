@@ -77,8 +77,13 @@ expected; a chat, group, bot or phone number is not.
 - Where token usage is recorded (file, field names): assistant `message` events with `usage`
   (`input`, `output`, `cacheRead`, `cacheWrite`) in `transcript_events` of
   `agent/openclaw-agent.sqlite` (2026.9) and in older `sessions/<id>.jsonl`; `input` leaves
-  cache reads out. The recorder scrubs `transcript_events.event_json` whole, so tests build
-  those rows from the `.jsonl` files. `*.trajectory.jsonl` holds run traces, not read for usage
+  cache reads out. `*.trajectory.jsonl` holds run traces, not read for usage.
+  `transcript_events` was re-recorded on 2026-10-17 (#219) with each event rebuilt from only
+  `type`, `id`, `timestamp` and its message's `role`, `model`, `provider` (scrubbed),
+  `timestamp`, `stopReason` and numeric `usage`; message content was never copied. The rest
+  of each database is the original recording. Totals from those rows (assistant messages with
+  usage): main 18, output 2309, cache read 99298; lutra 14, output 1479, cache read 68469;
+  vulpes 6, output 1280, cache read 49088, plus 4 with zero counters on calls that didn't fail
 - Expected totals per session (for contract tests): `1c1ccc7d-…`: 3 assistant messages,
   `moonshotai/Kimi-K2.6:deepinfra`, input 26560, output 1435, cache read 38400;
   `352a19c5-…`: 3 messages, same model, input 18635, output 929, cache read 28928;

@@ -120,7 +120,7 @@ def test_forgotten_session_resumed_only_sets_a_baseline(tmp_path: Path) -> None:
 def test_profile_usage_goes_to_the_profile(tmp_path: Path) -> None:
     adapter, _, db = setup(tmp_path)
     profile = tmp_path / "home" / ".hermes" / "profiles" / "profile-1"
-    profile.mkdir(parents=True)
+    profile.mkdir(parents=True, exist_ok=True)
     shutil.copy(db, profile / "state.db")
     with sqlite3.connect(profile / "state.db") as conn:
         conn.execute("delete from session_model_usage where session_id != ?", (CODEX_SESSION,))
@@ -159,7 +159,7 @@ def test_history_over_several_pages_loses_nothing(
 def test_usage_notes_name_the_profile(tmp_path: Path) -> None:
     adapter, _, _ = setup(tmp_path)
     profile = tmp_path / "home" / ".hermes" / "profiles" / "profile-1"
-    profile.mkdir(parents=True)
+    profile.mkdir(parents=True, exist_ok=True)
     (profile / "state.db").write_bytes(b"not a database" * 100)
     agents = {a.name: a for a in adapter.detect(fake_context(homes=[tmp_path / "home"]))}
     collect(adapter, agents["Hermes · profile-1"], AdapterState())
