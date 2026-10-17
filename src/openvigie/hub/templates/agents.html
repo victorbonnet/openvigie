@@ -34,11 +34,17 @@
   {% if filters.get('sort') %}<input type="hidden" name="sort" value="{{ filters.get('sort') }}">{% endif %}
   <button type="submit">Filter</button>
 </form>
-<table>
+{% macro sort_th(column, label, cls="", title="") -%}
+{%- set h = sort_headers[column] -%}
+<th{% if cls %} class="{{ cls }}"{% endif %}{% if h.aria_sort %} aria-sort="{{ h.aria_sort }}"{% endif %} title="{% if title %}{{ title }}. {% endif %}{{ h.title }}"><a href="/?{{ h.query }}">{{ label }}{% if h.arrow %} {{ h.arrow }}{% endif %}</a></th>
+{%- endmacro %}
+<div class="table-scroll">
+<table class="dense">
   <thead>
-    <tr><th>Name</th><th>Type</th><th>Host</th><th>Version</th><th>Status</th><th><a href="/?{{ sort_query }}" title="Most risky first">Risk{% if filters.get('sort') == 'risk' %} ↓{% endif %}</a></th><th>Sandboxed</th><th class="num" title="List-price cost and tokens over the last {{ spend_days }} days">Usage ({{ spend_days }}d)</th><th>Last activity</th></tr>
+    <tr>{{ sort_th("name", "Name") }}{{ sort_th("type", "Type") }}{{ sort_th("host", "Host") }}{{ sort_th("version", "Version") }}{{ sort_th("status", "Status") }}{{ sort_th("risk", "Risk") }}{{ sort_th("sandboxed", "Sandboxed") }}{{ sort_th("usage", "Usage (" ~ spend_days ~ "d)", cls="num", title="List-price cost and tokens over the last " ~ spend_days ~ " days") }}{{ sort_th("activity", "Last activity") }}</tr>
   </thead>
   {% include "_agent_rows.html" %}
 </table>
+</div>
 {% endif %}
 {% endblock %}
