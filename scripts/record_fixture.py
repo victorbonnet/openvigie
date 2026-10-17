@@ -170,8 +170,10 @@ EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 IPV4 = re.compile(r"\b(?!127\.)(?:\d{1,3}\.){3}\d{1,3}\b")
 TAILNET = re.compile(r"\b[\w.-]+\.ts\.net\b")  # MagicDNS names the tailnet, not just the host
 # a note's file name says what it is about; dated notes (OpenClaw's daily memory) say nothing
-MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\s\"'`\\]+\.md)(?![\w])")
+MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}?\.md)(?![\w])")
 DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
+SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
+HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
 
 
 class Scrubber:
@@ -187,19 +189,31 @@ class Scrubber:
         self.notes: dict[str, str] = {}
 
     def add_names(self, names: Iterable[str], label: str) -> None:
-        """Whole words only, any of ``-``, ``_`` or a space between parts: ``tax-return`` also
-        matches ``Tax Return`` and ``tax_return_mcp``, and ``cafe`` not the hash ``3cafe4``."""
+        """Between any non-alphanumerics, with any of ``-``, ``_`` or a space between parts:
+        ``tax-return`` also matches ``Tax Return`` and ``workspace_tax_return``, and ``cafe`` not
+        the hash ``3cafe4`` nor the uuid segment ``12-cafe-34``."""
         known = {placeholder for _, placeholder in self.names}
         for name in sorted(set(names) - {""}, key=lambda n: (-len(n), n)):
             parts = r"[-_ ]?".join(map(re.escape, re.split(r"[-_ ]+", name.strip("-_ "))))
             n = sum(p.startswith(f"{label}-") for p in known) + 1
             known.add(placeholder := f"{label}-{n}")
-            self.names.append((re.compile(rf"(?i)(?<![\w-]){parts}(?![^\W_])"), placeholder))
+            self.names.append((re.compile(rf"(?i)(?<![^\W_]){parts}(?![^\W_])"), placeholder))
 
     def swap_names(self, text: str) -> str:
         for pattern, placeholder in self.names:
-            text = pattern.sub(placeholder, text)
+
+            def swap(m: re.Match[str], placeholder: str = placeholder) -> str:
+                return m.group(0) if in_hex(m) else placeholder
+
+            text = pattern.sub(swap, text)
         return MEMORY_NOTE.sub(self.note, text)
+
+    def names_left(self, text: str) -> bool:
+        """The last check: a name not in a uuid or hash, or a note name we didn't replace."""
+        return any(not in_hex(m) for p, _ in self.names for m in p.finditer(text)) or any(
+            not (DATED_NOTE.fullmatch(m.group(2)) or SCRUBBED_NOTE.fullmatch(m.group(2)))
+            for m in MEMORY_NOTE.finditer(text)
+        )
 
     def note(self, match: re.Match[str]) -> str:
         folder, name = match.groups()
@@ -655,14 +669,22 @@ def leftover_peers(root: Path, ids: set[str]) -> list[str]:
     ]
 
 
+def in_hex(match: re.Match[str]) -> bool:
+    text, start, end = match.string, match.start(), match.end()
+    while start and (text[start - 1].isalnum() or text[start - 1] in "-_"):
+        start -= 1
+    while end < len(text) and (text[end].isalnum() or text[end] in "-_"):
+        end += 1
+    return HEX_TOKEN.fullmatch(text, start, end) is not None
+
+
 def leftover_names(root: Path, scrubber: Scrubber) -> list[str]:
-    """Files that still hold a profile name or a private word anywhere in their bytes."""
+    """Files that still hold a profile name, a private word or a note name in their bytes."""
     return [
         str(path.relative_to(root))
         for path in walk_bounded(root, "*", max_depth=8)
-        if any(
-            p.search(f"{path.relative_to(root)}\n" + path.read_bytes().decode("utf-8", "replace"))
-            for p, _ in scrubber.names
+        if scrubber.names_left(
+            f"{path.relative_to(root)}\n" + path.read_bytes().decode("utf-8", "replace")
         )
     ]
 
@@ -949,7 +971,7 @@ def record(
             raise SystemExit(f"chat or user ids still present after scrubbing: {hits}; not written")
         hits = leftover_names(staging, scrubber)
         if hits:
-            raise SystemExit(f"profile names or words still present after scrubbing: {hits}")
+            raise SystemExit(f"profile, note names or words still present after scrubbing: {hits}")
         (staging / "MANIFEST.md").write_text(
             MANIFEST.format(
                 agent=agent,

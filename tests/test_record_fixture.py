@@ -818,6 +818,25 @@ def test_memory_note_names_scrubbed_dated_notes_kept() -> None:
     assert s.text("memory/2026-05-08-0420.md") == "memory/2026-05-08-0420.md"
     assert s.text("memory/2026-04-19-skill-safety.md") == "memory/note-3.md"
     assert s.text("dist/memory/index.js") == "dist/memory/index.js"
+    assert s.text('"memory/my trip.md"') == '"memory/note-4.md"'
+    assert s.text("memory/a.md and memory/b c.md") == "memory/note-5.md and memory/note-6.md"
+
+
+def test_names_after_a_dash_or_underscore_scrubbed_uuids_kept() -> None:
+    s = rf.Scrubber(HOME, "alice", "alice-mbp")
+    s.add_names(["bob", "cafe"], "profile")
+    assert s.text("workspace-bob profile_bob Bob's agent:bob: bob-dev") == (
+        "workspace-profile-2 profile_profile-2 profile-2's agent:profile-2: profile-2-dev"
+    )
+    assert s.text("1234-cafe-5678 a3cafe4f cafe_notes") == "1234-cafe-5678 a3cafe4f profile-1_notes"
+
+
+def test_last_check_catches_names_and_notes_the_scrub_missed() -> None:
+    s = rf.Scrubber(HOME, "alice", "alice-mbp")
+    s.add_names(["bob"], "profile")
+    assert s.names_left("workspace-bob")
+    assert s.names_left("memory/my trip.md")
+    assert not s.names_left("memory/note-3.md memory/2026-05-14.md 12-cafe-34 bobcat")
 
 
 def test_private_words_scrubbed(tmp_path: Path) -> None:
@@ -841,6 +860,6 @@ def test_refuses_when_a_profile_name_survives(
     (source / "gateway_state.json").write_text(json.dumps({"served_profiles": ["bob"]}))
     s = rf.Scrubber(HOME, "alice", "alice-mbp")
     monkeypatch.setattr(s, "swap_names", lambda text: text)
-    with pytest.raises(SystemExit, match="profile names"):
+    with pytest.raises(SystemExit, match="still present"):
         rf.record("hermes", source, tmp_path / "fixture", scrubber=s, ps=FakePs())
     assert not (tmp_path / "fixture").exists()
