@@ -140,6 +140,33 @@ def test_no_state_db(tmp_path: Path) -> None:
     assert batch.backlog is not None and batch.backlog.complete
 
 
+def test_history_over_several_pages_loses_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hermes_usage, "ROWS_PER_TICK", 50)
+    adapter, agent, _ = setup(tmp_path)
+    state = AdapterState()
+    usage = []
+    for _ in range(20):
+        batch = collect(adapter, agent, state)
+        usage += batch.usage
+        if batch.backlog is not None and batch.backlog.complete:
+            break
+    assert len({r.record_id for r in usage}) == ROWS
+    assert sum(r.output_tokens or 0 for r in usage) == OUTPUT_TOKENS
+
+
+def test_usage_notes_name_the_profile(tmp_path: Path) -> None:
+    adapter, _, _ = setup(tmp_path)
+    profile = tmp_path / "home" / ".hermes" / "profiles" / "profile-1"
+    profile.mkdir(parents=True)
+    (profile / "state.db").write_bytes(b"not a database" * 100)
+    agents = {a.name: a for a in adapter.detect(fake_context(homes=[tmp_path / "home"]))}
+    collect(adapter, agents["Hermes · profile-1"], AdapterState())
+    reason = adapter.health().reason or ""
+    assert reason.count("profile profile-1: state.db has no readable usage table") == 1
+
+
 def test_unreadable_state_db_degrades(tmp_path: Path) -> None:
     adapter, agent, db = setup(tmp_path)
     db.write_bytes(b"not a database" * 100)
