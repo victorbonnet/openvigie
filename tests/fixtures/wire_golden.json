@@ -19,6 +19,16 @@
   "status": "active",
   "version": "2.1.299"
  },
+ "BlockedRequest": {
+  "binary": "/usr/bin/bash",
+  "count": 2,
+  "host": "example.com",
+  "host_id": "h1",
+  "last_seen": "2026-10-14T12:30:15.123456+00:00",
+  "port": 443,
+  "reason": "transparent_tcp_policy_denied",
+  "sandbox_id": "267c2951"
+ },
  "Capabilities": {
   "agent_id": "a1",
   "approval_mode": "bypassPermissions",

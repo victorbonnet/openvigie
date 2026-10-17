@@ -13,7 +13,7 @@ from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.store.sandboxes import SandboxStore
-from openvigie.model import AgentInstance, Host, OpenShellSandbox, to_dict
+from openvigie.model import AgentInstance, BlockedRequest, Host, OpenShellSandbox, to_dict
 from openvigie.openshell.cli import Inventory as ShellInventory
 from openvigie.openshell.cli import SandboxView
 from openvigie.openshell.mapping import records
@@ -97,3 +97,45 @@ def test_ingest_and_api() -> None:
     assert push(client, token, sandboxes=[]).json()["accepted"]["sandboxes"] == 1  # deleted
     assert client.get("/api/v1/sandboxes").json() == {"sandboxes": []}
     assert json.dumps(box)  # the wire form is plain JSON
+
+
+def blocked(sandbox_id: str, binary: str, host: str, count: int, at: datetime,
+            host_id: str = PI.host_id) -> BlockedRequest:  # fmt: skip
+    return BlockedRequest(sandbox_id, host_id, binary, host, 443, count, at, "x")
+
+
+def test_blocked_requests_add_up_until_a_rule_allows_them() -> None:
+    db = Database(MEMORY)
+    for host in (PI, OTHER):
+        Inventory(db).upsert_host(host, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    later = NOW + timedelta(minutes=5)
+    assert store.add_blocked(PI.host_id, [
+        blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 1, NOW),
+        blocked(net.sandbox_id, "/usr/bin/curl", "example.com", 3, NOW),  # ov_probe allows it
+        blocked(net.sandbox_id, "/usr/bin/python3.12", "pypi.org", 1, NOW),  # pypi: python3*
+    ]) == 3  # fmt: skip
+    assert store.add_blocked(PI.host_id, [
+        blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 2, later)]) == 1  # fmt: skip
+    theirs = blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 9, later, OTHER.host_id)
+    assert store.add_blocked(OTHER.host_id, [theirs]) == 0
+    (bash,) = store.still_blocked(net)
+    assert (bash.binary, bash.count, bash.first_seen, bash.last_seen) == (
+        "/usr/bin/bash", 3, NOW, later)  # fmt: skip
+    assert len(store.blocked(net.sandbox_id)) == 3
+    store.replace(PI.host_id, [], later)
+    assert store.blocked(net.sandbox_id) == []
+
+
+def test_ingest_refuses_another_hosts_blocked_requests() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    token = Credentials(db).issue_token(PI.host_id, NOW)
+    client = TestClient(create_app(HubSettings(), db), base_url="http://127.0.0.1:7878")
+    box = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    push(client, token, sandboxes=[to_dict(box)])
+    mine = to_dict(blocked(box.sandbox_id, "/usr/bin/bash", "example.com", 1, NOW))
+    assert push(client, token, blocked=[mine]).json()["accepted"]["blocked"] == 1
+    assert push(client, token, blocked=[dict(mine, host_id=OTHER.host_id)]).status_code == 403

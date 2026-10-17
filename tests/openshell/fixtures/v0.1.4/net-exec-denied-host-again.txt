@@ -1,0 +1,3 @@
+# exit 1
+bash: connect: Permission denied
+bash: line 1: /dev/tcp/www.wikipedia.org/443: Permission denied

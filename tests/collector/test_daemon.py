@@ -17,7 +17,8 @@ from openvigie.adapters.claude_code import ClaudeCodeAdapter
 from openvigie.adapters.registry import Discovery
 from openvigie.adapters.testing import TEST_HOST, fake_process
 from openvigie.collector.client import HubClient, HubError
-from openvigie.collector.daemon import Collector, rss_mib
+from openvigie.collector.daemon import DENIALS_KEY, Collector, rss_mib
+from openvigie.collector.state import StateStore
 from openvigie.config import CollectorSettings, HubSettings
 from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
@@ -337,6 +338,35 @@ def test_sandboxes_reach_the_hub_with_their_agents(
     clock.t += 31
     collector.tick()
     assert collector.sandboxes_sent_at == sent_at  # unchanged, so not sent again
+
+
+def test_blocked_requests_reach_the_hub_once(
+    tmp_path: Path, hub: tuple[TestClient, Database]
+) -> None:
+    log = (OPENSHELL / "net-logs.txt").read_text()
+    base = fake_openshell().run
+    assert base is not None
+
+    def run(args: Sequence[str]) -> str:
+        return log if args[0] == "logs" else base(args)
+
+    collector = sandboxed_collector(tmp_path, hub, Reader(run))
+    collector.store = StateStore(tmp_path / "state.db")
+    clock = collector.monotonic
+    assert isinstance(clock, Clock)
+    collector.tick()
+    (box,) = SandboxStore(hub[1]).all()
+
+    def counts() -> set[tuple[str, str, int]]:
+        return {(b.binary, b.host, b.count) for b in SandboxStore(hub[1]).blocked(box.sandbox_id)}
+
+    expected = {("/usr/bin/bash", "www.wikipedia.org", 2), ("/usr/bin/bash", "example.com", 1),
+                ("/usr/bin/bash", "1.1.1.1", 1)}  # fmt: skip
+    assert counts() == expected
+    clock.t += 31
+    collector.tick()  # the same log lines again
+    assert counts() == expected
+    assert collector.store.load_cursors(DENIALS_KEY) == {box.sandbox_id: {"at": 1792237771.107}}
 
 
 # --- reading history (FR-3, FR-5) --------------------------------------------------------------

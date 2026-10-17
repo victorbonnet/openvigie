@@ -58,6 +58,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T17 | Alerts leak data, or the webhook leaks its secret | Off unless configured; https only (http to loopback); no redirects; the URL and token are never logged or shown; the payload holds budget ids, scopes and amounts, no prompts or secrets | #179 |
 | T18 | Anyone who can message an agent through a shared channel (group chat, open bot) instructs it with the agent's access | Capabilities list each agent's channels and who can reach it; a risk flag, high when combined with broad access outside a sandbox (FR-8, FR-9) | #183 |
 | T19 | Reading Hermes' `.env` to count who may message a profile leaks the API keys and bot tokens kept in the same file | Only lines named like an access setting (`*_ALLOWED_USERS`, `*_ALLOW_ALL_USERS`, `*_GROUP_ALLOWED_CHATS`, `*_ALLOWED_ROLES`) have their value looked at; entries are hashed at once to count people, flags reduced to true or false; nothing else is parsed, kept, logged or sent | #183 |
+| T20 | A sandbox's OpenShell log, read to show blocked requests, carries the command lines of the processes that made them (tokens in arguments) | Only `NET:OPEN … DENIED` lines are parsed, and only the program path, destination host, port and reason are kept; the proxy's lines with the command line are never matched; `logs` runs like every other OpenShell command (argv list, timeout, bounded output) | #184 |
 
 ## Rules for every change
 

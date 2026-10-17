@@ -368,6 +368,21 @@ class OpenShellSandbox:
     network_policy: Annotated[str, Strict(), Field(max_length=64 * 1024)] | None = None
 
 
+@wire_type
+class BlockedRequest:
+    """Connections a sandbox blocked since the last report, from one program to one destination
+    (FR-18). The hub adds ``count`` to what it already has."""
+
+    sandbox_id: Id
+    host_id: Id
+    binary: Text  # the program's path inside the sandbox
+    host: Id  # destination host name or IP
+    port: Annotated[int, Strict(), Field(ge=1, le=65535)]
+    count: Count
+    last_seen: Timestamp
+    reason: Id = ""  # OpenShell's, e.g. transparent_tcp_policy_denied
+
+
 # --- commands (D14) ----------------------------------------------------------------------------
 
 MAX_COMMAND_ARGS_CHARS = 64 * 1024  # all of one command's argument values together

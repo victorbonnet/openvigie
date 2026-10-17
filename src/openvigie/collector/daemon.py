@@ -54,11 +54,13 @@ from openvigie.model import (
     SCHEMA_VERSION,
     AdapterHealth,
     AgentInstance,
+    BlockedRequest,
     StatusEvent,
     UsageBackfill,
     to_dict,
 )
 from openvigie.openshell.cli import Inventory, Reader, inventory_health
+from openvigie.openshell.denials import Tally
 from openvigie.openshell.mapping import OpenShellProbe, records
 from openvigie.redact import redact_obj
 
@@ -74,6 +76,8 @@ MAX_BACKOFF_S = 60.0
 UNAUTHORIZED_RETRY_S = 300.0
 CAPABILITIES_REFRESH_S = 3600.0
 MAX_PENDING_RESULTS = 100
+MAX_BLOCKED = 1000  # blocked-request groups per push
+DENIALS_KEY = "openshell-denials"  # where the newest log line counted per sandbox is kept
 
 
 def rss_mib() -> float:
@@ -142,6 +146,8 @@ class Collector:
         self.openshell_inventory = Inventory("not_installed")
         self.sandboxes_sent: str | None = None  # digest of the last list sent; None: never
         self.sandboxes_sent_at = float("-inf")
+        marks = store.load_cursors(DENIALS_KEY) if store else {}
+        self.denials = Tally(seen={k: float(v.get("at", 0)) for k, v in marks.items()})
         actions = {**ACTIONS, **agent_actions(self.processes_of)}
         self.commands = CommandRunner(settings.allow_actions, store, actions=actions)
         self.command_results: list[dict[str, Any]] = []  # waiting for the next push
@@ -270,6 +276,7 @@ class Collector:
         capabilities: list[Any] | None = None,
         sandboxes: list[Any] | None = None,
         backfill: list[Any] | None = None,
+        blocked: list[Any] | None = None,
     ) -> dict[str, Any]:
         payload = {
             "schema_version": SCHEMA_VERSION,
@@ -286,6 +293,8 @@ class Collector:
             payload["usage_backfill"] = backfill
         if sandboxes is not None:  # [] is meaningful: the host has no sandboxes any more
             payload["sandboxes"] = sandboxes
+        if blocked:
+            payload["blocked"] = blocked
         if self.store:
             payload["collector"] = {"spool_dropped": self.store.dropped()}
         return payload
@@ -297,11 +306,14 @@ class Collector:
         found = self._collect_all(by_type)
         capabilities = self._changed_capabilities(by_type, now)
         sandboxes = self._changed_sandboxes(now)
-        if not found.touched and not capabilities and sandboxes is None:
+        blocked = self._blocked()
+        if not found.touched and not capabilities and sandboxes is None and not blocked:
             return
         payloads = self._usage_payloads(found, capabilities)
         if sandboxes is not None:
             payloads.append(self.usage_payload([], [], sandboxes=sandboxes))
+        payloads += [self.usage_payload([], [], blocked=blocked[i : i + MAX_BLOCKED])
+                     for i in range(0, len(blocked), MAX_BLOCKED)]  # fmt: skip
         delivered = self._flush_spool(now) and all(self._send_usage(p, now) for p in payloads)
         if not delivered:
             if self.store is None:
@@ -312,6 +324,8 @@ class Collector:
                 self.store.spool_put(redact_obj(p))
         for state in found.touched:
             state.commit()  # data is now with the hub or in the durable spool
+        if blocked:
+            self._blocked_sent()
         for item in found.backfill:
             self.backfill_sent[item["agent_id"]] = _without_time(item)
 
@@ -322,6 +336,36 @@ class Collector:
         self.openshell_inventory = self.openshell.read()
         if isinstance(self.ctx.sandbox_probe, OpenShellProbe):
             self.ctx.sandbox_probe.update(self.openshell_inventory)
+        if self.openshell_inventory.state != "ok":
+            return
+        for view in self.openshell_inventory.sandboxes:
+            if (
+                view.sandbox.phase == "Ready"
+                and (found := self.openshell.denials(view)) is not None
+            ):
+                self.denials.add(view.sandbox.id, found)
+        self.denials.forget({v.sandbox.id for v in self.openshell_inventory.sandboxes})
+
+    def _blocked(self) -> list[dict[str, Any]]:
+        """Connections sandboxes blocked that the hub hasn't been told about (FR-18)."""
+        out = []
+        for sandbox_id, groups in self.denials.pending.items():
+            for (binary, host, port), group in groups.items():
+                try:
+                    item = BlockedRequest(sandbox_id, self.ctx.host.host_id, binary, host, port,
+                                          group.count, datetime.fromtimestamp(group.last_seen, UTC),
+                                          group.reason)  # fmt: skip
+                except (ValueError, OverflowError, OSError):
+                    continue  # out of the wire format's bounds: skipped, never sent half-checked
+                out.append(to_dict(item))
+        return out
+
+    def _blocked_sent(self) -> None:
+        self.denials.pending = {}
+        if self.store:
+            self.store.save_cursors(
+                DENIALS_KEY, {k: {"at": v} for k, v in self.denials.seen.items()}
+            )
 
     def _changed_sandboxes(self, now: float) -> list[dict[str, Any]] | None:
         """This host's full sandbox list when it changed (or hourly); ``None``: nothing to send."""

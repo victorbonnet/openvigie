@@ -8,6 +8,7 @@ import pytest
 from openvigie.openshell.policy import (
     MAX_TEXT,
     PolicyError,
+    allowing,
     diff,
     from_json,
     parse_yaml,
@@ -122,3 +123,20 @@ network_policies:
     assert changes["npm"].details == ("registry.npmjs.org:443/8443 (audit only)",
                                       "binary /usr/bin/npm")  # fmt: skip
     assert diff(old, old) == []
+
+
+def test_allowing_adds_one_rule_for_the_blocked_program() -> None:
+    rules = from_json(json.dumps({"allow_example_com_443": {
+        "endpoints": [{"host": "example.com", "port": 443}],
+        "binaries": [{"path": "/usr/bin/curl"}]}}))  # fmt: skip
+    added = allowing(rules, "/usr/bin/bash", "example.com", 443)
+    assert set(added) == {"allow_example_com_443", "allow_example_com_443_2"}
+    (change,) = diff(rules, added)
+    assert change.change == "added" and change.rule == "allow_example_com_443_2"
+    assert '"/usr/bin/bash"' in to_yaml(added) and parse_yaml(to_yaml(added)).rules == added
+    assert set(allowing({}, "/usr/bin/bash", "1.1.1.1", 443)) == {"allow_1_1_1_1_443"}
+
+
+def test_allowing_refuses_what_the_editor_cannot_write() -> None:
+    with pytest.raises(PolicyError):
+        allowing({}, "/usr/bin/bash", "[2001:db8::1]", 443)

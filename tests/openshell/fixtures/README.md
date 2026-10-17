@@ -32,6 +32,12 @@ Real outputs of the `openshell` CLI, recorded on a GitHub ARM runner by
     `docker-ps.json` keeps only `openshell.ai/*` labels and each container's executable;
     container env is never recorded. Docker joins labels with commas, so a label value that
     itself contains a comma is cut there.
+- **Blocked requests (FR-18).** After its update, `ov-net` connects with bash's `/dev/tcp` (the
+  image has no curl or python): twice to a host no rule allows, to `example.com` (allowed for
+  curl only) and to an IP.
+  - `net-exec-denied-*.txt`: what the program saw (`Permission denied`);
+  - `net-logs.txt`: the sandbox log with one `NET:OPEN … DENIED` line per blocked connection;
+    `net-logs-gateway.txt` and `net-logs-debug.txt` show no more detail about them.
 - **Errors and help:**
   - `sandbox-get-missing.json` (no such sandbox), `status-gateway-down.txt` (gateway stopped);
   - `status.txt`, `version.txt`, and `help-*.txt` for each command openvigie may call.

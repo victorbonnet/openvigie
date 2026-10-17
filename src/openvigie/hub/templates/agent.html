@@ -41,7 +41,7 @@
 {% if sandbox %}
 {% from "_sandbox.html" import sandbox_card %}
 <h2>OpenShell sandbox</h2>
-{{ sandbox_card(sandbox, sandbox_changes, {row.agent.agent_id: row.agent.name}) }}
+{{ sandbox_card(sandbox, sandbox_changes, {row.agent.agent_id: row.agent.name}, sandbox_blocked, whoami(request).role == "admin") }}
 {% endif %}
 
 {% include "_capabilities.html" %}

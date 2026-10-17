@@ -5,7 +5,8 @@ environment, a timeout and bounded output. Names from OpenShell are checked befo
 as arguments. ``read_inventory`` never raises: problems come back as ``Inventory.state``.
 
 Cost: one ``sandbox list`` per call. ``sandbox get`` runs again only when a sandbox's
-``resource_version`` changes, and ``policy get`` only when its policy hash changes.
+``resource_version`` changes, and ``policy get`` only when its policy hash changes. ``denials``
+runs ``logs`` for one sandbox.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from openvigie.model import AdapterHealth, HealthState
+from openvigie.openshell.denials import Denial, parse
 from openvigie.openshell.models import Policy, Sandbox, SandboxPage
 from openvigie.openshell.versions import MIN_SUPPORTED, is_supported
 from openvigie.redact import redact
@@ -31,6 +33,7 @@ TIMEOUT_S = 15.0
 MAX_OUTPUT = 4 * 1024 * 1024
 MAX_PAGES = 10
 PAGE_SIZE = 100
+LOG_LINES = 500  # the gateway keeps fewer per sandbox; asking for more costs nothing
 # Sandbox and workspace names as OpenShell creates them; never starts with "-" (no flag injection)
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 # What the CLI needs to find its gateway registration and mTLS material, and nothing else
@@ -135,6 +138,18 @@ class Reader:
         views = tuple(self._view(run, s) for s in listed if _safe(s))
         self._forget({s.id for s in listed})
         return Inventory("ok", None, version, views)
+
+    def denials(self, view: SandboxView) -> list[Denial] | None:
+        """Connections the sandbox blocked, from its recent log (FR-18); None: unreadable."""
+        if self.run is None:
+            return None
+        box = view.sandbox
+        args = ["logs", box.name, "--workspace", box.workspace, "-n", str(LOG_LINES),
+                "--source", "sandbox"]  # fmt: skip
+        try:
+            return parse(self.run(args))
+        except CommandError:
+            return None
 
     def _view(self, run: Run, listed: Sandbox) -> SandboxView:
         sandbox = self._detail(run, listed)

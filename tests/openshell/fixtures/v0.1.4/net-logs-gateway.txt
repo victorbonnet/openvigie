@@ -1,0 +1,23 @@
+Warning: log buffer contains only the last 68 lines; --since results may be incomplete.
+[1792237760.270] [gateway] [INFO ] [openshell_server::grpc::sandbox] CreateSandbox request completed successfully
+[1792237760.544] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxConfig served from spec (backfilled version 1)
+[1792237760.556] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxProviderEnvironment request completed successfully
+[1792237760.590] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: accepted
+[1792237760.593] [gateway] [INFO ] [openshell_server::grpc::policy] ReportPolicyStatus: sandbox reported policy load result
+[1792237760.769] [gateway] [OCSF ] [ocsf] CONFIG:MERGED [INFO] gateway merged 1 incremental policy operation(s) [version:v3 hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba]
+[1792237760.769] [gateway] [OCSF ] [ocsf] CONFIG:MERGED [INFO] gateway merged incremental policy op: add-endpoint ov_probe endpoints=[example.com:443 protocol=rest access=read-only enforcement=enforce ports=1] binaries=[/usr/bin/curl] [version:v3 hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba]
+[1792237760.769] [gateway] [INFO ] [openshell_server::grpc::policy] UpdateConfig: merged incremental policy operations
+[1792237770.595] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxProviderEnvironment request completed successfully
+[1792237770.603] [gateway] [INFO ] [openshell_server::grpc::policy] ReportPolicyStatus: sandbox reported policy load result
+[1792237770.918] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237770.919] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237770.919] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237770.980] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237770.981] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237770.981] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237771.036] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237771.036] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237771.036] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237771.096] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237771.097] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237771.097] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started

@@ -15,6 +15,7 @@ from openvigie.model import (
     AgentInstance,
     AgentStatus,
     ApprovalLevel,
+    BlockedRequest,
     Capabilities,
     Channel,
     FsAccess,
@@ -81,6 +82,8 @@ SAMPLES: dict[str, Any] = {
         '{"github_readonly":{"binaries":[{"path":"/usr/bin/curl"}],"endpoints":[{"host":'
         '"api.github.com","port":443}],"name":"github_readonly"}}',
     ),
+    "BlockedRequest": BlockedRequest("267c2951", "h1", "/usr/bin/bash", "example.com", 443, 2, AT,
+                                     "transparent_tcp_policy_denied"),
 }  # fmt: skip
 
 
