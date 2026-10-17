@@ -210,7 +210,8 @@ class CodexAdapter(Adapter):
         if not isinstance(total, dict):
             return None
         current = {f: int_or_none(total.get(f)) for f in USAGE_FIELDS}
-        previous = file_ctx.get("total") or dict.fromkeys(USAGE_FIELDS, 0)
+        saved = file_ctx.get("total")
+        previous = saved or dict.fromkeys(USAGE_FIELDS, 0)
         file_ctx["total"] = {f: v or 0 for f, v in current.items()}
         when = parse_time(entry.get("timestamp"))
         if when is None or (state.backfill_since and when < state.backfill_since):
@@ -218,15 +219,22 @@ class CodexAdapter(Adapter):
         delta = {
             f: None if v is None else v - int(previous.get(f) or 0) for f, v in current.items()
         }
+        last = info.get("last_token_usage") if isinstance(info, dict) else None
+        last = last if isinstance(last, dict) else {}
         if any(v is not None and v < 0 for v in delta.values()):  # counters reset: use last turn
-            last = info.get("last_token_usage") if isinstance(info, dict) else None
-            last = last if isinstance(last, dict) else {}
             delta = {f: int_or_none(last.get(f)) for f in USAGE_FIELDS}
+        # a total saved before a field was read has no baseline for it: the whole session so far
+        # would land on this turn, so take this turn's own count instead
+        for f in USAGE_FIELDS:
+            if saved and f not in saved and current[f] is not None:
+                delta[f] = int_or_none(last.get(f))
         if all(not v for v in delta.values()):
             return None  # repeated event with the same totals
         session = file_ctx.get("session")
         model = file_ctx.get("model")
         known = delta["input_tokens"] is not None and delta["output_tokens"] is not None
+        guessed = any(current[f] is not None and delta[f] is None for f in USAGE_FIELDS)
+        quality = UsageQuality.ESTIMATED if guessed else UsageQuality.EXACT
         return UsageRecord(
             record_id=stable_id(
                 agent.agent_id, str(session), *(str(current[f]) for f in ID_FIELDS)
@@ -242,7 +250,7 @@ class CodexAdapter(Adapter):
             cache_read_input_tokens=delta["cached_input_tokens"],
             cache_creation_input_tokens=delta["cache_write_input_tokens"],
             reasoning_tokens=delta["reasoning_output_tokens"],
-            quality=UsageQuality.EXACT if known else UsageQuality.UNKNOWN,
+            quality=quality if known else UsageQuality.UNKNOWN,
         )
 
 

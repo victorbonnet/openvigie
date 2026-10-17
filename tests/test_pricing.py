@@ -93,7 +93,6 @@ def test_gpt6_long_context_bills_the_whole_request(
 def test_gpt6_cache_writes_are_billed_once(
     table: Any, model: str, inp: str, cached: str, write: str, long_factor: int
 ) -> None:
-    # cache writes, like reads, are part of OpenAI's input_tokens: only the rest is billed as input
     cost = compute_cost(
         rec("openai", model, input_tokens=100_000, cache_read_input_tokens=30_000,
             cache_creation_input_tokens=50_000),
@@ -103,14 +102,13 @@ def test_gpt6_cache_writes_are_billed_once(
                 + Decimal(50_000) * Decimal(write)) / Decimal(1_000_000)  # fmt: skip
     assert cost.amount == expected
     assert cost.quality is UsageQuality.EXACT and cost.reason is None
-    # the long-context tier doubles the cache write rate too
     long = compute_cost(
         rec("openai", model, input_tokens=300_000, cache_creation_input_tokens=300_000), table
     )
     assert long.amount == Decimal(300_000) * Decimal(write) * long_factor / Decimal(1_000_000)
 
 
-def test_recorded_codex_cache_write_fixture_cost(table: Any) -> None:
+def test_codex_cache_write_fixture_cost(table: Any) -> None:
     # second turn of the Codex gpt-6.1-sol fixture (tests/adapters/codex/fixtures, …-0003)
     cost = compute_cost(
         rec("openai", "gpt-6.1-sol", input_tokens=12000, cache_read_input_tokens=9000,
@@ -120,6 +118,15 @@ def test_recorded_codex_cache_write_fixture_cost(table: Any) -> None:
     expected = (Decimal(1000) * 2 + Decimal(9000) * Decimal("0.10")
                 + Decimal(2000) * Decimal("2.5") + Decimal(200) * 10) / 10**6  # fmt: skip
     assert cost.amount == expected and cost.quality is UsageQuality.EXACT
+
+
+def test_more_cached_than_input_is_estimated(table: Any) -> None:
+    cost = compute_cost(
+        rec("openai", "gpt-6.1-sol", input_tokens=1000, cache_read_input_tokens=800,
+            cache_creation_input_tokens=400),
+        table,
+    )  # fmt: skip
+    assert cost.quality is UsageQuality.ESTIMATED and cost.reason == "inconsistent_tokens"
 
 
 def test_gpt6_sol_is_not_an_alias_of_gpt61_sol(table: Any) -> None:

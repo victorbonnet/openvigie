@@ -12,7 +12,7 @@ when one is available, and keep the expected values below in sync.
 - `sessions/2026/10/13/rollout-…-0002.jsonl`: Codex 0.45.0, `gpt-5`, one turn.
 - `sessions/2026/10/12/rollout-…-0003.jsonl`: `gpt-6.1-sol`, two turns with cache writes
   (`cache_write_input_tokens`), written from `TokenUsage` in `codex-rs/protocol` at openai/codex
-  commit 440312f (2026-10-16). The CLI version is a placeholder.
+  commit 440312f (2026-10-16). Its CLI version, `0.0.0-placeholder`, is made up.
 
 ## Facts
 

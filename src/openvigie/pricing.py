@@ -152,6 +152,7 @@ def compute_cost(
     # OpenAI's input_tokens include cache reads and writes (input_tokens_details): bill each once
     inside = cache_read + written if included else 0
     uncached = max(record.input_tokens - inside, 0)
+    inconsistent = inside > record.input_tokens
     prompt = record.input_tokens if included else uncached + cache_read + written
 
     rates = price.rates
@@ -161,6 +162,8 @@ def compute_cost(
         rates = price.above
     quality = record.quality
     reason = None
+    if inconsistent:  # more cached than input: the counts are wrong, so the cost is a guess
+        quality, reason = UsageQuality.ESTIMATED, "inconsistent_tokens"
 
     def rate(value: Decimal | None, tokens: int) -> Decimal:
         nonlocal quality, reason

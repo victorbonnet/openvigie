@@ -11,7 +11,7 @@ from openvigie.adapters.registry import Discovery
 from openvigie.adapters.testing import fake_context
 from openvigie.collector.client import HubClient
 from openvigie.collector.daemon import Collector
-from openvigie.collector.otlp import MAX_BODY, OtlpReceiver, parse_logs
+from openvigie.collector.otlp import MAX_BODY, OtlpReceiver, codex_event, parse_logs
 from openvigie.config import (
     CollectorSettings,
     ConfigError,
@@ -49,6 +49,19 @@ def test_codex_completed_responses() -> None:
     assert totals == [15000, 4800, 770, 128]  # = the rollout fixture's two sessions
     assert {u.session_id for u in usage} == {"0199e5a0-1111-7000-8000-000000000001",
                                             "0199e0b0-2222-7000-8000-000000000002"}  # fmt: skip
+
+
+def test_codex_cache_writes() -> None:
+    attrs: dict[str, Any] = {
+        "event.name": "codex.sse_event", "event.kind": "response.completed",
+        "event.timestamp": "2026-10-12T14:00:08Z", "input_token_count": "10000",
+        "output_token_count": "300", "cached_token_count": 0, "cache_write_token_count": 6000,
+    }  # fmt: skip
+    usage = codex_event(attrs, {})
+    assert usage is not None and usage.cache_creation_input_tokens == 6000
+    del attrs["cache_write_token_count"]
+    usage = codex_event(attrs, {})
+    assert usage is not None and usage.cache_creation_input_tokens is None
 
 
 def test_other_events_and_services_are_ignored() -> None:
