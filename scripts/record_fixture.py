@@ -173,7 +173,7 @@ TAILNET = re.compile(r"\b[\w.-]+\.ts\.net\b")  # MagicDNS names the tailnet, not
 MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}?\.md)(?![\w])")
 DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
 SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
-HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "dede" in it is no name
+HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
 
 
 class Scrubber:
