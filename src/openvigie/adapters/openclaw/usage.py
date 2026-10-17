@@ -14,12 +14,17 @@ A transcript event is an assistant ``message`` with ``usage`` (``input``, ``outp
 providers that count them inside (OpenAI), cache reads are added back so pricing sees each
 provider's own convention. Record ids come from the session and event ids, so an event found
 in both stores, or read again after OpenClaw rewrites a transcript, counts once at the hub.
-Only usage, model and timestamps are kept: message content is never copied.
+Only usage, model and timestamps are kept: from the database, SQLite extracts just those fields,
+so message content never reaches openvigie, whatever its size.
+
+``transcript_events`` has no AUTOINCREMENT: SQLite numbers a new row ``max(rowid) + 1``, so a
+rowid at or below the cursor comes back only after the cursor's own row was deleted (a session
+reset or a transcript rewrite). The cursor therefore remembers that row's ``(session_id, seq)``,
+and reads the table again from the start when it changed; the hub drops what it already has.
 """
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -27,30 +32,33 @@ from typing import Any
 
 from openvigie.adapters.base import ActivityBatch, AdapterState, Backlog, HostContext
 from openvigie.adapters.codex import read_rollouts
-from openvigie.adapters.usage import (
-    TailBudget,
-    before_backfill,
-    int_or_none,
-    parse_time,
-    tail_files,
-)
+from openvigie.adapters.usage import TailBudget, int_or_none, parse_time, tail_files
 from openvigie.model import AgentInstance, Session, UsageQuality, UsageRecord, stable_id
 from openvigie.safeio import UnsafeFileError, open_sqlite_readonly
 
 DATABASE = Path("agent") / "openclaw-agent.sqlite"
 CODEX_HOME = Path("agent") / "codex-home"
 ROWS_PER_TICK = 2000
-MAX_EVENT = 1024 * 1024
 MAX_TEXT = 128
-# rows without usage come back as NULL, so content is never even loaded
-QUERY = """
-    select rowid, session_id,
-           case when instr(event_json, '"usage"') > 0 and length(event_json) <= ?
-                then event_json end
-    from transcript_events where rowid > ? order by rowid limit ?
-"""
+FIELDS = ("type", "id", "timestamp", "role", "model", "provider", "stop_reason", "usage_type",
+          "message_ts", "input", "output", "cache_read", "cache_write")  # fmt: skip
+TEXTS = ("$.type", "$.id", "$.timestamp", "$.message.role", "$.message.model",
+         "$.message.provider", "$.message.stopReason")  # fmt: skip
+NUMBERS = ("$.message.timestamp", "$.message.usage.input", "$.message.usage.output",
+           "$.message.usage.cacheRead", "$.message.usage.cacheWrite")  # fmt: skip
+_TEXT = ", ".join(f"case when ok then substr(json_extract(e, '{p}'), 1, {MAX_TEXT}) end"
+                  for p in TEXTS)  # fmt: skip
+_NUMBERS = ", ".join(f"case when ok and json_type(e, '{p}') in ('integer', 'real') "
+                     f"then json_extract(e, '{p}') end" for p in NUMBERS)  # fmt: skip
+QUERY = f"""
+    select rowid, session_id, seq, ok, {_TEXT},
+           case when ok then json_type(e, '$.message.usage') end, {_NUMBERS}
+    from (select rowid, session_id, seq, event_json as e, json_valid(event_json) as ok
+          from transcript_events where rowid > ? order by rowid limit ?)
+"""  # noqa: S608 (only constants are formatted in)
 PROVIDERS = {"anthropic": "anthropic", "openai": "openai", "openai-codex": "openai"}
 CACHED_INPUT_INCLUDED = {"openai"}
+FAILED = {"error", "aborted"}
 
 
 def read_usage(
@@ -63,10 +71,8 @@ def read_usage(
     for key, entry in tail_files(agent_dir, agent_dir / "sessions", "*.jsonl", state, batch,
                                  TailBudget.for_context(ctx), max_depth=0,
                                  exclude="*.trajectory.jsonl"):  # fmt: skip
-        if before_backfill(entry, state):
-            continue
         session = Path(key).name.removesuffix(".jsonl")
-        _add(agent, session, entry, batch, sessions)
+        _add(agent, session, entry, batch, sessions, state)
     backlog = batch.backlog
     db_notes, db_backlog = _read_database(agent, agent_dir / DATABASE, state, batch, sessions)
     notes += db_notes
@@ -115,25 +121,52 @@ def _read_database(
     except (OSError, UnsafeFileError, sqlite3.Error):
         return [f"{DATABASE.name} could not be opened"], None
     try:
-        rows = conn.execute(QUERY, (MAX_EVENT, after, ROWS_PER_TICK)).fetchall()
+        if after and _moved(conn, after, saved.get("row")):
+            after = 0  # the cursor's row was replaced: read again, the hub dedupes
+        rows = conn.execute(QUERY, (after, ROWS_PER_TICK)).fetchall()
     except sqlite3.Error:
-        return [f"{DATABASE.name} has no readable transcript_events table"], None
-    finally:
         conn.close()
-    for rowid, session, event in rows:
-        after = max(after, rowid)
-        if not isinstance(event, str) or not isinstance(session, str):
-            continue
-        try:
-            entry = json.loads(event)
-        except ValueError:
+        return [f"{DATABASE.name} has no readable transcript_events table"], None
+    last: list[Any] | None = None
+    for row in rows:
+        rowid, session, seq, ok = row[:4]
+        after, last = max(after, rowid), [session, seq]
+        if not ok:
             batch.stats.parse_errors += 1
             continue
-        if not before_backfill(entry, state):
-            _add(agent, session[:MAX_TEXT], entry, batch, sessions)
-    state.stage(key, {"rowid": after})
+        if isinstance(session, str):
+            _add(agent, session[:MAX_TEXT], _entry(dict(zip(FIELDS, row[4:], strict=True))),
+                 batch, sessions, state)  # fmt: skip
+    conn.close()
+    state.stage(key, {"rowid": after, "row": last if last else saved.get("row")})
     # more rows wait when the page was full: how many is unknown
     return [], Backlog(truncated=len(rows) == ROWS_PER_TICK)
+
+
+def _moved(conn: sqlite3.Connection, rowid: int, row: Any) -> bool:
+    found = conn.execute(
+        "select session_id, seq from transcript_events where rowid = ?", (rowid,)
+    ).fetchone()
+    return found is None or (isinstance(row, list) and list(found) != row)
+
+
+def _entry(f: dict[str, Any]) -> dict[str, Any]:
+    """The extracted columns of one event, shaped like a JSONL transcript line."""
+    message: dict[str, Any] = {
+        "role": f["role"],
+        "model": f["model"],
+        "provider": f["provider"],
+        "timestamp": f["message_ts"],
+        "stopReason": f["stop_reason"],
+    }
+    if f["usage_type"] == "object":
+        message["usage"] = {
+            "input": f["input"],
+            "output": f["output"],
+            "cacheRead": f["cache_read"],
+            "cacheWrite": f["cache_write"],
+        }
+    return {"type": f["type"], "id": f["id"], "timestamp": f["timestamp"], "message": message}
 
 
 def _add(
@@ -142,9 +175,10 @@ def _add(
     entry: Any,
     batch: ActivityBatch,
     sessions: dict[str, Session],
+    state: AdapterState,
 ) -> None:
     record = _record(agent, session, entry)
-    if record is None:
+    if record is None or (state.backfill_since and record.timestamp < state.backfill_since):
         return
     batch.usage.append(record)
     model = record.response_model
@@ -179,12 +213,20 @@ def _record(agent: AgentInstance, session: str, entry: Any) -> UsageRecord | Non
         int_or_none(usage.get("cacheRead")),
         int_or_none(usage.get("cacheWrite")),
     )
+    quality = UsageQuality.EXACT
     if not any((inp, out, cache_read, cache_write)):
-        return None  # failed calls are logged with zero usage
+        if message.get("stopReason") in FAILED:
+            return None  # a failed call is logged with zero usage
+        # zero-initialised counters the provider never filled: unknown, not zero
+        inp = out = cache_read = cache_write = None
     model = _text(message.get("model"))
     vendor = provider_of(_text(message.get("provider")), model)
     if vendor in CACHED_INPUT_INCLUDED and inp is not None:
+        if cache_read is None:
+            quality = UsageQuality.ESTIMATED  # cached tokens unknown, so input is a lower bound
         inp += cache_read or 0
+    if inp is None or out is None:
+        quality = UsageQuality.UNKNOWN
     return UsageRecord(
         record_id=stable_id(agent.agent_id, session, event_id[:MAX_TEXT]),
         agent_id=agent.agent_id,
@@ -197,7 +239,7 @@ def _record(agent: AgentInstance, session: str, entry: Any) -> UsageRecord | Non
         output_tokens=out,
         cache_read_input_tokens=cache_read,
         cache_creation_input_tokens=cache_write,
-        quality=UsageQuality.EXACT if inp is not None and out is not None else UsageQuality.UNKNOWN,
+        quality=quality,
     )
 
 
