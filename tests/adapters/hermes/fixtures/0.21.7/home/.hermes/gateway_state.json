@@ -1,0 +1,147 @@
+{
+  "pid": 1302,
+  "kind": "hermes-gateway",
+  "argv": [
+    "/home/user/.hermes/hermes-agent/hermes_cli/main.py",
+    "gateway",
+    "run"
+  ],
+  "start_time": 1221,
+  "gateway_state": "running",
+  "exit_reason": null,
+  "restart_requested": false,
+  "active_agents": 0,
+  "platforms": {
+    "telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-10-14T01:10:36.602918+00:00",
+      "needs_attention": false,
+      "retrying_since": null,
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "amelia:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-17T01:14:23.556974+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "argos:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-14T01:11:00.987172+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "comptoir-dev:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-14T01:11:12.612367+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "dede:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "updated_at": "2026-10-14T01:13:37.771460+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221,
+      "needs_attention": false,
+      "retrying_since": null
+    },
+    "huggingface-dev:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-17T01:12:05.617416+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "jimmy:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-17T01:18:06.187241+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "leo:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-15T01:15:02.078252+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "lola:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-14T01:12:37.859666+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "pragyan:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-17T01:12:27.156317+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    },
+    "taluneo:telegram": {
+      "state": "connected",
+      "error_code": null,
+      "error_message": null,
+      "needs_attention": false,
+      "retrying_since": null,
+      "updated_at": "2026-10-16T01:11:53.406475+00:00",
+      "writer_pid": 1302,
+      "writer_start_time": 1221
+    }
+  },
+  "updated_at": "2026-10-17T08:48:50.789256+00:00",
+  "code_sha": "e06df9c2eae6901f4c88f464e0ae6e753c0428b8",
+  "code_version": "0.21.7",
+  "session_store": {
+    "status": "ok"
+  },
+  "multiplex_standalone_reason": null,
+  "served_profiles": [
+    "default",
+    "amelia",
+    "argos",
+    "comptoir-dev",
+    "dede",
+    "huggingface-dev",
+    "jimmy",
+    "leo",
+    "lola",
+    "pragyan",
+    "taluneo"
+  ],
+  "active_work": null
+}

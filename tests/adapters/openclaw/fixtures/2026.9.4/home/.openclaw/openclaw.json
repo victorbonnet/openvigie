@@ -1,0 +1,498 @@
+{
+  "gateway": {
+    "auth": {
+      "mode": "token",
+      "token": "[REDACTED:key]"
+    },
+    "mode": "local",
+    "port": 18789,
+    "bind": "lan",
+    "tailscale": {
+      "mode": "off"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "*",
+        "https://host.example.ts.net",
+        "http://host.example.ts.net",
+        "https://192.0.2.1",
+        "http://192.0.2.1"
+      ]
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-07-05T08:17:52.171Z",
+    "lastRunVersion": "2026.6.11",
+    "lastRunCommand": "doctor",
+    "lastRunMode": "local"
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.9.4",
+    "migrations": {
+      "modelPolicyAllowlist": true
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/user/.openclaw/workspace",
+      "models": {
+        "anthropic/claude-opus-4-7": {},
+        "anthropic/claude-sonnet-4-6": {},
+        "huggingface/deepseek-ai/DeepSeek-V4-Pro": {},
+        "huggingface/MiniMaxAI/MiniMax-M2.7": {},
+        "huggingface/moonshotai/Kimi-K2.6:deepinfra": {
+          "alias": "kimi"
+        },
+        "openai/gpt-5.5": {},
+        "openai/gpt-5.6-sol": {},
+        "openai/gpt-5.6-terra": {}
+      },
+      "model": {
+        "primary": "openai/gpt-5.6-sol",
+        "fallbacks": [
+          "huggingface/deepseek-ai/DeepSeek-V4-Pro",
+          "anthropic/claude-sonnet-4-6",
+          "huggingface/MiniMaxAI/MiniMax-M2.7"
+        ]
+      },
+      "modelPolicy": {
+        "allow": [
+          "anthropic/claude-opus-4-7",
+          "anthropic/claude-sonnet-4-6",
+          "huggingface/deepseek-ai/DeepSeek-V4-Pro",
+          "huggingface/MiniMaxAI/MiniMax-M2.7",
+          "huggingface/moonshotai/Kimi-K2.6:deepinfra",
+          "openai/gpt-5.5",
+          "openai/gpt-5.6-sol",
+          "openai/gpt-5.6-terra"
+        ]
+      },
+      "systemAgent": {
+        "agentId": "main"
+      },
+      "heartbeat": {
+        "agentId": "main"
+      }
+    },
+    "ownership": "explicit",
+    "entries": {
+      "main": {
+        "workspace": "/home/user/.openclaw/workspace"
+      },
+      "lutra": {
+        "workspace": "/home/user/.openclaw/workspace-lutra"
+      },
+      "vulpes": {
+        "workspace": "/home/user/.openclaw/workspace-vulpes",
+        "model": "openai/gpt-5.6-terra"
+      }
+    }
+  },
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "telegram",
+        "accountId": "default"
+      }
+    },
+    {
+      "agentId": "lutra",
+      "match": {
+        "channel": "telegram",
+        "accountId": "lutra"
+      }
+    },
+    {
+      "agentId": "vulpes",
+      "match": {
+        "channel": "telegram",
+        "peer": {
+          "kind": "group",
+          "id": "-100000004"
+        }
+      }
+    },
+    {
+      "agentId": "vulpes",
+      "match": {
+        "channel": "telegram",
+        "accountId": "vulpes"
+      }
+    }
+  ],
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding",
+    "web": {
+      "search": {
+        "provider": "brave",
+        "enabled": true
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "anthropic:default": {
+        "provider": "anthropic",
+        "mode": "api_key"
+      },
+      "huggingface:default": {
+        "provider": "huggingface",
+        "mode": "api_key"
+      },
+      "openai:user@example.com": {
+        "provider": "openai",
+        "mode": "oauth",
+        "email": "user@example.com"
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "groups": {
+        "*": {
+          "requireMention": true
+        },
+        "-100000004": {
+          "requireMention": true,
+          "groupPolicy": "open",
+          "allowFrom": [
+            "*"
+          ],
+          "systemPrompt": "[scrubbed text <= 1024 chars]"
+        }
+      },
+      "accounts": {
+        "default": {
+          "botToken": "[REDACTED:key]"
+        },
+        "lutra": {
+          "botToken": "[REDACTED:key]"
+        },
+        "vulpes": {
+          "botToken": "[REDACTED:key]",
+          "dmPolicy": "allowlist",
+          "allowFrom": [
+            "tg:100000162"
+          ],
+          "groupPolicy": "open",
+          "groupAllowFrom": [
+            "tg:100000162"
+          ]
+        }
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "brave": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "apiKey": "[REDACTED:key]"
+          }
+        }
+      },
+      "anthropic": {
+        "enabled": true
+      },
+      "huggingface": {
+        "enabled": true
+      },
+      "memory-core": {
+        "config": {
+          "dreaming": {
+            "enabled": true
+          }
+        },
+        "enabled": true
+      },
+      "codex": {
+        "enabled": true
+      },
+      "openai": {
+        "enabled": true
+      }
+    }
+  },
+  "skills": {
+    "install": {
+      "nodeManager": "npm"
+    },
+    "entries": {
+      "1password": {
+        "enabled": false
+      },
+      "apple-notes": {
+        "enabled": false
+      },
+      "apple-reminders": {
+        "enabled": false
+      },
+      "bear-notes": {
+        "enabled": false
+      },
+      "blogwatcher": {
+        "enabled": false
+      },
+      "blucli": {
+        "enabled": false
+      },
+      "bluebubbles": {
+        "enabled": false
+      },
+      "camsnap": {
+        "enabled": false
+      },
+      "coding-agent": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "eightctl": {
+        "enabled": false
+      },
+      "gemini": {
+        "enabled": false
+      },
+      "gh-issues": {
+        "enabled": false
+      },
+      "gifgrep": {
+        "enabled": false
+      },
+      "github": {
+        "enabled": false
+      },
+      "gog": {
+        "enabled": false
+      },
+      "goplaces": {
+        "enabled": false
+      },
+      "himalaya": {
+        "enabled": false
+      },
+      "imsg": {
+        "enabled": false
+      },
+      "mcporter": {
+        "enabled": false
+      },
+      "model-usage": {
+        "enabled": false
+      },
+      "nano-pdf": {
+        "enabled": false
+      },
+      "notion": {
+        "enabled": false
+      },
+      "obsidian": {
+        "enabled": false
+      },
+      "openai-whisper": {
+        "enabled": false
+      },
+      "openai-whisper-api": {
+        "enabled": false
+      },
+      "openhue": {
+        "enabled": false
+      },
+      "oracle": {
+        "enabled": false
+      },
+      "ordercli": {
+        "enabled": false
+      },
+      "peekaboo": {
+        "enabled": false
+      },
+      "sag": {
+        "enabled": false
+      },
+      "session-logs": {
+        "enabled": false
+      },
+      "sherpa-onnx-tts": {
+        "enabled": false
+      },
+      "slack": {
+        "enabled": false
+      },
+      "songsee": {
+        "enabled": false
+      },
+      "sonoscli": {
+        "enabled": false
+      },
+      "spotify-player": {
+        "enabled": false
+      },
+      "summarize": {
+        "enabled": false
+      },
+      "things-mac": {
+        "enabled": false
+      },
+      "tmux": {
+        "enabled": false
+      },
+      "trello": {
+        "enabled": false
+      },
+      "voice-call": {
+        "enabled": false
+      },
+      "wacli": {
+        "enabled": false
+      },
+      "xurl": {
+        "enabled": false
+      }
+    }
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "huggingface": {
+        "baseUrl": "https://router.huggingface.co/v1",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "moonshotai/Kimi-K2.6",
+            "name": "Kimi K2.6",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-R1",
+            "name": "DeepSeek R1",
+            "reasoning": true,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "cost": {
+              "input": 3,
+              "output": 7,
+              "cacheRead": 3,
+              "cacheWrite": 3
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "deepseek-ai/DeepSeek-V3.1",
+            "name": "DeepSeek V3.1",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "cost": {
+              "input": 0.6,
+              "output": 1.25,
+              "cacheRead": 0.6,
+              "cacheWrite": 0.6
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+            "name": "Llama 3.3 70B Instruct Turbo",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "cost": {
+              "input": 0.88,
+              "output": 0.88,
+              "cacheRead": 0.88,
+              "cacheWrite": 0.88
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          },
+          {
+            "id": "openai/gpt-oss-120b",
+            "name": "GPT-OSS 120B",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 131072,
+            "maxTokens": 8192
+          }
+        ]
+      },
+      "openai": {
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-5.6-sol",
+            "name": "GPT-5.6 Sol",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "contextWindow": 195000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "gpt-5.6-terra",
+            "name": "GPT-5.6 Terra",
+            "reasoning": false,
+            "input": [
+              "[scrubbed text <= 16 chars]"
+            ],
+            "contextWindow": 195000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "messages": {
+    "groupChat": {
+      "visibleReplies": "[scrubbed text <= 16 chars]"
+    }
+  },
+  "commands": {
+    "ownerAllowFrom": [
+      "telegram:100000162"
+    ]
+  }
+}

@@ -1,0 +1,1013 @@
+{
+  "timestamp": "2026-05-10T09:40:14.451161",
+  "session_id": "20260510_093945_4267f7",
+  "reason": "max_retries_exhausted",
+  "request": {
+    "method": "POST",
+    "url": "https://router.huggingface.co/v1/chat/completions",
+    "headers": {
+      "Authorization": "[REDACTED:key]",
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "model": "moonshotai/Kimi-K2.6",
+      "messages": [
+        {
+          "role": "system",
+          "content": "[scrubbed text <= 65536 chars]"
+        },
+        {
+          "role": "user",
+          "content": "[scrubbed text <= 16 chars]"
+        }
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_back",
+            "description": "[scrubbed text <= 128 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_click",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_console",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "clear": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "expression": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_get_images",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_navigate",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_press",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_scroll",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_snapshot",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "full": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_type",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "text": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]",
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "browser_vision",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "annotate": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "clarify",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 4,
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "cronjob",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "job_id": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "schedule": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "repeat": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "deliver": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "skills": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "model": {
+                  "type": "object",
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "description": "[scrubbed text <= 1024 chars]"
+                    },
+                    "model": {
+                      "type": "string",
+                      "description": "[scrubbed text <= 128 chars]"
+                    }
+                  },
+                  "required": [
+                    "[scrubbed text <= 16 chars]"
+                  ]
+                },
+                "script": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "no_agent": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "[scrubbed text <= 8192 chars]"
+                },
+                "context_from": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "enabled_toolsets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "workdir": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "delegate_task",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "goal": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "context": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "toolsets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "tasks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "goal": {
+                        "type": "string",
+                        "description": "[scrubbed text <= 16 chars]"
+                      },
+                      "context": {
+                        "type": "string",
+                        "description": "[scrubbed text <= 128 chars]"
+                      },
+                      "toolsets": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "[scrubbed text <= 1024 chars]"
+                      },
+                      "acp_command": {
+                        "type": "string",
+                        "description": "[scrubbed text <= 128 chars]"
+                      },
+                      "acp_args": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "description": "[scrubbed text <= 128 chars]"
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "[scrubbed text <= 16 chars]",
+                          "[scrubbed text <= 16 chars]"
+                        ],
+                        "description": "[scrubbed text <= 128 chars]"
+                      }
+                    },
+                    "required": [
+                      "[scrubbed text <= 16 chars]"
+                    ]
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "acp_command": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "acp_args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "execute_code",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "memory",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "target": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "old_text": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]",
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "patch",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": "[scrubbed text <= 16 chars]"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "old_string": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "new_string": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "replace_all": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": false
+                },
+                "patch": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "process",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "session_id": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "timeout": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "minimum": 1
+                },
+                "offset": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "limit": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "offset": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 1,
+                  "minimum": 1
+                },
+                "limit": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 500,
+                  "maximum": 2000
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "search_files",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "pattern": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "target": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": "[scrubbed text <= 16 chars]"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": "[scrubbed text <= 16 chars]"
+                },
+                "file_glob": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "limit": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 50
+                },
+                "offset": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 0
+                },
+                "output_mode": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "default": "[scrubbed text <= 16 chars]"
+                },
+                "context": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 0
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "send_message",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "target": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "message": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "session_search",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "role_filter": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "limit": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": 3
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "skill_manage",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]",
+                    "[scrubbed text <= 16 chars]"
+                  ],
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "old_string": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "new_string": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "replace_all": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "category": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "file_path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "file_content": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "absorbed_into": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]",
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "skill_view",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "file_path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "skills_list",
+            "description": "[scrubbed text <= 128 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "terminal",
+            "description": "[scrubbed text <= 8192 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "background": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "default": false
+                },
+                "timeout": {
+                  "type": "integer",
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "minimum": 1
+                },
+                "workdir": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "pty": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "default": false
+                },
+                "notify_on_complete": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 1024 chars]",
+                  "default": false
+                },
+                "watch_patterns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "text_to_speech",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                },
+                "output_path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "todo",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "todos": {
+                  "type": "array",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "[scrubbed text <= 128 chars]"
+                      },
+                      "content": {
+                        "type": "string",
+                        "description": "[scrubbed text <= 16 chars]"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "[scrubbed text <= 16 chars]",
+                          "[scrubbed text <= 16 chars]",
+                          "[scrubbed text <= 16 chars]",
+                          "[scrubbed text <= 16 chars]"
+                        ],
+                        "description": "[scrubbed text <= 16 chars]"
+                      }
+                    },
+                    "required": [
+                      "[scrubbed text <= 16 chars]",
+                      "[scrubbed text <= 16 chars]",
+                      "[scrubbed text <= 16 chars]"
+                    ]
+                  }
+                },
+                "merge": {
+                  "type": "boolean",
+                  "description": "[scrubbed text <= 128 chars]",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "vision_analyze",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "image_url": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "question": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 1024 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]",
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "write_file",
+            "description": "[scrubbed text <= 1024 chars]",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "[scrubbed text <= 128 chars]"
+                }
+              },
+              "required": [
+                "[scrubbed text <= 16 chars]",
+                "[scrubbed text <= 16 chars]"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "error": {
+    "type": "APIStatusError",
+    "message": "[scrubbed text <= 1024 chars]",
+    "status_code": 402,
+    "request_id": "Root=1-6a00365e-710086862337548d6b177b1b",
+    "body": "[scrubbed text <= 128 chars]",
+    "response_status": 402,
+    "response_text": "[scrubbed text <= 128 chars]"
+  }
+}
