@@ -45,7 +45,7 @@ def test_recorded_profile(tmp_path: Path) -> None:
     assert caps.network is NetAccess.UNKNOWN
     assert caps.shell is True
     assert "hermes-cli" in caps.tools_allowed and "terminal" in caps.tools_allowed
-    assert caps.channels == (Channel("telegram", groups=True),)
+    assert caps.channels == (Channel("telegram"),)  # no .env recorded: who may write is unknown
     assert caps.sources == ("~/.hermes/config.yaml", "~/.hermes/gateway_state.json")
 
 
@@ -54,7 +54,7 @@ def test_profile_defaults_and_its_platforms(tmp_path: Path) -> None:
     assert caps.approvals is ApprovalLevel.AUTO_EDIT and caps.approval_mode == "smart"
     assert caps.filesystem is FsAccess.FULL and caps.network is NetAccess.FULL  # local backend
     assert caps.shell is True and caps.tools_allowed == ("hermes-cli",)
-    assert caps.channels == (Channel("telegram"),)  # who may DM it lives in .env: unknown
+    assert caps.channels == (Channel("telegram"),)
     assert caps.sources == (
         "~/.hermes/profiles/profile-1/config.yaml",
         "~/.hermes/gateway_state.json",
@@ -168,7 +168,7 @@ def test_shell_is_unknown_for_unknown_toolsets(tmp_path: Path) -> None:
     assert platform.shell is True
 
 
-def test_matrix_rooms_are_group_chats(tmp_path: Path) -> None:
+def test_matrix_rooms_in_config_let_nobody_in(tmp_path: Path) -> None:
     state = json.loads((FIXTURE / "gateway_state.json").read_text())
     platforms = {**state["platforms"], "profile-1:matrix": {}}
     home = tmp_path / "home" / ".hermes"
@@ -181,7 +181,7 @@ def test_matrix_rooms_are_group_chats(tmp_path: Path) -> None:
     adapter = HermesAdapter()
     (agent,) = [a for a in adapter.detect(ctx) if a.name == "Hermes · profile-1"]
     caps = adapter.capabilities(ctx, agent)
-    assert caps is not None and Channel("matrix", groups=True) in known(caps)
+    assert caps is not None and Channel("matrix") in known(caps)  # reach comes from .env
 
 
 def test_malformed_settings_are_unknown(tmp_path: Path) -> None:

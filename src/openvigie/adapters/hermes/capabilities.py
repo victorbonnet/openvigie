@@ -5,11 +5,10 @@ Offers ``read_capabilities``. Missing settings take Hermes' defaults (``approval
 unknown, never the default. Approvals in Hermes cover dangerous commands only: file edits never
 ask, so ``manual`` and ``smart`` both map to ``auto_edit``.
 
-Messaging platforms come from the gateway's ``gateway_state.json`` (``platforms``); who may
-message the profile is set in its ``.env`` (``TELEGRAM_ALLOWED_USERS`` and the like), which is
-never opened, so direct-message reach stays unknown. Group chats count as reachable when the
-platform lists allowed chats, channels or rooms. Secrets are reported by name only, from
-anywhere in the config.
+Messaging platforms come from the gateway's ``gateway_state.json`` (``platforms``), and who
+may message the profile on each from its access settings (``access``). ``allowed_chats`` and
+the like in ``config.yaml`` only narrow where the bot answers: they let nobody in. Secrets
+are reported by name only, from anywhere in the config.
 """
 
 from __future__ import annotations
@@ -23,11 +22,11 @@ import yaml
 
 from openvigie.adapters import caps
 from openvigie.adapters.common import display_path
+from openvigie.adapters.hermes.access import read_access
 from openvigie.model import (
     AgentInstance,
     ApprovalLevel,
     Capabilities,
-    Channel,
     FsAccess,
     NetAccess,
     SecretRef,
@@ -37,9 +36,6 @@ from openvigie.safeio import UnsafeFileError, read_text_bounded, walk_bounded
 APPROVALS = {"manual": ApprovalLevel.AUTO_EDIT, "smart": ApprovalLevel.AUTO_EDIT,
              "off": ApprovalLevel.NEVER_ASK}  # fmt: skip
 CONTAINERS = {"docker", "singularity", "modal", "managed_modal", "daytona", "vercel_sandbox"}
-# platform settings naming the group chats, channels or rooms a profile answers in
-GROUP_KEYS = ("allowed_chats", "group_allowed_chats", "allowed_channels", "free_response_channels",
-              "allowed_rooms", "free_response_rooms")  # fmt: skip
 SHELL_TOOLSETS = {"terminal", "debugging"}
 # Hermes toolsets known to run no commands; any other name leaves the shell unknown
 NO_SHELL_TOOLSETS = {"browser", "clarify", "connections", "cronjob", "delegation", "file",
@@ -74,6 +70,7 @@ def read_capabilities(
     disabled = caps.texts(caps.table(data.get("agent")).get("disabled_toolsets"))
     servers, secrets = _mcp(data.get("mcp_servers"))
     filesystem, network = _reach(terminal.get("backend", "local"))
+    access = read_access(home) if platforms else None
     sources = [config] if config.exists() else []
     if gateway_file is not None:
         sources.append(gateway_file)
@@ -94,7 +91,9 @@ def read_capabilities(
         channels=(
             None
             if gateway_file is None  # platforms unread: unknown, not "none"
-            else tuple(_channel(p, data) for p in sorted(set(platforms)))
+            else tuple(access.channel(p) for p in sorted(set(platforms)))
+            if access
+            else ()
         ),
     )
 
@@ -161,10 +160,3 @@ def _config_secrets(data: dict[str, Any]) -> list[SecretRef]:
 def _skills(directory: Path) -> tuple[str, ...]:
     names = {p.parent.name for p in walk_bounded(directory, "SKILL.md", max_depth=2)}
     return tuple(sorted(names)[: caps.MAX_ITEMS])
-
-
-def _channel(platform: str, data: dict[str, Any]) -> Channel:
-    settings = caps.table(data.get(platform))
-    groups = any(bool(caps.text(settings.get(k))) or bool(caps.texts(settings.get(k)))
-                 for k in GROUP_KEYS)  # fmt: skip
-    return Channel(platform=platform[: caps.MAX_TEXT], groups=True if groups else None)

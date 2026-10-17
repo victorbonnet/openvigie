@@ -57,6 +57,7 @@ agent files / processes ──(untrusted input)──▶ collector ──(bearer
 | T16 | A compromised hub stops or kills processes on a host | Each host allows `agent.stop` / `agent.kill` separately (off by default); the hub names an agent, never a PID; the collector signals only processes it attributed to that agent and their children, re-checked by start time, never PID 1 or itself, and without privilege escalation | #174 |
 | T17 | Alerts leak data, or the webhook leaks its secret | Off unless configured; https only (http to loopback); no redirects; the URL and token are never logged or shown; the payload holds budget ids, scopes and amounts, no prompts or secrets | #179 |
 | T18 | Anyone who can message an agent through a shared channel (group chat, open bot) instructs it with the agent's access | Capabilities list each agent's channels and who can reach it; a risk flag, high when combined with broad access outside a sandbox (FR-8, FR-9) | #183 |
+| T19 | Reading Hermes' `.env` to count who may message a profile leaks the API keys and bot tokens kept in the same file | Only lines named like an access setting (`*_ALLOWED_USERS`, `*_ALLOW_ALL_USERS`, `*_GROUP_ALLOWED_CHATS`, `*_ALLOWED_ROLES`) have their value looked at; entries are hashed at once to count people, flags reduced to true or false; nothing else is parsed, kept, logged or sent | #183 |
 
 ## Rules for every change
 
