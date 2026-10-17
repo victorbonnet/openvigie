@@ -71,7 +71,7 @@ Requirements are numbered so issues and PRs can reference them. P0 is the MVP, P
 | FR-5 | Web UI: agent list, agent detail page, usage and cost charts, host view | P0 |
 | FR-6 | Send traces to Langfuse when configured, and link each agent and session to its traces. The hub exports; metadata only by default (D5) | P0 |
 | FR-7 | Adapter plugin interface in Python so contributors can add new agent types | P0 |
-| FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets, and the messaging channels it answers on (for example Telegram, Discord, WhatsApp, Slack) with who can reach it there: direct messages from allowlisted people, group chats, or anyone | P1 |
+| FR-8 | Inventory each agent's capabilities: tools, MCP servers, skills, filesystem scope, network egress, environment secrets, and the messaging channels it answers on (for example Telegram, Discord, WhatsApp, Slack) with who can reach it there: direct messages from allowlisted people, group chats, or anyone. When the channels can't be read, they are reported as unknown, never as none | P1 |
 | FR-9 | Flag each agent's risks from its capabilities and sandbox state, with a severity and the reason for each flag (D10). An agent that people other than its owner can instruct (group chats, several allowlisted users, open direct messages) is flagged, and is high risk when it also has broad access: shell with unrestricted network, files outside its workspace, or no approvals, outside a sandbox. The UI shows how many people can reach it | P1 |
 | FR-10 | List OpenShell sandboxes, which agent runs in each, and the active policy | P1 |
 | FR-11 | Generate a starter OpenShell policy from an agent's observed capabilities | P1 |

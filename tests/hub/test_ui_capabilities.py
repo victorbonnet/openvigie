@@ -96,3 +96,11 @@ def test_channels_and_who_can_reach_it() -> None:
     assert '<span class="badge error">open to anyone</span>' in html
     assert "<code>allowlist</code>" in html and '<span class="badge degraded">yes</span>' in html
     assert "None configured." in page(Capabilities("a1", NOW))
+
+
+def test_unknown_channels_are_shown_as_unknown() -> None:
+    html = page(
+        Capabilities("a1", NOW - timedelta(minutes=5)), Capabilities("a1", NOW, channels=None)
+    )
+    assert "Who can message it: <strong>unknown</strong>" in html
+    assert "the messaging channels it answers on couldn't be read" in html
