@@ -1,13 +1,15 @@
 """What a Hermes profile can access (FR-8), from its ``config.yaml``.
 
 Offers ``read_capabilities``. Missing settings take Hermes' defaults (``approvals.mode: smart``,
-``terminal.backend: local``, ``toolsets: [hermes-cli]``). Approvals in Hermes cover dangerous
-commands only: file edits never ask, so ``manual`` and ``smart`` both map to ``auto_edit``.
+``terminal.backend: local``, ``toolsets: [hermes-cli]``); a setting present but malformed is
+unknown, never the default. Approvals in Hermes cover dangerous commands only: file edits never
+ask, so ``manual`` and ``smart`` both map to ``auto_edit``.
 
-Messaging platforms come from the gateway (``served``); who may message the profile is set in
-its ``.env`` (``TELEGRAM_ALLOWED_USERS`` and the like), which is never opened, so direct-message
-reach stays unknown. Group chats count as reachable when the platform lists allowed chats or
-channels. Secrets are reported by name only.
+Messaging platforms come from the gateway's ``gateway_state.json`` (``platforms``); who may
+message the profile is set in its ``.env`` (``TELEGRAM_ALLOWED_USERS`` and the like), which is
+never opened, so direct-message reach stays unknown. Group chats count as reachable when the
+platform lists allowed chats, channels or rooms. Secrets are reported by name only, from
+anywhere in the config.
 """
 
 from __future__ import annotations
@@ -35,9 +37,15 @@ from openvigie.safeio import UnsafeFileError, read_text_bounded, walk_bounded
 APPROVALS = {"manual": ApprovalLevel.AUTO_EDIT, "smart": ApprovalLevel.AUTO_EDIT,
              "off": ApprovalLevel.NEVER_ASK}  # fmt: skip
 CONTAINERS = {"docker", "singularity", "modal", "managed_modal", "daytona", "vercel_sandbox"}
-# platform settings naming the group chats or channels a profile answers in
-GROUP_KEYS = ("allowed_chats", "group_allowed_chats", "allowed_channels", "free_response_channels")
+# platform settings naming the group chats, channels or rooms a profile answers in
+GROUP_KEYS = ("allowed_chats", "group_allowed_chats", "allowed_channels", "free_response_channels",
+              "allowed_rooms", "free_response_rooms")  # fmt: skip
 SHELL_TOOLSETS = {"terminal", "debugging"}
+# Hermes toolsets known to run no commands; any other name leaves the shell unknown
+NO_SHELL_TOOLSETS = {"browser", "clarify", "connections", "cronjob", "delegation", "file",
+                     "image_gen", "memory", "session_search", "skills", "todo", "vision",
+                     "web"}  # fmt: skip
+SECRET_DEPTH = 4
 
 
 def read_capabilities(
@@ -46,7 +54,9 @@ def read_capabilities(
     homes: Iterable[Path],
     platforms: Iterable[str],
     now: datetime,
+    gateway_file: Path | None = None,
 ) -> Capabilities | None:
+    """``gateway_file``: where ``platforms`` were read, for ``sources``."""
     config = home / "config.yaml"
     try:
         data = (
@@ -58,16 +68,19 @@ def read_capabilities(
         return None
     data = caps.table(data)
     terminal = caps.table(data.get("terminal"))
-    backend = caps.text(terminal.get("backend")) or "local"
-    mode = _approval_mode(caps.table(data.get("approvals")).get("mode"))
+    approvals = caps.table(data.get("approvals"))
+    mode = _approval_mode(approvals.get("mode")) if "mode" in approvals else "smart"
     enabled = _enabled_toolsets(data)
     disabled = caps.texts(caps.table(data.get("agent")).get("disabled_toolsets"))
     servers, secrets = _mcp(data.get("mcp_servers"))
-    filesystem, network = _reach(backend)
+    filesystem, network = _reach(terminal.get("backend", "local"))
+    sources = [config] if config.exists() else []
+    if gateway_file is not None:
+        sources.append(gateway_file)
     return Capabilities(
         agent_id=agent.agent_id,
         observed_at=now,
-        approvals=APPROVALS.get(mode, ApprovalLevel.UNKNOWN),
+        approvals=APPROVALS.get(mode or "", ApprovalLevel.UNKNOWN),
         approval_mode=mode,
         filesystem=filesystem,
         network=network,
@@ -76,17 +89,18 @@ def read_capabilities(
         tools_denied=disabled,
         mcp_servers=servers,
         skills=_skills(home / "skills"),
-        secrets=caps.unique([*secrets, *_config_secrets(data)]),
-        sources=(display_path(config, homes),) if config.exists() else (),
+        secrets=caps.unique([*secrets, *_config_secrets(data)])[: caps.MAX_ITEMS],
+        sources=tuple(display_path(p, homes) for p in sources),
         channels=tuple(_channel(p, data) for p in sorted(set(platforms))),
     )
 
 
-def _approval_mode(value: Any) -> str:
+def _approval_mode(value: Any) -> str | None:
+    """The mode as written; None when it isn't one (a number, ``true``)."""
     if value is False:  # YAML 1.1 reads a bare `off` as false
         return "off"
     mode = caps.text(value)
-    return mode.strip().lower() if mode else "smart"
+    return mode.strip().lower() if mode else None
 
 
 def _enabled_toolsets(data: dict[str, Any]) -> tuple[str, ...]:
@@ -96,19 +110,23 @@ def _enabled_toolsets(data: dict[str, Any]) -> tuple[str, ...]:
     return caps.unique(names)
 
 
-def _shell(enabled: tuple[str, ...], disabled: tuple[str, ...]) -> bool:
+def _shell(enabled: tuple[str, ...], disabled: tuple[str, ...]) -> bool | None:
     if "terminal" in disabled:
         return False
     # "hermes-*" bundles carry the full default tool list, terminal included
-    return any(t in SHELL_TOOLSETS or t.startswith("hermes-") for t in enabled)
+    if any(t in SHELL_TOOLSETS or t.startswith("hermes-") for t in enabled):
+        return True
+    return False if all(t in NO_SHELL_TOOLSETS for t in enabled) else None
 
 
-def _reach(backend: str) -> tuple[FsAccess, NetAccess]:
+def _reach(backend: Any) -> tuple[FsAccess, NetAccess]:
+    if not isinstance(backend, str):
+        return FsAccess.UNKNOWN, NetAccess.UNKNOWN
     if backend == "local":
         return FsAccess.FULL, NetAccess.FULL
     if backend in CONTAINERS:
         return FsAccess.WORKSPACE, NetAccess.UNKNOWN  # egress depends on the container setup
-    return FsAccess.UNKNOWN, NetAccess.UNKNOWN  # ssh: another machine's access
+    return FsAccess.UNKNOWN, NetAccess.UNKNOWN  # ssh (another machine's access), or malformed
 
 
 def _mcp(servers: Any) -> tuple[tuple[Any, ...], list[SecretRef]]:
@@ -128,16 +146,11 @@ def _config_secrets(data: dict[str, Any]) -> list[SecretRef]:
     refs = [
         SecretRef(n, "config.yaml terminal env") for n in caps.secret_names(dict.fromkeys(passed))
     ]
-    # keys written into the config itself (never their values)
-    for section in ("delegation", "auxiliary", "openrouter"):
-        for key, value in caps.table(data.get(section)).items():
-            if (
-                isinstance(key, str)
-                and caps.SECRET_NAME.search(key)
-                and isinstance(value, str)
-                and value
-            ):
-                refs.append(SecretRef(f"{section}.{key}"[: caps.MAX_TEXT], "config.yaml"))
+    # keys written into the config itself, at any depth (never their values); MCP servers'
+    # are reported with the server
+    rest = {k: v for k, v in data.items() if k != "mcp_servers"}
+    refs += [SecretRef(p[: caps.MAX_TEXT], "config.yaml")
+             for p in caps.secret_paths(rest, SECRET_DEPTH)]  # fmt: skip
     return refs
 
 

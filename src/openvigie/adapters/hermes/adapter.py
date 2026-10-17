@@ -24,7 +24,7 @@ import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from itertools import pairwise
+from itertools import islice, pairwise
 from pathlib import Path, PurePath
 from typing import Annotated, Any
 
@@ -65,11 +65,9 @@ class GatewayState(BaseModel):
 
     code_version: Annotated[str, Field(min_length=1, max_length=64)] | None = None
     served_profiles: Annotated[list[ProfileName], Field(max_length=MAX_PROFILES)] | None = None
-    # keyed by platform, or ``<profile>:<platform>`` for a served profile; values aren't read
-    platforms: (
-        Annotated[dict[Annotated[str, Field(max_length=128)], Any], Field(max_length=MAX_PLATFORMS)]
-        | None
-    ) = None
+    # keyed by platform, or ``<profile>:<platform>`` for a served profile; values aren't read.
+    # Bounded and checked by platforms_by_profile, so an odd key loses only itself
+    platforms: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +77,7 @@ class Gateway:
     version: str | None = None
     served: frozenset[str] = field(default_factory=frozenset)
     platforms: dict[str, frozenset[str]] = field(default_factory=dict)  # profile → platforms
+    source: Path | None = None  # the file platforms were read from; None: platforms unknown
 
 
 def is_loose_hermes(proc: ProcessInfo) -> bool:
@@ -106,7 +105,7 @@ def profile_arg(proc: ProcessInfo) -> str | None:
 def platforms_by_profile(keys: Iterable[str]) -> dict[str, frozenset[str]]:
     """``["telegram", "alice:telegram"]`` → ``{"default": {"telegram"}, "alice": {"telegram"}}``."""
     found: dict[str, set[str]] = {}
-    for key in keys:
+    for key in islice(keys, MAX_PLATFORMS):
         profile, _, platform = key.rpartition(":")
         if PLATFORM.match(platform) and (not profile or PROFILE_NAME.match(profile)):
             found.setdefault(profile or DEFAULT, set()).add(platform)
@@ -202,11 +201,13 @@ class HermesAdapter(Adapter):
         self.roots: dict[str, Path] = {}
         self.procs: dict[str, list[ProcessInfo]] = {}
         self.platforms: dict[str, frozenset[str]] = {}
+        self.gateway_files: dict[str, Path | None] = {}
         self.profile_names: dict[str, str] = {}  # agent id → profile name
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
-        self.roots, self.procs, self.platforms, self.profile_names = {}, {}, {}, {}
+        self.roots, self.procs, self.profile_names = {}, {}, {}
+        self.platforms, self.gateway_files = {}, {}
         roots = hermes_roots(ctx)
         by_root = assign(ctx.processes(), roots)
         found = []
@@ -244,6 +245,7 @@ class HermesAdapter(Adapter):
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
         self.roots[agent_id], self.profile_names[agent_id] = home, name
         self.platforms[agent_id] = gateway.platforms.get(name, frozenset())
+        self.gateway_files[agent_id] = gateway.source
         self._check_config(home, name)
         sandboxed, kind = SandboxState.UNKNOWN, None
         if running and procs:
@@ -269,7 +271,11 @@ class HermesAdapter(Adapter):
         if home is None:
             return None
         platforms = self.platforms.get(agent.agent_id, frozenset())
-        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now())
+        source = self.gateway_files.get(agent.agent_id)
+        if source is None:
+            self._note(self.profile_names.get(agent.agent_id, DEFAULT),
+                       "messaging platforms unknown: no readable gateway_state.json")  # fmt: skip
+        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source)
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         batch = ActivityBatch()
@@ -309,9 +315,10 @@ class HermesAdapter(Adapter):
             self.notes.append(f"{where}/gateway_state.json could not be read")
             return Gateway()
         platforms = platforms_by_profile(state.platforms or {})
-        if state.served_profiles is None:  # older gateways serve only their own home
-            return Gateway(state.code_version, frozenset({DEFAULT}), platforms)
-        return Gateway(state.code_version, frozenset(state.served_profiles), platforms)
+        source = path if state.platforms is not None else None
+        # older gateways serve only their own home
+        served = frozenset({DEFAULT} if state.served_profiles is None else state.served_profiles)
+        return Gateway(state.code_version, served, platforms, source)
 
     def _last_message(self, home: Path, profile: str) -> datetime | None:
         path = home / "state.db"

@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def test_recorded_profile(tmp_path: Path) -> None:
     assert caps.shell is True
     assert "hermes-cli" in caps.tools_allowed and "terminal" in caps.tools_allowed
     assert caps.channels == (Channel("telegram", groups=True),)
-    assert caps.sources == ("~/.hermes/config.yaml",)
+    assert caps.sources == ("~/.hermes/config.yaml", "~/.hermes/gateway_state.json")
 
 
 def test_profile_defaults_and_its_platforms(tmp_path: Path) -> None:
@@ -49,7 +50,10 @@ def test_profile_defaults_and_its_platforms(tmp_path: Path) -> None:
     assert caps.filesystem is FsAccess.FULL and caps.network is NetAccess.FULL  # local backend
     assert caps.shell is True and caps.tools_allowed == ("hermes-cli",)
     assert caps.channels == (Channel("telegram"),)  # who may DM it lives in .env: unknown
-    assert caps.sources == ("~/.hermes/profiles/profile-1/config.yaml",)
+    assert caps.sources == (
+        "~/.hermes/profiles/profile-1/config.yaml",
+        "~/.hermes/gateway_state.json",
+    )
 
 
 def test_approvals_off_and_terminal_disabled(tmp_path: Path) -> None:
@@ -106,3 +110,79 @@ def test_platforms_by_profile_skips_odd_keys() -> None:
         "default": frozenset({"telegram"}),
         "alice": frozenset({"discord", "telegram"}),
     }
+
+
+def gateway_with(tmp_path: Path, **changes: object) -> tuple[HermesAdapter, Capabilities, str]:
+    home = tmp_path / "home"
+    shutil.copytree(FIXTURE, home / ".hermes")
+    path = home / ".hermes" / "gateway_state.json"
+    state = json.loads(path.read_text())
+    for key, value in changes.items():
+        if value is None:
+            state.pop(key, None)
+        else:
+            state[key] = value
+    path.write_text(json.dumps(state))
+    ctx = fake_context(homes=[home])
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(ctx)
+    caps = adapter.capabilities(ctx, agent)
+    assert caps is not None
+    return adapter, caps, agent.version or ""
+
+
+def test_an_odd_platform_key_loses_only_itself(tmp_path: Path) -> None:
+    state = json.loads((FIXTURE / "gateway_state.json").read_text())
+    _, caps, version = gateway_with(tmp_path, platforms={**state["platforms"], "x" * 200: {}})
+    assert version == "0.21.7"
+    assert [c.platform for c in caps.channels] == ["telegram"]
+
+
+def test_unknown_platforms_are_noted(tmp_path: Path) -> None:
+    adapter, caps, _ = gateway_with(tmp_path, platforms=None)
+    assert caps.channels == ()
+    assert "messaging platforms unknown" in (adapter.health().reason or "")
+    assert caps.sources == ("~/.hermes/config.yaml",)
+
+
+def test_nested_secrets_are_listed_by_name(tmp_path: Path) -> None:
+    caps = capabilities(tmp_path, "profile-1",
+                        auxiliary={"vision": {"api_key": "sk-never-read"}},
+                        model={"api_key": "sk-never-read"},
+                        dashboard={"basic_auth": {"password": "never-read"}})  # fmt: skip
+    assert {s.name for s in caps.secrets} >= {
+        "auxiliary.vision.api_key", "model.api_key", "dashboard.basic_auth.password"}  # fmt: skip
+    assert "never-read" not in repr(caps)
+
+
+def test_shell_is_unknown_for_unknown_toolsets(tmp_path: Path) -> None:
+    assert capabilities(tmp_path / "a", "profile-1", toolsets=["all"]).shell is None
+    assert capabilities(tmp_path / "b", "profile-1", toolsets=["web", "file"]).shell is False
+    platform = capabilities(tmp_path / "c", "profile-1", toolsets=["web"],
+                            platform_toolsets={"telegram": ["terminal"]})  # fmt: skip
+    assert platform.shell is True
+
+
+def test_matrix_rooms_are_group_chats(tmp_path: Path) -> None:
+    state = json.loads((FIXTURE / "gateway_state.json").read_text())
+    platforms = {**state["platforms"], "profile-1:matrix": {}}
+    home = tmp_path / "home" / ".hermes"
+    shutil.copytree(FIXTURE, home)
+    (home / "gateway_state.json").write_text(json.dumps({**state, "platforms": platforms}))
+    profile = home / "profiles" / "profile-1"
+    profile.mkdir(parents=True)
+    (profile / "config.yaml").write_text(yaml.safe_dump({"matrix": {"allowed_rooms": "!r:x"}}))
+    ctx = fake_context(homes=[tmp_path / "home"])
+    adapter = HermesAdapter()
+    (agent,) = [a for a in adapter.detect(ctx) if a.name == "Hermes · profile-1"]
+    caps = adapter.capabilities(ctx, agent)
+    assert caps is not None and Channel("matrix", groups=True) in caps.channels
+
+
+def test_malformed_settings_are_unknown(tmp_path: Path) -> None:
+    caps = capabilities(tmp_path / "a", "profile-1", approvals={"mode": 1})
+    assert caps.approvals is ApprovalLevel.UNKNOWN and caps.approval_mode is None
+    assert capabilities(tmp_path / "b", "profile-1", approvals={"mode": True}).approvals is (
+        ApprovalLevel.UNKNOWN)  # fmt: skip
+    caps = capabilities(tmp_path / "c", "profile-1", terminal={"backend": ["docker"]})
+    assert caps.filesystem is FsAccess.UNKNOWN and caps.network is NetAccess.UNKNOWN
