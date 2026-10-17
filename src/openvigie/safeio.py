@@ -70,8 +70,13 @@ def read_text_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE) -> str:
 
 
 def load_json_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE) -> Any:
-    """Parse a JSON file. Raises ``ValueError`` on invalid JSON."""
-    return json.loads(read_text_bounded(path, max_bytes))
+    """Parse a JSON file. Raises ``ValueError`` on invalid JSON, including nesting too deep for
+    ``json`` (which raises ``RecursionError``)."""
+    text = read_text_bounded(path, max_bytes)
+    try:
+        return json.loads(text)
+    except RecursionError:
+        raise ValueError("JSON nested too deeply") from None
 
 
 def load_toml_bounded(path: Path, max_bytes: int = DEFAULT_MAX_FILE) -> dict[str, Any]:
