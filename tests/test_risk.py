@@ -21,6 +21,8 @@ from openvigie.model import (
     NetAccess,
     SandboxState,
     SecretRef,
+    from_dict,
+    to_dict,
 )
 from openvigie.risk import evaluate, facts, level, load_rules, reachable_by_others, reached_by
 
@@ -207,3 +209,14 @@ def test_unknown_reach_is_a_fact_not_a_flag(rules) -> None:  # type: ignore[no-u
     assert f["reachable_by_others"] == "unknown"
     assert f["channels"] == ["telegram"]
     assert evaluate(rules, f) == []
+
+
+def test_unknown_channels_are_unknown_reach(rules) -> None:  # type: ignore[no-untyped-def]
+    assert reachable_by_others(None) is None
+    assert reached_by(None) == "unknown (its messaging channels couldn't be read)"
+    f = facts(AGENT, caps(channels=None), "linux")
+    assert f["reachable_by_others"] == "unknown" and f["channels"] == []
+    assert evaluate(rules, f) == []
+    unknown = caps(channels=None)
+    assert from_dict(Capabilities, to_dict(unknown)) == unknown
+    assert to_dict(unknown)["channels"] is None

@@ -225,29 +225,18 @@ def _secrets(config: dict[str, Any], accounts: list[tuple[str, str]]) -> list[Se
         shared = {k: v for k, v in caps.table(channels.get(channel)).items()
                   if k not in ("accounts", "groups")}  # fmt: skip
         refs += [SecretRef(f"channels.{channel}.{k}"[: caps.MAX_TEXT], CONFIG)
-                 for k in _secret_keys(shared, 1)]  # fmt: skip
+                 for k in caps.secret_paths(shared, 1)]  # fmt: skip
     for channel, account in accounts:
         settings = caps.table(
             caps.table(caps.table(channels.get(channel)).get("accounts")).get(account)
         )
         refs += [SecretRef(f"channels.{channel}.accounts.{account}.{k}"[: caps.MAX_TEXT], CONFIG)
-                 for k in _secret_keys(settings, 1)]  # fmt: skip
+                 for k in caps.secret_paths(settings, 1)]  # fmt: skip
     plugins = caps.table(caps.table(config.get("plugins")).get("entries"))
     for plugin, entry in list(plugins.items())[: caps.MAX_ITEMS]:
         if caps.table(entry).get("enabled") is not False and isinstance(plugin, str):
-            refs += [SecretRef(f"plugins.{plugin}.{k}"[: caps.MAX_TEXT], CONFIG)
-                     for k in _secret_keys(caps.table(entry).get("config"), MAX_DEPTH)]  # fmt: skip
+            refs += [
+                SecretRef(f"plugins.{plugin}.{k}"[: caps.MAX_TEXT], CONFIG)
+                for k in caps.secret_paths(caps.table(entry).get("config"), MAX_DEPTH)
+            ]
     return refs
-
-
-def _secret_keys(value: Any, depth: int, prefix: str = "") -> list[str]:
-    """Dotted paths of non-empty string values under secret-looking keys; values never kept."""
-    found: list[str] = []
-    for key, item in list(caps.table(value).items())[: caps.MAX_ITEMS]:
-        if not isinstance(key, str):
-            continue
-        if isinstance(item, str) and item and caps.SECRET_NAME.search(key):
-            found.append(prefix + key)
-        elif depth > 1:
-            found += _secret_keys(item, depth - 1, f"{prefix}{key}.")
-    return found

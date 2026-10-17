@@ -24,17 +24,18 @@ import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from itertools import pairwise
+from itertools import islice, pairwise
 from pathlib import Path, PurePath
-from typing import Annotated
+from typing import Annotated, Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import candidate_roots, display_path, owner_name
+from openvigie.adapters.hermes.capabilities import read_capabilities
 from openvigie.adapters.hermes.usage import read_usage
-from openvigie.model import AgentInstance, SandboxState, stable_id
+from openvigie.model import AgentInstance, Capabilities, SandboxState, stable_id
 from openvigie.safeio import (
     UnsafeFileError,
     load_json_bounded,
@@ -49,6 +50,8 @@ PROFILE_NAME = re.compile(PROFILE_PATTERN)
 MAX_PROFILES = 100
 MAX_PROFILE_ENTRIES = 1000
 MAX_ANCESTORS = 16
+MAX_PLATFORMS = MAX_PROFILES * 8
+PLATFORM = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 DEFAULT = "default"
 
 ProfileName = Annotated[str, Field(pattern=PROFILE_PATTERN)]
@@ -62,6 +65,9 @@ class GatewayState(BaseModel):
 
     code_version: Annotated[str, Field(min_length=1, max_length=64)] | None = None
     served_profiles: Annotated[list[ProfileName], Field(max_length=MAX_PROFILES)] | None = None
+    # keyed by platform, or ``<profile>:<platform>`` for a served profile; values aren't read.
+    # Bounded and checked by platforms_by_profile, so an odd key loses only itself
+    platforms: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +76,8 @@ class Gateway:
 
     version: str | None = None
     served: frozenset[str] = field(default_factory=frozenset)
+    platforms: dict[str, frozenset[str]] = field(default_factory=dict)  # profile → platforms
+    source: Path | None = None  # the file platforms were read from; None: platforms unknown
 
 
 def is_loose_hermes(proc: ProcessInfo) -> bool:
@@ -92,6 +100,16 @@ def profile_arg(proc: ProcessInfo) -> str | None:
         if arg in ("-p", "--profile") and i + 1 < len(args):
             return args[i + 1]
     return None
+
+
+def platforms_by_profile(keys: Iterable[str]) -> dict[str, frozenset[str]]:
+    """``["telegram", "alice:telegram"]`` → ``{"default": {"telegram"}, "alice": {"telegram"}}``."""
+    found: dict[str, set[str]] = {}
+    for key in islice(keys, MAX_PLATFORMS):
+        profile, _, platform = key.rpartition(":")
+        if PLATFORM.match(platform) and (not profile or PROFILE_NAME.match(profile)):
+            found.setdefault(profile or DEFAULT, set()).add(platform)
+    return {k: frozenset(v) for k, v in found.items()}
 
 
 def profile_of(proc: ProcessInfo, by_pid: Mapping[int, ProcessInfo]) -> str:
@@ -182,11 +200,14 @@ class HermesAdapter(Adapter):
         super().__init__()
         self.roots: dict[str, Path] = {}
         self.procs: dict[str, list[ProcessInfo]] = {}
+        self.platforms: dict[str, frozenset[str]] = {}
+        self.gateway_files: dict[str, Path | None] = {}
         self.profile_names: dict[str, str] = {}  # agent id → profile name
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         self.roots, self.procs, self.profile_names = {}, {}, {}
+        self.platforms, self.gateway_files = {}, {}
         roots = hermes_roots(ctx)
         by_root = assign(ctx.processes(), roots)
         found = []
@@ -223,6 +244,8 @@ class HermesAdapter(Adapter):
         key = (str(root),) if name == DEFAULT else (str(root), name)
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
         self.roots[agent_id], self.profile_names[agent_id] = home, name
+        self.platforms[agent_id] = gateway.platforms.get(name, frozenset())
+        self.gateway_files[agent_id] = gateway.source
         self._check_config(home, name)
         sandboxed, kind = SandboxState.UNKNOWN, None
         if running and procs:
@@ -242,6 +265,17 @@ class HermesAdapter(Adapter):
 
     def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
         return tuple(self.procs.get(agent_id, ()))
+
+    def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
+        home = self.roots.get(agent.agent_id)
+        if home is None:
+            return None
+        platforms = self.platforms.get(agent.agent_id, frozenset())
+        source = self.gateway_files.get(agent.agent_id)
+        if source is None:
+            self._note(self.profile_names.get(agent.agent_id, DEFAULT),
+                       "messaging platforms unknown: no readable gateway_state.json")  # fmt: skip
+        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source)
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         batch = ActivityBatch()
@@ -280,9 +314,11 @@ class HermesAdapter(Adapter):
         except (OSError, UnsafeFileError, ValueError, ValidationError):
             self.notes.append(f"{where}/gateway_state.json could not be read")
             return Gateway()
-        if state.served_profiles is None:  # older gateways serve only their own home
-            return Gateway(state.code_version, frozenset({DEFAULT}))
-        return Gateway(state.code_version, frozenset(state.served_profiles))
+        platforms = platforms_by_profile(state.platforms or {})
+        source = path if state.platforms is not None else None
+        # older gateways serve only their own home
+        served = frozenset({DEFAULT} if state.served_profiles is None else state.served_profiles)
+        return Gateway(state.code_version, served, platforms, source)
 
     def _last_message(self, home: Path, profile: str) -> datetime | None:
         path = home / "state.db"
