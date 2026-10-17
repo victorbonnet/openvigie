@@ -24,7 +24,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from openvigie.model import AdapterHealth, HealthState
-from openvigie.openshell.denials import Denial, parse
+from openvigie.openshell.denials import ANY_DENIAL, Denial, parse
 from openvigie.openshell.models import Policy, Sandbox, SandboxPage
 from openvigie.openshell.versions import MIN_SUPPORTED, is_supported
 from openvigie.redact import redact
@@ -140,16 +140,19 @@ class Reader:
         return Inventory("ok", None, version, views)
 
     def denials(self, view: SandboxView) -> list[Denial] | None:
-        """Connections the sandbox blocked, from its recent log (FR-18); None: unreadable."""
+        """Connections the sandbox blocked, from its recent log (FR-18); None when the log can't
+        be read, or has denials in a format ``parse`` doesn't know."""
         if self.run is None:
             return None
         box = view.sandbox
         args = ["logs", box.name, "--workspace", box.workspace, "-n", str(LOG_LINES),
                 "--source", "sandbox"]  # fmt: skip
         try:
-            return parse(self.run(args))
+            text = self.run(args)
         except CommandError:
             return None
+        found = parse(text)
+        return None if not found and ANY_DENIAL.search(text) else found
 
     def _view(self, run: Run, listed: Sandbox) -> SandboxView:
         sandbox = self._detail(run, listed)

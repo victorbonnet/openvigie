@@ -251,6 +251,19 @@ def test_allow_a_blocked_request_end_to_end(
     assert "Blocked requests" not in client.get(f"/hosts/{TEST_HOST.host_id}").text
 
 
+def test_allow_says_why_when_the_rules_are_unknown(app: FastAPI, client: TestClient) -> None:
+    store = SandboxStore(app.state.db)
+    unknown = OpenShellSandbox("s-net", TEST_HOST.host_id, "ov-net", datetime.now(UTC))
+    store.replace(TEST_HOST.host_id, [unknown], datetime.now(UTC))
+    item = BlockedRequest("s-net", TEST_HOST.host_id, "/usr/bin/bash", "a.example", 443, 1,
+                          datetime.now(UTC))  # fmt: skip
+    store.add_blocked(TEST_HOST.host_id, [item])
+    (blocked,) = store.blocked("s-net")
+    page = client.get(f"/sandboxes/s-net/rules?allow={blocked.key}", headers=ALICE)
+    assert page.status_code == 400
+    assert "current rules are unknown" in page.text and "<textarea" not in page.text
+
+
 def test_allow_needs_a_known_blocked_request(client: TestClient) -> None:
     assert (
         client.get("/sandboxes/s-net/rules?allow=0123456789abcdef", headers=ALICE).status_code

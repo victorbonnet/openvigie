@@ -148,6 +148,7 @@ class Collector:
         self.sandboxes_sent_at = float("-inf")
         marks = store.load_cursors(DENIALS_KEY) if store else {}
         self.denials = Tally(seen={k: float(v.get("at", 0)) for k, v in marks.items()})
+        self.denials_readable: dict[str, bool] = {}  # sandbox id → its log was read
         actions = {**ACTIONS, **agent_actions(self.processes_of)}
         self.commands = CommandRunner(settings.allow_actions, store, actions=actions)
         self.command_results: list[dict[str, Any]] = []  # waiting for the next push
@@ -338,11 +339,13 @@ class Collector:
             self.ctx.sandbox_probe.update(self.openshell_inventory)
         if self.openshell_inventory.state != "ok":
             return
+        self.denials_readable = {}
         for view in self.openshell_inventory.sandboxes:
-            if (
-                view.sandbox.phase == "Ready"
-                and (found := self.openshell.denials(view)) is not None
-            ):
+            if view.sandbox.phase != "Ready":
+                continue
+            found = self.openshell.denials(view)
+            self.denials_readable[view.sandbox.id] = found is not None
+            if found is not None:
                 self.denials.add(view.sandbox.id, found)
         self.denials.forget({v.sandbox.id for v in self.openshell_inventory.sandboxes})
 
@@ -372,7 +375,9 @@ class Collector:
         inventory = self.openshell_inventory
         if inventory.state == "ok":
             boxes = records(inventory, self.ctx.host.host_id, self.agents, self.ctx.now())
-            body = [to_dict(b) for b in boxes]
+            body = [to_dict(dataclasses.replace(
+                        b, blocked_readable=self.denials_readable.get(b.sandbox_id)))
+                    for b in boxes]  # fmt: skip
         elif inventory.state in ("not_installed", "unsupported"):
             if self.sandboxes_sent in (None, "[]"):
                 return None  # nothing shown on the hub

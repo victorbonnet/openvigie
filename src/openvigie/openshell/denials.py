@@ -24,7 +24,10 @@ LINE = re.compile(
     r"DENIED (?P<binary>/[^\s()]{0,1023})\(\d{1,10}\) -> (?P<host>[^\s/]{1,255}):(?P<port>\d{1,5}) "
     r"\[reason:(?P<reason>[a-z0-9_]{1,64})\]$"
 )
-HOST = re.compile(r"^(?:[A-Za-z0-9*_][A-Za-z0-9*_.-]{0,252}|\[[0-9A-Fa-f:.]{2,45}\])$")
+# a literal destination: the process in the sandbox picks it, so a glob ("*") is never one
+HOST = re.compile(r"^(?:[A-Za-z0-9_][A-Za-z0-9_.-]{0,252}|\[[0-9A-Fa-f:.]{2,45}\])$")
+# a denial line, whatever its format: when there are some and none parse, the format changed
+ANY_DENIAL = re.compile(r"\] NET:OPEN \[[A-Z]+\] DENIED ", re.M)
 
 
 @dataclass(frozen=True)

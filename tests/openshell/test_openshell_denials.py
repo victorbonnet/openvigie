@@ -1,9 +1,12 @@
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
 from openvigie.openshell.cli import CommandError, Reader, SandboxView
 from openvigie.openshell.denials import Denial, Tally, parse
 from openvigie.openshell.models import Sandbox
+from openvigie.openshell.policy import PolicyError, allowing
 
 FIXTURES = Path(__file__).parent / "fixtures" / "v0.1.4"
 LOG = (FIXTURES / "net-logs.txt").read_text()
@@ -71,3 +74,29 @@ def test_unreadable_log_is_none() -> None:
 
     assert Reader(run).denials(view()) is None
     assert Reader(None).denials(view()) is None
+
+
+def denial_to(host: str) -> str:
+    return (f"[5.0] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(1) -> {host}:443 "
+            "[reason:transparent_tcp_policy_denied]")  # fmt: skip
+
+
+def test_glob_destinations_are_not_parsed() -> None:
+    assert parse("\n".join(denial_to(h) for h in ("*", "*.example.com", "a?.example"))) == []
+    assert len(parse(denial_to("a.example.com"))) == 1
+
+
+def test_a_changed_log_format_reads_as_unknown() -> None:
+    changed = denial_to("a.example.com").replace("[reason:", "{reason=")
+
+    def run(args: Sequence[str]) -> str:
+        return changed
+
+    assert Reader(run).denials(view()) is None
+    quiet = "[5.0] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] 1.2.3.4:1\n"
+    assert Reader(lambda args: quiet).denials(view()) == []
+
+
+def test_allowing_refuses_globs() -> None:
+    with pytest.raises(PolicyError):
+        allowing({}, "/usr/bin/bash", "*", 443)

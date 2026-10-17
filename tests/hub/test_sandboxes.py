@@ -12,7 +12,7 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.hub.store.sandboxes import SandboxStore
+from openvigie.hub.store.sandboxes import MAX_BLOCKED_KEPT, SandboxStore
 from openvigie.model import AgentInstance, BlockedRequest, Host, OpenShellSandbox, to_dict
 from openvigie.openshell.cli import Inventory as ShellInventory
 from openvigie.openshell.cli import SandboxView
@@ -127,6 +127,32 @@ def test_blocked_requests_add_up_until_a_rule_allows_them() -> None:
     assert len(store.blocked(net.sandbox_id)) == 3
     store.replace(PI.host_id, [], later)
     assert store.blocked(net.sandbox_id) == []
+
+
+def test_blocked_destinations_are_bounded_per_sandbox() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    items = [blocked(net.sandbox_id, "/usr/bin/bash", f"a{i}.example", 1,
+                     NOW + timedelta(seconds=i)) for i in range(MAX_BLOCKED_KEPT + 50)]  # fmt: skip
+    store.add_blocked(PI.host_id, items)
+    kept = store.blocked(net.sandbox_id, limit=10_000)
+    assert len(kept) == MAX_BLOCKED_KEPT
+    assert kept[-1].host == "a50.example"  # the oldest ones went
+
+
+def test_still_blocked_filters_before_limiting() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    allowed = [blocked(net.sandbox_id, "/usr/bin/curl", "example.com", 1, NOW)]  # ov_probe
+    older = [blocked(net.sandbox_id, "/usr/bin/bash", "old.example", 1, NOW - timedelta(days=1))]
+    store.add_blocked(PI.host_id, allowed + older)
+    assert [b.host for b in store.still_blocked(net, limit=1)] == ["old.example"]
 
 
 def test_ingest_refuses_another_hosts_blocked_requests() -> None:

@@ -151,8 +151,11 @@ def to_json(rules: dict[str, Rule]) -> str:
 
 def allowing(rules: dict[str, Rule], binary: str, host: str, port: int) -> dict[str, Rule]:
     """``rules`` plus one rule letting ``binary`` reach ``host:port`` (FR-18 → FR-12): scoped to
-    the program that was blocked."""
-    base = "allow_" + re.sub(r"[^A-Za-z0-9]+", "_", host).strip("_")[:48] + f"_{port}"
+    the program that was blocked. ``host`` is literal: a glob in it (the blocked process chose it)
+    is refused rather than turned into a wildcard rule."""
+    if any(c in host for c in "*?[]"):
+        raise PolicyError("a blocked destination with a wildcard can't be allowed from here")
+    base = "allow_" + (re.sub(r"[^A-Za-z0-9]+", "_", host).strip("_")[:48] or "host") + f"_{port}"
     name, n = base, 1
     while name in rules:
         n += 1

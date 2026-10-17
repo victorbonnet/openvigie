@@ -366,6 +366,8 @@ class OpenShellSandbox:
     network_rules: Items[SandboxRule] | None = None  # None: the policy couldn't be read
     # the exact network_policies as canonical JSON, to edit and roll back (FR-12); None: unknown
     network_policy: Annotated[str, Strict(), Field(max_length=64 * 1024)] | None = None
+    # whether its log could be read for blocked requests (FR-18); None: not read (not Ready)
+    blocked_readable: Bool | None = None
 
 
 @wire_type

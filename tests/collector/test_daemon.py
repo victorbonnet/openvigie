@@ -3,7 +3,7 @@ import os
 import shutil
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -26,7 +26,7 @@ from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.store.sandboxes import SandboxStore
 from openvigie.model import AgentStatus, HealthState, SandboxState, to_dict
-from openvigie.openshell.cli import Reader
+from openvigie.openshell.cli import CommandError, Reader
 from openvigie.openshell.mapping import OpenShellProbe
 
 FIXTURE = Path(__file__).parents[1] / "adapters/claude_code/fixtures/home/.claude"
@@ -367,6 +367,53 @@ def test_blocked_requests_reach_the_hub_once(
     collector.tick()  # the same log lines again
     assert counts() == expected
     assert collector.store.load_cursors(DENIALS_KEY) == {box.sandbox_id: {"at": 1792237771.107}}
+
+
+def logs_answer(answer: Callable[[], str]) -> Reader:
+    base = fake_openshell().run
+    assert base is not None
+
+    def run(args: Sequence[str]) -> str:
+        return answer() if args[0] == "logs" else base(args)
+
+    return Reader(run)
+
+
+def test_an_unreadable_sandbox_log_is_reported_as_such(
+    tmp_path: Path, hub: tuple[TestClient, Database]
+) -> None:
+    def fail() -> str:
+        raise CommandError("timed out")
+
+    collector = sandboxed_collector(tmp_path, hub, logs_answer(fail))
+    collector.tick()
+    (box,) = SandboxStore(hub[1]).all()
+    assert box.blocked_readable is False
+    page = hub[0].get(f"/hosts/{TEST_HOST.host_id}").text
+    assert "can't read this sandbox's OpenShell log" in page
+
+
+def test_blocked_requests_wait_for_the_hub_when_a_push_fails(
+    tmp_path: Path, hub: tuple[TestClient, Database], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log = (OPENSHELL / "net-logs.txt").read_text()
+    collector = sandboxed_collector(tmp_path, hub, logs_answer(lambda: log))
+    clock = collector.monotonic
+    assert isinstance(clock, Clock)
+    send, refused = collector._send_usage, [True]
+
+    def flaky(payload: dict[str, Any], now: float) -> bool:
+        return False if refused[0] and "blocked" in payload else send(payload, now)
+
+    monkeypatch.setattr(collector, "_send_usage", flaky)
+    collector.tick()
+    assert collector.denials.pending  # no state store: kept in memory for the next push
+    refused[0] = False
+    clock.t += 31
+    collector.tick()
+    (box,) = SandboxStore(hub[1]).all()
+    counts = {b.host: b.count for b in SandboxStore(hub[1]).blocked(box.sandbox_id)}
+    assert counts == {"www.wikipedia.org": 2, "example.com": 1, "1.1.1.1": 1}
 
 
 # --- reading history (FR-3, FR-5) --------------------------------------------------------------

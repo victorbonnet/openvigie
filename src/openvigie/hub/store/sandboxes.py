@@ -15,6 +15,7 @@ from openvigie.hub.store.db import Database, required_ts, ts
 from openvigie.model import BlockedRequest, OpenShellSandbox, SandboxRule, from_dict, to_dict
 
 MAX_CHANGES = 100  # per snapshot: a wholesale rewrite is summarised, not logged rule by rule
+MAX_BLOCKED_KEPT = 500  # blocked destinations kept per sandbox, newest first
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,13 @@ class SandboxStore:
                 """,
                 rows,
             )
+            # the sandboxed process picks the destinations: keep only the newest per sandbox
+            conn.executemany(
+                "DELETE FROM blocked_requests WHERE sandbox_id = ? AND rowid NOT IN ("
+                "SELECT rowid FROM blocked_requests WHERE sandbox_id = ? "
+                "ORDER BY last_seen DESC LIMIT ?)",
+                [(s, s, MAX_BLOCKED_KEPT) for s in {r[0] for r in rows}],
+            )
         return len(rows)
 
     def blocked(self, sandbox_id: str, limit: int = 100) -> list[Blocked]:
@@ -219,8 +227,8 @@ class SandboxStore:
     def still_blocked(self, box: OpenShellSandbox, limit: int = 100) -> list[Blocked]:
         """What the sandbox blocked and its current rules still don't allow."""
         rules = box.network_rules or ()
-        return [b for b in self.blocked(box.sandbox_id, limit)
-                if not allows(rules, b.binary, b.host, b.port)]  # fmt: skip
+        return [b for b in self.blocked(box.sandbox_id, MAX_BLOCKED_KEPT)
+                if not allows(rules, b.binary, b.host, b.port)][:limit]  # fmt: skip
 
     def changes(self, sandbox_id: str | None = None, limit: int = 50) -> list[SandboxChange]:
         where, args = ("WHERE sandbox_id = ?", (sandbox_id,)) if sandbox_id else ("", ())

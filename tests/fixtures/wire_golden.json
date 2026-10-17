@@ -116,6 +116,7 @@
    "a1"
   ],
   "agent_type": "claude-code",
+  "blocked_readable": true,
   "host_id": "h1",
   "labels": {
    "openvigie.agent": "claude-code"

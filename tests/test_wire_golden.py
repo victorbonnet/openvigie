@@ -80,7 +80,7 @@ SAMPLES: dict[str, Any] = {
                                                          "read-only", "enforce"),),
                      ("/usr/bin/curl",)),),
         '{"github_readonly":{"binaries":[{"path":"/usr/bin/curl"}],"endpoints":[{"host":'
-        '"api.github.com","port":443}],"name":"github_readonly"}}',
+        '"api.github.com","port":443}],"name":"github_readonly"}}', True,
     ),
     "BlockedRequest": BlockedRequest("267c2951", "h1", "/usr/bin/bash", "example.com", 443, 2, AT,
                                      "transparent_tcp_policy_denied"),

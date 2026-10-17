@@ -33,8 +33,12 @@
   </tbody>
 </table>
 {% endif %}
-{% if blocked %}
+{% if box.blocked_readable is false %}
 <h4>Blocked requests</h4>
+<p class="muted">Unknown: the collector can't read this sandbox's OpenShell log{% if blocked %}; below is what it read before{% endif %}.</p>
+{% endif %}
+{% if blocked %}
+{% if box.blocked_readable is not false %}<h4>Blocked requests</h4>{% endif %}
 <table class="blocked">
   <thead><tr><th>Destination</th><th>Program</th><th>Times</th><th>Last</th>{% if admin %}<th></th>{% endif %}</tr></thead>
   <tbody>
