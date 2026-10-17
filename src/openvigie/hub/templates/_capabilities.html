@@ -22,7 +22,9 @@
   <dt>Secrets reachable</dt><dd>{% for s in caps.secrets %}<code>{{ s.name }}</code> <span class="muted">({{ s.where }})</span>{% if not loop.last %}, {% endif %}{% else %}none found{% endfor %}</dd>
 </dl>
 <h3>Messaging channels</h3>
-{% if caps.channels %}
+{% if caps.channels is none %}
+<p>Who can message it: <strong>unknown</strong> <span class="muted">(the messaging channels it answers on couldn't be read)</span></p>
+{% elif caps.channels %}
 <p>Who can message it: <strong>{{ reached_by(caps.channels) }}</strong></p>
 <table>
   <thead><tr><th>Platform</th><th>Direct messages</th><th>People allowlisted</th><th>Group chats</th></tr></thead>

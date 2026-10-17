@@ -160,13 +160,16 @@ class RuleSet:
     problems: list[str] = field(default_factory=list)  # e.g. a broken override file
 
 
-def reachable_by_others(channels: tuple[Channel, ...]) -> bool | None:
+def reachable_by_others(channels: tuple[Channel, ...] | None) -> bool | None:
     """Whether people other than the owner can instruct the agent: open direct messages, group
-    chats, or several allowlisted people on any channel. ``None`` when that can't be told.
+    chats, or several allowlisted people on any channel. ``None`` when that can't be told,
+    including when the channels themselves are unknown.
 
     Each channel is judged on its own: people can't be told apart across platforms, so the owner
     allowlisted on two platforms is still one person (and two different single people on two
     platforms go unnoticed)."""
+    if channels is None:
+        return None
     answers = [_others(c) for c in channels]
     if any(answers):
         return True
@@ -183,9 +186,11 @@ def _others(channel: Channel) -> bool | None:
     return None if channel.allowed_users is None else False
 
 
-def reached_by(channels: tuple[Channel, ...]) -> str:
+def reached_by(channels: tuple[Channel, ...] | None) -> str:
     """Who can message the agent, in a few words, for flag reasons and the UI. Never firmer than
     ``reachable_by_others``: a count is exact only when reach is known on every channel."""
+    if channels is None:
+        return "unknown (its messaging channels couldn't be read)"
     if not channels:
         return "nobody (no messaging channel)"
     if any(c.open_dms for c in channels):
@@ -229,7 +234,7 @@ def facts(
         secrets=sorted({s.name for s in caps.secrets}),
         hooks=sorted({h.command for h in caps.hooks if h.command}),
         writes_anywhere=caps.filesystem is FsAccess.FULL,
-        channels=sorted({c.platform for c in caps.channels}),
+        channels=sorted({c.platform for c in caps.channels or ()}),
         reachable_by_others=_unknown(reachable_by_others(caps.channels)),
         reached_by=reached_by(caps.channels),
     )

@@ -91,7 +91,11 @@ def read_capabilities(
         skills=_skills(home / "skills"),
         secrets=caps.unique([*secrets, *_config_secrets(data)])[: caps.MAX_ITEMS],
         sources=tuple(display_path(p, homes) for p in sources),
-        channels=tuple(_channel(p, data) for p in sorted(set(platforms))),
+        channels=(
+            None
+            if gateway_file is None  # platforms unread: unknown, not "none"
+            else tuple(_channel(p, data) for p in sorted(set(platforms)))
+        ),
     )
 
 

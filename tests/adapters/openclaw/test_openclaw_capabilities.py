@@ -12,6 +12,11 @@ from openvigie.risk import evaluate, facts, load_rules
 FIXTURE = Path(__file__).parent / "fixtures" / "2026.9.4" / "home" / ".openclaw"
 
 
+def known(caps: Capabilities) -> tuple[Channel, ...]:
+    assert caps.channels is not None
+    return caps.channels
+
+
 def capabilities(tmp_path: Path, **changes: Any) -> dict[str, Capabilities]:
     root = tmp_path / "home" / ".openclaw"
     shutil.copytree(FIXTURE, root)
@@ -87,7 +92,7 @@ def test_dm_policies(tmp_path: Path) -> None:
     accounts["lutra"] |= {"dmPolicy": "allowlist", "allowFrom": ["tg:1", "tg:2", "tg:1"],
                           "groupPolicy": "disabled"}  # fmt: skip
     caps = capabilities(tmp_path, channels=channels)
-    assert caps["main"].channels[0].open_dms is True
+    assert known(caps["main"])[0].open_dms is True
     assert caps["lutra"].channels == (Channel("telegram:lutra", "allowlist", False, 2, False),)
     assert "tg:1" not in repr(caps["lutra"])
 
@@ -107,7 +112,7 @@ def test_owner_only_dm_is_not_flagged(tmp_path: Path) -> None:
 def test_wildcard_allowlist_means_anyone(tmp_path: Path) -> None:
     channels = recorded_channels()
     channels["telegram"]["accounts"]["lutra"] |= {"dmPolicy": "allowlist", "allowFrom": ["*"]}
-    (channel,) = capabilities(tmp_path, channels=channels)["lutra"].channels
+    (channel,) = known(capabilities(tmp_path, channels=channels)["lutra"])
     assert channel.open_dms is True and channel.allowed_users is None
 
 
@@ -160,7 +165,7 @@ def test_unknown_policies_leave_reach_unknown(tmp_path: Path) -> None:
     accounts["default"] |= {"dmPolicy": "open"}
     caps = capabilities(tmp_path, channels=channels)
     assert caps["lutra"].channels == (Channel("telegram:lutra", "allowAll", None, None, None),)
-    (main,) = caps["main"].channels
+    (main,) = known(caps["main"])
     assert main.open_dms is True and main.allowed_users is None
 
 
@@ -171,8 +176,8 @@ def test_binding_without_an_account_uses_the_default_one(tmp_path: Path) -> None
         {"agentId": "main", "match": {"channel": "telegram", "accountId": "*"}},
     ]
     caps = capabilities(tmp_path, bindings=bindings)
-    assert [c.platform for c in caps["lutra"].channels] == ["telegram"]
-    assert {c.platform for c in caps["main"].channels} == {
+    assert [c.platform for c in known(caps["lutra"])] == ["telegram"]
+    assert {c.platform for c in known(caps["main"])} == {
         "telegram", "telegram:lutra", "telegram:vulpes"}  # fmt: skip
     assert config["bindings"] != bindings
 
@@ -193,7 +198,7 @@ def test_group_senders_count_as_people(tmp_path: Path) -> None:
             },
         },
     ]
-    (channel,) = capabilities(tmp_path, channels=channels, bindings=bindings)["lutra"].channels
+    (channel,) = known(capabilities(tmp_path, channels=channels, bindings=bindings)["lutra"])
     assert channel.allowed_users == 3
 
 

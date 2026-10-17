@@ -309,12 +309,13 @@ class Capabilities:
     hooks: Items[Hook] = ()
     secrets: Items[SecretRef] = ()
     sources: Items[Text] = ()  # config files read, as display paths
-    # one per platform; name accounts apart ("telegram:work") when an agent has several
-    channels: Items[Channel] = ()
+    # one per platform; name accounts apart ("telegram:work") when an agent has several.
+    # (): it answers on none; None: they couldn't be read, so who can reach it is unknown
+    channels: Items[Channel] | None = ()
 
     @model_validator(mode="after")
     def _one_channel_per_platform(self) -> Self:
-        platforms = [c.platform for c in self.channels]
+        platforms = [c.platform for c in self.channels or ()]
         if len(platforms) != len(set(platforms)):
             raise ValueError("channels: one per platform")
         return self
