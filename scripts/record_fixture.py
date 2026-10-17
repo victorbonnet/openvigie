@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import functools
 import getpass
 import itertools
 import json
@@ -35,6 +36,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
+from openvigie.adapters.hermes import access as hermes_access
 from openvigie.redact import is_sensitive_key, redact
 from openvigie.safeio import iter_jsonl, read_text_bounded, walk_bounded
 
@@ -177,19 +179,31 @@ MEMORY_NOTE = re.compile(r"(?<![\w.-])(memory/(?:[\w.-]+/)*)([^/\n\"'`\\]{1,120}
 DATED_NOTE = re.compile(r"\d{4}-\d{2}-\d{2}(?:-\d{4})?\.md")
 SCRUBBED_NOTE = re.compile(r"note-\d+\.md")
 HEX_TOKEN = re.compile(r"(?i)(?=[0-9a-f-]*\d)[0-9a-f-]+")  # a uuid or hash: "cafe" in it is no name
+EVENT_HEX = re.compile(r"(?i)[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?")
 # Hermes keeps who may message a profile in its .env, next to its keys: such a file is copied
-# with only its access lines, ids replaced, every other line dropped unread
+# with only its access lines (as the adapter reads them), ids replaced, other lines dropped unread
 ACCESS_ONLY: dict[str, frozenset[str]] = {"hermes": frozenset({".env"})}
-ACCESS_LINE = re.compile(
-    r"^(?:export\s+)?([A-Z][A-Z0-9_]{0,40}_(?:ALLOWED_USERS|ALLOW_ALL_USERS|GROUP_ALLOWED_CHATS"
-    r"|GROUP_ALLOWED_USERS|ALLOWED_ROLES))\s*=(.*)$"
-)
 FLAGS = {"true", "false", "1", "0", "yes", "no"}
-# OpenClaw's transcript events: rebuilt from only what the usage reader needs (#219)
-TOKEN = re.compile(r"[A-Za-z_][\w.-]{0,40}")
-EVENT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# OpenClaw's transcript events: rebuilt from only what the usage reader needs (#219). Every kept
+# word comes from a list of known values, so no free text (a name) can pass a shape check
+EVENT_TYPES = {"message", "custom", "custom_message", "session", "model_change",
+               "thinking_level_change", "compaction", "branch_summary"}  # fmt: skip
+ROLES = {"assistant", "user", "toolResult", "system"}
+STOP_REASONS = {"stop", "toolUse", "error", "aborted", "length", "refusal"}
+PROVIDERS = {"anthropic", "openai", "openai-codex", "huggingface", "openrouter", "google",
+             "deepinfra", "groq", "mistral", "xai", "ollama", "amazon-bedrock", "deepseek",
+             "moonshot", "minimax", "zai", "github-copilot", "vercel-ai-gateway",
+             "nous"}  # fmt: skip
+USAGE_KEYS = {"input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "totalTokens",
+              "cost", "contextUsage"}  # fmt: skip
+USAGE_PARTS = {"input", "output", "cacheRead", "cacheWrite", "cacheWrite1h", "total",
+               "promptTokens", "totalTokens"}  # fmt: skip
 ISO_TIME = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]{5,20}(?:Z|[+-]\d{2}:\d{2})?")
+UNKNOWN_WORD = "[not recorded]"  # a value outside the known lists
 STRUCTURED_COLUMNS = {("transcript_events", "event_json")}
+MAX_EVENT = 4 * 1024 * 1024
+# OpenClaw's own memory folders; any other folder name under memory/ is replaced
+MEMORY_FOLDERS = {"dreaming", "light", "deep", "rem"}
 
 
 class Scrubber:
@@ -204,6 +218,8 @@ class Scrubber:
         self.names: list[tuple[re.Pattern[str], str]] = []
         self.notes: dict[str, str] = {}
         self.handles: dict[str, str] = {}  # non-numeric allowlist entries -> user-N
+        self.event_ids: dict[str, str] = {}  # event ids of another shape -> event-N
+        self.folders: dict[str, str] = {}  # folder names under memory/ -> folder-N
 
     def add_names(self, names: Iterable[str], label: str) -> None:
         """Between any non-alphanumerics, with any of ``-``, ``_`` or a space between parts:
@@ -234,9 +250,23 @@ class Scrubber:
 
     def note(self, match: re.Match[str]) -> str:
         folder, name = match.groups()
+        parts = folder.rstrip("/").split("/")  # memory, then its subfolders
+        folder = "/".join([parts[0], *map(self.memory_folder, parts[1:])]) + "/"
         if DATED_NOTE.fullmatch(name):
-            return match.group(0)
+            return folder + name
         return folder + self.notes.setdefault(name, f"note-{len(self.notes) + 1}.md")
+
+    def memory_folder(self, name: str) -> str:
+        if name in MEMORY_FOLDERS:
+            return name
+        return self.folders.setdefault(name, f"folder-{len(self.folders) + 1}")
+
+    def event_id(self, value: Any) -> str:
+        """A uuid or short hex id as is; any other id a numbered placeholder, so two events
+        never share one."""
+        if isinstance(value, str) and EVENT_HEX.fullmatch(value):
+            return value
+        return self.event_ids.setdefault(repr(value), f"event-{len(self.event_ids) + 1}")
 
     def add_peers(self, ids: set[str]) -> None:
         for digits in sorted(ids):
@@ -408,115 +438,112 @@ def scrub_file(
     return f"{len(lines)} lines, only pattern-redacted: **check it by hand**"
 
 
-def access_lines(src: Path) -> Iterator[tuple[str, str]]:
-    """(name, value) of the access settings in a dotenv file; no other line is looked into."""
-    for line in read_text_bounded(src, max_bytes=256 * 1024).splitlines():
-        m = ACCESS_LINE.match(line.strip())
-        if m is None:
-            continue
-        value = m.group(2).strip()
-        if value[:1] in ("'", '"'):
-            end = value.find(value[0], 1)
-            value = value[1:end] if end > 0 else value[1:]
-        else:
-            value = re.split(r"\s#", value, maxsplit=1)[0].strip()
-        yield m.group(1), value
+@functools.cache
+def access_file(src: Path) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """(name, entries) of each access setting, parsed once by the adapter's own reader; a flag
+    has its value as its one entry. No other line is looked into."""
+    text = read_text_bounded(src, max_bytes=256 * 1024)
+    return tuple(
+        (name, (value,) if hermes_access.is_flag(name) else tuple(hermes_access.entries(value)))
+        for name, value in hermes_access.access_settings(text)
+    )
 
 
-def access_entries(value: str) -> list[str]:
-    try:
-        parsed = json.loads(value) if value.startswith("[") else None
-    except ValueError:
-        parsed = None
-    raw = parsed if isinstance(parsed, list) else value.split(",")
-    return [str(e).strip() for e in raw if str(e).strip()]
+def whole_id(entry: str) -> str | None:
+    """The digits of an entry that is a number (a chat or user id), with an optional sign."""
+    digits = WHOLE_DIGITS.search(entry)
+    return digits.group(0) if digits and digits.group(0) == entry.lstrip("+-") else None
 
 
 def scrub_access_file(src: Path, dst: Path, scrubber: Scrubber) -> str:
-    """Only the access settings, as Hermes reads them: ids become the stable placeholders,
-    names ``user-N``, ``*`` and flags stay."""
+    """Only the access settings: ids become the stable placeholders, names ``user-N``, ``*`` and
+    flags stay."""
     out = []
-    for name, value in access_lines(src):
-        if name.endswith("_ALLOW_ALL_USERS"):
-            out.append(f"{name}={value.lower() if value.lower() in FLAGS else 'unknown'}")
+    for name, entries in access_file(src):
+        if hermes_access.is_flag(name):
+            value = entries[0].lower() if entries else ""
+            out.append(f"{name}={value if value in FLAGS else 'unknown'}")
             continue
-        entries = []
-        for entry in access_entries(value):
-            digits = WHOLE_DIGITS.search(entry)
+        kept = []
+        for entry in entries:
             if entry == "*":
-                entries.append(entry)
-            elif digits and digits.group(0) == entry.lstrip("+-"):
-                entries.append(entry[: len(entry) - len(digits.group(0))]
-                               + scrubber.peer_digits(digits.group(0)))  # fmt: skip
+                kept.append(entry)
+            elif (digits := whole_id(entry)) is not None:
+                kept.append(entry[: len(entry) - len(digits)] + scrubber.peer_digits(digits))
             else:
-                entries.append(
-                    scrubber.handles.setdefault(entry, f"user-{len(scrubber.handles) + 1}")
-                )
-        out.append(f"{name}={','.join(entries)}")
+                kept.append(scrubber.handles.setdefault(entry, f"user-{len(scrubber.handles) + 1}"))
+        out.append(f"{name}={','.join(kept)}")
     dst.write_text("".join(line + "\n" for line in out))
     return f"access settings only: {len(out)} kept, every other line dropped unread"
 
 
 def access_peers(src: Path) -> set[str]:
     return {
-        d.group(0)
-        for name, value in access_lines(src)
-        if not name.endswith("_ALLOW_ALL_USERS")
-        for entry in access_entries(value)
-        if (d := WHOLE_DIGITS.search(entry)) and d.group(0) == entry.lstrip("+-")
+        digits
+        for name, entries in access_file(src)
+        if not hermes_access.is_flag(name)
+        for entry in entries
+        if (digits := whole_id(entry)) is not None
     }
 
 
-def transcript_event(text: Any, scrubber: Scrubber) -> Any:
+def transcript_event(raw: Any, scrubber: Scrubber) -> Any:
     """An OpenClaw transcript event, rebuilt from the fields the usage reader needs: its type,
     id and time, and its message's role, model, provider, time, stop reason and token counts.
-    Everything else, message content included, is left out; a value of the wrong shape is a
-    placeholder."""
+    Everything else, message content included, is left out. Words must be known values, ids get
+    numbered placeholders, and anything else becomes a placeholder."""
+    if isinstance(raw, bytes):  # stored as a BLOB: rebuilt like text, never copied as is
+        raw = raw[:MAX_EVENT].decode("utf-8", errors="replace")
+    if not isinstance(raw, str):
+        return None if raw is None else UNKNOWN_WORD
     try:
-        data = json.loads(text) if isinstance(text, str) else None
+        data = json.loads(raw)
     except ValueError:
         data = None
     if not isinstance(data, dict):
-        return scrubber.placeholder(text) if isinstance(text, str) else text
+        return scrubber.placeholder(raw)
     out: dict[str, Any] = {}
-    for key, pattern in (("type", TOKEN), ("id", EVENT_ID), ("timestamp", ISO_TIME)):
-        if key in data:
-            out[key] = shaped(data[key], pattern, scrubber)
+    if "type" in data:
+        out["type"] = known(data["type"], EVENT_TYPES)
+    if "id" in data:
+        out["id"] = scrubber.event_id(data["id"])
+    if "timestamp" in data:
+        stamp = data["timestamp"]
+        out["timestamp"] = stamp if isinstance(stamp, str) and ISO_TIME.fullmatch(stamp) else None
     message = data.get("message")
     if isinstance(message, dict):
         kept: dict[str, Any] = {}
-        for key, pattern in (("role", TOKEN), ("stopReason", TOKEN)):
-            if key in message:
-                kept[key] = shaped(message[key], pattern, scrubber)
+        if "role" in message:
+            kept["role"] = known(message["role"], ROLES)
+        if "stopReason" in message:
+            kept["stopReason"] = known(message["stopReason"], STOP_REASONS)
         if isinstance(message.get("model"), str):
             kept["model"] = scrubber.value(message["model"], "model")
-        if "provider" in message:  # scrubbed like the JSONL transcripts'
-            kept["provider"] = scrubber.value(message["provider"], "provider", in_content=True)
+        if "provider" in message:  # the adapter maps it to a price table vendor
+            kept["provider"] = known(message["provider"], PROVIDERS)
         if isinstance(message.get("timestamp"), int | float):
             kept["timestamp"] = message["timestamp"]
         if isinstance(message.get("usage"), dict):
-            kept["usage"] = numbers_only(message["usage"])
+            kept["usage"] = usage_numbers(message["usage"])
         out["message"] = kept
     return json.dumps(out, separators=(",", ":"))
 
 
-def shaped(value: Any, pattern: re.Pattern[str], scrubber: Scrubber) -> Any:
-    if isinstance(value, str):
-        return value if pattern.fullmatch(value) else scrubber.placeholder(value)
-    return value if isinstance(value, int | float) and not isinstance(value, bool) else None
+def known(value: Any, words: set[str]) -> str:
+    return value if isinstance(value, str) and value in words else UNKNOWN_WORD
 
 
-def numbers_only(value: dict[str, Any], depth: int = 2) -> dict[str, Any]:
-    """Token counts and costs: numbers, and dicts of numbers; keys must be plain words."""
+def usage_numbers(usage: dict[str, Any]) -> dict[str, Any]:
+    """Known token and cost fields: numbers, or dicts of known numbers (``cost``)."""
     out: dict[str, Any] = {}
-    for key, item in list(value.items())[:64]:
-        if not (isinstance(key, str) and TOKEN.fullmatch(key)):
-            continue
+    for key in USAGE_KEYS & usage.keys():
+        item = usage[key]
         if isinstance(item, int | float) and not isinstance(item, bool):
             out[key] = item
-        elif isinstance(item, dict) and depth > 1:
-            out[key] = numbers_only(item, depth - 1)
-    return out
+        elif isinstance(item, dict):
+            out[key] = {k: v for k, v in item.items() if k in USAGE_PARTS
+                        and isinstance(v, int | float) and not isinstance(v, bool)}  # fmt: skip
+    return dict(sorted(out.items()))
 
 
 def json5_data(text: str) -> Any:

@@ -79,8 +79,10 @@ expected; a chat, group, bot or phone number is not.
   `agent/openclaw-agent.sqlite` (2026.9) and in older `sessions/<id>.jsonl`; `input` leaves
   cache reads out. `*.trajectory.jsonl` holds run traces, not read for usage.
   `transcript_events` was re-recorded on 2026-10-17 (#219) with each event rebuilt from only
-  `type`, `id`, `timestamp` and its message's `role`, `model`, `provider` (scrubbed),
-  `timestamp`, `stopReason` and numeric `usage`; message content was never copied. The rest
+  `type`, `id`, `timestamp` and its message's `role`, `model`, `provider`, `timestamp`,
+  `stopReason` and known `usage` fields; message content was never copied. Types, roles, stop
+  reasons and providers come from lists of known values (`[not recorded]` otherwise), ids are
+  kept only as UUIDs or short hex ids (`event-N` otherwise). The rest
   of each database is the original recording. Totals from those rows (assistant messages with
   usage): main 18, output 2309, cache read 99298; lutra 14, output 1479, cache read 68469;
   vulpes 6, output 1280, cache read 49088, plus 4 with zero counters on calls that didn't fail

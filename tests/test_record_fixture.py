@@ -827,6 +827,9 @@ def test_memory_note_names_scrubbed_in_paths() -> None:
     s = rf.Scrubber(HOME, "alice", "alice-mbp")
     assert s.path(Path("workspace/memory/trip-to-lyon.md")) == Path("workspace/memory/note-1.md")
     assert s.path(Path("workspace/memory/2026-05-14.md")) == Path("workspace/memory/2026-05-14.md")
+    assert s.path(Path("workspace/memory/acme-merger/plan.md")) == Path(
+        "workspace/memory/folder-1/note-2.md")  # fmt: skip
+    assert s.text("memory/dreaming/light/2026-05-14.md") == "memory/dreaming/light/2026-05-14.md"
 
 
 def test_names_after_a_dash_or_underscore_scrubbed_uuids_kept() -> None:
@@ -913,32 +916,42 @@ def test_openclaw_transcript_events_keep_only_usage_fields(tmp_path: Path) -> No
     source = tmp_path / ".openclaw"
     (source / "agents" / "main" / "agent").mkdir(parents=True)
     (source / "openclaw.json").write_text("{}")
-    event = {"type": "message", "id": "e1a2", "parentId": "p0",
+    event = {"type": "message", "id": "e1a2b3c4", "parentId": "p0",
              "timestamp": "2026-10-14T10:00:00.000Z",
-             "message": {"role": "assistant", "model": "gpt-5.5", "provider": "openai",
+             "message": {"role": "assistant", "model": "gpt-5.5", "provider": "openai-codex",
                          "timestamp": 1792237771053, "stopReason": "stop", "api": "responses",
                          "content": [{"type": "text", "text": "Alice's tax return is done"}],
                          "usage": {"input": 10, "output": 5, "cacheRead": 7, "cacheWrite": 0,
-                                   "cost": {"total": 0.01}, "note": "x"}}}  # fmt: skip
-    odd = {"type": "message", "id": "id with spaces", "message": {"role": "Alice Smith"}}
+                                   "cost": {"total": 0.01, "alice": 1},
+                                   "alice.smith": 3}}}  # fmt: skip
+    odd = {"type": "alice_notes", "id": "msg:1",
+           "message": {"role": "alice", "provider": "acme-internal",
+                       "stopReason": "bob"}}  # fmt: skip
+    twin = {"type": "message", "id": "msg:2", "message": {"role": "user"}}
+    blob = json.dumps({"type": "message", "id": "msg:3",
+                       "message": {"content": "hello from alice"}}).encode()  # fmt: skip
     with sqlite3.connect(source / "agents" / "main" / "agent" / "openclaw-agent.sqlite") as db:
         db.execute("create table transcript_events (session_id text, seq integer, event_json text)")
         db.executemany("insert into transcript_events values ('s1', ?, ?)",
-                       [(0, json.dumps(event)), (1, json.dumps(odd)),
-                        (2, "{not json")])  # fmt: skip
+                       [(0, json.dumps(event)), (1, json.dumps(odd)), (2, json.dumps(twin)),
+                        (3, blob), (4, "{not json")])  # fmt: skip
     dest = tmp_path / "fixture"
     rf.record("openclaw", source, dest, scrubber=scrubber(), ps=FakePs())
     with sqlite3.connect(dest / "agents" / "main" / "agent" / "openclaw-agent.sqlite") as db:
         rows = [r[0] for r in db.execute("select event_json from transcript_events order by seq")]
     assert json.loads(rows[0]) == {
-        "type": "message", "id": "e1a2", "timestamp": "2026-10-14T10:00:00.000Z",
+        "type": "message", "id": "e1a2b3c4", "timestamp": "2026-10-14T10:00:00.000Z",
         "message": {"role": "assistant", "stopReason": "stop", "model": "gpt-5.5",
-                    "provider": "[scrubbed text <= 16 chars]", "timestamp": 1792237771053,
-                    "usage": {"input": 10, "output": 5, "cacheRead": 7, "cacheWrite": 0,
-                              "cost": {"total": 0.01}}},
+                    "provider": "openai-codex", "timestamp": 1792237771053,
+                    "usage": {"cacheRead": 7, "cacheWrite": 0, "cost": {"total": 0.01},
+                              "input": 10, "output": 5}},
     }  # fmt: skip
-    odd_kept = json.loads(rows[1])
-    assert odd_kept["id"].startswith("[scrubbed")
-    assert odd_kept["message"]["role"].startswith("[scrubbed")
-    assert rows[2].startswith("[scrubbed text")
-    assert "Alice" not in all_text(dest)
+    odd_kept, twin_kept, blob_kept = (json.loads(r) for r in rows[1:4])
+    assert odd_kept == {"type": "[not recorded]", "id": "event-1",
+                        "message": {"role": "[not recorded]", "stopReason": "[not recorded]",
+                                    "provider": "[not recorded]"}}  # fmt: skip
+    assert twin_kept["id"] == "event-2"  # distinct ids stay distinct
+    assert blob_kept == {"type": "message", "id": "event-3", "message": {}}
+    assert rows[4].startswith("[scrubbed text")
+    text = all_text(dest)
+    assert "alice" not in text.lower() and "acme" not in text and "bob" not in text

@@ -16,12 +16,13 @@ from openvigie.adapters.testing import AdapterContract, fake_context, fake_proce
 from openvigie.model import HealthState, SandboxState
 
 FIXTURE = Path(__file__).parent / "fixtures" / "0.21.7" / "home" / ".hermes"
+NO_PROFILES = shutil.ignore_patterns("profiles")  # recorded .env samples: test_hermes_access
 NEWEST_MESSAGE = datetime(2026, 10, 14, 11, 58, 10, tzinfo=UTC)
 
 
 def make_home(tmp_path: Path, name: str = "home") -> Path:
     home = tmp_path / name
-    shutil.copytree(FIXTURE, home / ".hermes")
+    shutil.copytree(FIXTURE, home / ".hermes", ignore=NO_PROFILES)
     return home
 
 
@@ -75,7 +76,7 @@ def test_stopped_gateway(tmp_path: Path) -> None:
 
 
 def test_not_installed(tmp_path: Path) -> None:
-    (tmp_path / "home" / ".hermes").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "home" / ".hermes").mkdir(parents=True)
     assert HermesAdapter().detect(fake_context(homes=[tmp_path / "home"])) == []
 
 
@@ -109,7 +110,7 @@ def test_empty_message_store_has_no_activity(tmp_path: Path) -> None:
 
 def test_hermes_home_override(tmp_path: Path) -> None:
     custom = tmp_path / "hermes-home"
-    shutil.copytree(FIXTURE, custom)
+    shutil.copytree(FIXTURE, custom, ignore=NO_PROFILES)
     ctx = fake_context(homes=[tmp_path / "nohome"], env={"HERMES_HOME": str(custom)})
     (agent,) = HermesAdapter().detect(ctx)
     assert agent.config_root == str(custom)
@@ -165,7 +166,7 @@ def test_registered() -> None:
 
 def add_profile(home: Path, name: str) -> Path:
     profile = home / ".hermes" / "profiles" / name
-    profile.mkdir(parents=True, exist_ok=True)
+    profile.mkdir(parents=True)
     for file in ("config.yaml", "state.db"):
         shutil.copy(FIXTURE / file, profile / file)
     return profile
@@ -225,7 +226,7 @@ def test_profile_with_its_own_gateway(tmp_path: Path) -> None:
 def test_odd_profile_folders_are_skipped(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     profiles = home / ".hermes" / "profiles"
-    (profiles / "empty").mkdir(parents=True, exist_ok=True)
+    (profiles / "empty").mkdir(parents=True)
     (profiles / ".hidden").mkdir()
     (profiles / "linked").symlink_to(FIXTURE)
     (profiles / "file").write_text("")
@@ -328,7 +329,7 @@ def test_home_set_to_a_profile_is_reported_once(tmp_path: Path) -> None:
 def test_nested_home_gets_its_own_processes(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     inner = home / ".hermes" / "inner"
-    shutil.copytree(FIXTURE, inner)
+    shutil.copytree(FIXTURE, inner, ignore=NO_PROFILES)
     python = f"{inner}/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
     inner_gateway = fake_process(700, "hermes", (python, "gateway", "run"), exe=python)
     adapter = HermesAdapter()
@@ -352,7 +353,7 @@ def test_junk_in_profiles_does_not_hide_real_ones(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     profiles = home / ".hermes" / "profiles"
     for i in range(150):
-        (profiles / f".cache-{i:03}").mkdir(parents=True, exist_ok=True)
+        (profiles / f".cache-{i:03}").mkdir(parents=True)
     add_profile(home, "zeta")
     agents = HermesAdapter().detect(fake_context(homes=[home]))
     assert [a.name for a in agents] == ["Hermes · default", "Hermes · zeta"]
@@ -363,7 +364,6 @@ def test_long_profile_listing_is_cut_and_noted(
 ) -> None:
     monkeypatch.setattr(hermes, "MAX_PROFILE_ENTRIES", 3)
     home = make_home(tmp_path)
-    shutil.rmtree(home / ".hermes" / "profiles")  # only the profiles below
     for i in range(5):
         add_profile(home, f"profile-{i}")
     adapter = HermesAdapter()
