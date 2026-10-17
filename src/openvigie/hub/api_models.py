@@ -15,6 +15,7 @@ from openvigie.hub.reports import Reading, UsageRow
 from openvigie.model import (
     AdapterHealth,
     AgentInstance,
+    BlockedRequest,
     Capabilities,
     Command,
     CommandResult,
@@ -29,6 +30,8 @@ from openvigie.model import (
     UsageRecord,
 )
 from openvigie.risk import Flag
+
+MAX_BLOCKED = 2000  # blocked-request groups per push
 
 
 class ApiModel(BaseModel):
@@ -81,6 +84,8 @@ class IngestRequest(ApiModel):
     command_results: Annotated[list[CommandResult], Field(max_length=100)] = []
     # how far each agent's usage logs have been read, when that changed (FR-3)
     usage_backfill: Annotated[list[UsageBackfill], Field(max_length=500)] = []
+    # connections sandboxes blocked since the last push, to add to the hub's counts (FR-18)
+    blocked: Annotated[list[BlockedRequest], Field(max_length=MAX_BLOCKED)] = []
 
 
 class Accepted(ApiModel):
@@ -95,6 +100,7 @@ class Accepted(ApiModel):
     sandboxes: int = 0
     command_results: int = 0
     usage_backfill: int = 0
+    blocked: int = 0
     spans: int
 
 

@@ -12,8 +12,8 @@ from openvigie.hub.app import create_app
 from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
-from openvigie.hub.store.sandboxes import SandboxStore
-from openvigie.model import AgentInstance, Host, OpenShellSandbox, to_dict
+from openvigie.hub.store.sandboxes import MAX_BLOCKED_KEPT, SandboxStore
+from openvigie.model import AgentInstance, BlockedRequest, Host, OpenShellSandbox, to_dict
 from openvigie.openshell.cli import Inventory as ShellInventory
 from openvigie.openshell.cli import SandboxView
 from openvigie.openshell.mapping import records
@@ -97,3 +97,71 @@ def test_ingest_and_api() -> None:
     assert push(client, token, sandboxes=[]).json()["accepted"]["sandboxes"] == 1  # deleted
     assert client.get("/api/v1/sandboxes").json() == {"sandboxes": []}
     assert json.dumps(box)  # the wire form is plain JSON
+
+
+def blocked(sandbox_id: str, binary: str, host: str, count: int, at: datetime,
+            host_id: str = PI.host_id) -> BlockedRequest:  # fmt: skip
+    return BlockedRequest(sandbox_id, host_id, binary, host, 443, count, at, "x")
+
+
+def test_blocked_requests_add_up_until_a_rule_allows_them() -> None:
+    db = Database(MEMORY)
+    for host in (PI, OTHER):
+        Inventory(db).upsert_host(host, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    later = NOW + timedelta(minutes=5)
+    assert store.add_blocked(PI.host_id, [
+        blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 1, NOW),
+        blocked(net.sandbox_id, "/usr/bin/curl", "example.com", 3, NOW),  # ov_probe allows it
+        blocked(net.sandbox_id, "/usr/bin/python3.12", "pypi.org", 1, NOW),  # pypi: python3*
+    ]) == 3  # fmt: skip
+    assert store.add_blocked(PI.host_id, [
+        blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 2, later)]) == 1  # fmt: skip
+    theirs = blocked(net.sandbox_id, "/usr/bin/bash", "example.com", 9, later, OTHER.host_id)
+    assert store.add_blocked(OTHER.host_id, [theirs]) == 0
+    (bash,) = store.still_blocked(net)
+    assert (bash.binary, bash.count, bash.first_seen, bash.last_seen) == (
+        "/usr/bin/bash", 3, NOW, later)  # fmt: skip
+    assert len(store.blocked(net.sandbox_id)) == 3
+    store.replace(PI.host_id, [], later)
+    assert store.blocked(net.sandbox_id) == []
+
+
+def test_blocked_destinations_are_bounded_per_sandbox() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    items = [blocked(net.sandbox_id, "/usr/bin/bash", f"a{i}.example", 1,
+                     NOW + timedelta(seconds=i)) for i in range(MAX_BLOCKED_KEPT + 50)]  # fmt: skip
+    store.add_blocked(PI.host_id, items)
+    kept = store.blocked(net.sandbox_id, limit=10_000)
+    assert len(kept) == MAX_BLOCKED_KEPT
+    assert kept[-1].host == "a50.example"  # the oldest ones went
+
+
+def test_still_blocked_filters_before_limiting() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    store = SandboxStore(db)
+    net = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    store.replace(PI.host_id, [net], NOW)
+    allowed = [blocked(net.sandbox_id, "/usr/bin/curl", "example.com", 1, NOW)]  # ov_probe
+    older = [blocked(net.sandbox_id, "/usr/bin/bash", "old.example", 1, NOW - timedelta(days=1))]
+    store.add_blocked(PI.host_id, allowed + older)
+    assert [b.host for b in store.still_blocked(net, limit=1)] == ["old.example"]
+
+
+def test_ingest_refuses_another_hosts_blocked_requests() -> None:
+    db = Database(MEMORY)
+    Inventory(db).upsert_host(PI, NOW)
+    token = Credentials(db).issue_token(PI.host_id, NOW)
+    client = TestClient(create_app(HubSettings(), db), base_url="http://127.0.0.1:7878")
+    box = recorded("net-sandbox-get.json", "net-policy-base-v2.json")
+    push(client, token, sandboxes=[to_dict(box)])
+    mine = to_dict(blocked(box.sandbox_id, "/usr/bin/bash", "example.com", 1, NOW))
+    assert push(client, token, blocked=[mine]).json()["accepted"]["blocked"] == 1
+    assert push(client, token, blocked=[dict(mine, host_id=OTHER.host_id)]).status_code == 403

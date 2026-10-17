@@ -10,7 +10,7 @@ run() { local file=$1; shift; section "$file"; "$@" 2>&1; printf '\n--- exit %s 
 run version.txt openshell --version
 run status.txt openshell status
 for cmd in "sandbox create" "sandbox list" "sandbox get" "policy get" "policy list" \
-           "policy update" "policy set"; do
+           "policy update" "policy set" "logs" "sandbox exec"; do
   # shellcheck disable=SC2086
   run "help-${cmd// /-}.txt" openshell $cmd --help
 done
@@ -101,6 +101,19 @@ run net-policy-update.txt openshell policy update ov-net --rule-name ov_probe \
   --binary /usr/bin/curl --add-endpoint example.com:443:read-only:rest:enforce --wait
 run net-policy-list.txt openshell policy list ov-net
 run net-policy-base-v2.json openshell policy get ov-net --base --output json
+
+# Blocked requests (FR-18). The default image has no curl or python, so bash's /dev/tcp makes
+# them: twice to a host no rule allows, to a host whose rule allows only curl, and to an IP
+in_net() { openshell sandbox exec ov-net --no-tty --no-login-shell --timeout 30 -- "$@"; }
+connect() { in_net bash -c "timeout 10 bash -c 'exec 3<>/dev/tcp/$1/$2' && echo connected"; }
+run net-exec-denied-host.txt connect www.wikipedia.org 443
+run net-exec-denied-host-again.txt connect www.wikipedia.org 443
+run net-exec-denied-binary.txt connect example.com 443
+run net-exec-denied-ip.txt connect 1.1.1.1 443
+sleep 5
+run net-logs.txt openshell logs ov-net -n 500 --since 15m --source sandbox
+run net-logs-gateway.txt openshell logs ov-net -n 500 --since 15m --source gateway
+run net-logs-debug.txt openshell logs ov-net -n 1000 --since 15m --level debug
 run net-delete.txt openshell sandbox delete ov-net
 
 run delete.txt openshell sandbox delete "$NAME"

@@ -171,13 +171,31 @@ def rules_page(
     request: Request,
     sandbox_id: Annotated[str, Path(max_length=256)],
     start: Annotated[Literal["current", "starter"], Query(alias="from")] = "current",
+    allow: Annotated[str | None, Query(pattern=r"^[0-9a-f]{16}$")] = None,
 ) -> HTMLResponse:
-    """A sandbox's network rules as YAML; admins can edit them and propose the change."""
-    box = SandboxStore(request.app.state.db).get(sandbox_id)
+    """A sandbox's network rules as YAML; admins can edit them and propose the change. With
+    ``allow``, the current rules plus one allowing that blocked request (FR-18)."""
+    store = SandboxStore(request.app.state.db)
+    box = store.get(sandbox_id)
     if box is None:
         raise HTTPException(404, "sandbox not found")
     text = None
-    if start == "starter" and (row := _agent_of(request, box)) is not None:
+    if allow is not None:
+        blocked = next((b for b in store.blocked(sandbox_id) if b.key == allow), None)
+        if blocked is None:
+            raise HTTPException(404, "blocked request not found")
+        if box.network_policy is None:  # proposing from no rules would drop the unknown ones
+            return _editor(request, box, error="Can't propose allowing it: this sandbox's "
+                                               "current rules are unknown.")  # fmt: skip
+        else:
+            try:
+                rules = policy.from_json(box.network_policy)
+                text = policy.to_yaml(policy.allowing(rules, blocked.binary, blocked.host,
+                                                      blocked.port))  # fmt: skip
+            except policy.PolicyError:
+                return _editor(request, box, error="This destination can't be written as a rule "
+                                                   "here; add it by hand.")  # fmt: skip
+    elif start == "starter" and (row := _agent_of(request, box)) is not None:
         rules = policy.parse_yaml(starter_view(request, row, box).policy.yaml).rules
         text = policy.to_yaml(rules)
     return _editor(request, box, text)

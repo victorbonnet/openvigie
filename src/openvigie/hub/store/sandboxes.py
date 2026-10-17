@@ -1,17 +1,21 @@
-"""OpenShell sandboxes per host, and the history of what changed in them (FR-10)."""
+"""OpenShell sandboxes per host, the history of what changed in them (FR-10), and the
+connections each one blocked (FR-18)."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from fnmatch import fnmatchcase
 
 from openvigie.hub.store.db import Database, required_ts, ts
-from openvigie.model import OpenShellSandbox, SandboxRule, from_dict, to_dict
+from openvigie.model import BlockedRequest, OpenShellSandbox, SandboxRule, from_dict, to_dict
 
 MAX_CHANGES = 100  # per snapshot: a wholesale rewrite is summarised, not logged rule by rule
+MAX_BLOCKED_KEPT = 500  # blocked destinations kept per sandbox, newest first
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,35 @@ class SandboxChange:
     name: str
     change: str  # created | deleted | added | removed | changed
     detail: str
+
+
+@dataclass(frozen=True)
+class Blocked:
+    """Connections one sandbox blocked from one program to one destination (FR-18)."""
+
+    sandbox_id: str
+    binary: str
+    host: str
+    port: int
+    count: int
+    first_seen: datetime
+    last_seen: datetime
+    reason: str
+
+    @property
+    def key(self) -> str:
+        """A short id for links (the *Allow…* editor)."""
+        return hashlib.sha256(f"{self.binary}\0{self.host}\0{self.port}".encode()).hexdigest()[:16]
+
+
+def allows(rules: Sequence[SandboxRule], binary: str, host: str, port: int) -> bool:
+    """Whether a rule lets ``binary`` reach ``host:port``; binaries and hosts may be globs."""
+
+    def reaches(rule: SandboxRule) -> bool:
+        return any(e.host and fnmatchcase(host.lower(), e.host.lower()) and port in e.ports
+                   for e in rule.endpoints)  # fmt: skip
+
+    return any(any(fnmatchcase(binary, b) for b in r.binaries) and reaches(r) for r in rules)
 
 
 def _rule(rule: SandboxRule) -> str:
@@ -146,6 +179,56 @@ class SandboxStore:
 
     def of_agent(self, agent_id: str, host_id: str) -> OpenShellSandbox | None:
         return next((s for s in self.all(host_id) if agent_id in s.agent_ids), None)
+
+    def add_blocked(self, host_id: str, items: Sequence[BlockedRequest]) -> int:
+        """Add to the blocked counts of this host's sandboxes; others' are ignored."""
+        if not items:
+            return 0
+        with self.db.transaction() as conn:
+            owned = conn.execute(
+                "SELECT sandbox_id FROM openshell_sandboxes WHERE host_id = ?", (host_id,)
+            )
+            mine = {r[0] for r in owned}
+            rows = [(b.sandbox_id, b.binary, b.host, b.port, b.count, ts(b.last_seen),
+                     ts(b.last_seen), b.reason)
+                    for b in items if b.sandbox_id in mine and b.host_id == host_id]  # fmt: skip
+            conn.executemany(
+                """
+                INSERT INTO blocked_requests
+                    (sandbox_id, binary, host, port, count, first_seen, last_seen, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (sandbox_id, binary, host, port) DO UPDATE SET
+                    count = count + excluded.count,
+                    last_seen = max(last_seen, excluded.last_seen),
+                    reason = excluded.reason
+                """,
+                rows,
+            )
+            # the sandboxed process picks the destinations: keep only the newest per sandbox
+            conn.executemany(
+                "DELETE FROM blocked_requests WHERE sandbox_id = ? AND rowid NOT IN ("
+                "SELECT rowid FROM blocked_requests WHERE sandbox_id = ? "
+                "ORDER BY last_seen DESC LIMIT ?)",
+                [(s, s, MAX_BLOCKED_KEPT) for s in {r[0] for r in rows}],
+            )
+        return len(rows)
+
+    def blocked(self, sandbox_id: str, limit: int = 100) -> list[Blocked]:
+        """What the sandbox blocked, most recent first."""
+        with self.db.read() as conn:
+            rows = conn.execute(
+                "SELECT sandbox_id, binary, host, port, count, first_seen, last_seen, reason "
+                "FROM blocked_requests WHERE sandbox_id = ? ORDER BY last_seen DESC LIMIT ?",
+                (sandbox_id, limit),
+            ).fetchall()
+        return [Blocked(r[0], r[1], r[2], r[3], r[4], required_ts(r[5]), required_ts(r[6]), r[7])
+                for r in rows]  # fmt: skip
+
+    def still_blocked(self, box: OpenShellSandbox, limit: int = 100) -> list[Blocked]:
+        """What the sandbox blocked and its current rules still don't allow."""
+        rules = box.network_rules or ()
+        return [b for b in self.blocked(box.sandbox_id, MAX_BLOCKED_KEPT)
+                if not allows(rules, b.binary, b.host, b.port)][:limit]  # fmt: skip
 
     def changes(self, sandbox_id: str | None = None, limit: int = 50) -> list[SandboxChange]:
         where, args = ("WHERE sandbox_id = ?", (sandbox_id,)) if sandbox_id else ("", ())

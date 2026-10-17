@@ -1,0 +1,69 @@
+Warning: log buffer contains only the last 68 lines; --since results may be incomplete.
+[1792237760.270] [gateway] [INFO ] [openshell_server::grpc::sandbox] CreateSandbox request completed successfully
+[1792237760.471] [sandbox] [INFO ] [openshell_supervisor] Starting sandbox supervision command=["sleep", "3600"]
+[1792237760.544] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxConfig served from spec (backfilled version 1)
+[1792237760.556] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxProviderEnvironment request completed successfully
+[1792237760.590] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: accepted
+[1792237760.593] [gateway] [INFO ] [openshell_server::grpc::policy] ReportPolicyStatus: sandbox reported policy load result
+[1792237760.769] [gateway] [OCSF ] [ocsf] CONFIG:MERGED [INFO] gateway merged 1 incremental policy operation(s) [version:v3 hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba]
+[1792237760.769] [gateway] [OCSF ] [ocsf] CONFIG:MERGED [INFO] gateway merged incremental policy op: add-endpoint ov_probe endpoints=[example.com:443 protocol=rest access=read-only enforcement=enforce ports=1] binaries=[/usr/bin/curl] [version:v3 hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba]
+[1792237760.769] [gateway] [INFO ] [openshell_server::grpc::policy] UpdateConfig: merged incremental policy operations
+[1792237760.540] [sandbox] [INFO ] [openshell_supervisor] Fetching sandbox policy via gRPC endpoint=https://127.0.0.1:17670 sandbox=ov-net sandbox_id=b78646ee-b88b-4685-abf5-3921bcfce13f
+[1792237760.549] [sandbox] [OCSF ] [ocsf] CONFIG:ENRICHED [INFO] Enriched policy with baseline filesystem paths for proxy mode
+[1792237760.556] [sandbox] [INFO ] [openshell_supervisor_network::opa] Configured OPA runtime binary identity mode require_binary_identity=true source=proto
+[1792237760.556] [sandbox] [OCSF ] [ocsf] CONFIG:CONFIGURED [INFO] OPA runtime binary identity mode configured [source:proto require_binary_identity:true] [source:proto]
+[1792237760.572] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary attached backend=openshell-sandbox
+[1792237760.573] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary enforcement confirmed backend=openshell-sandbox
+[1792237760.574] [sandbox] [OCSF ] [ocsf] CONFIG:ENABLED [INFO] TLS termination enabled: ephemeral CA generated
+[1792237760.574] [sandbox] [OCSF ] [ocsf] CONFIG:READY [INFO] Policy DNS connected to isolation boundary
+[1792237760.574] [sandbox] [OCSF ] [ocsf] NET:LISTEN [INFO] 127.0.0.1:3128
+[1792237760.574] [sandbox] [WARN ] [openshell_supervisor_network::proxy] host.openshell.internal maps to a non-link-local IP; trusted-gateway SSRF exemption disabled ip=127.0.0.1
+[1792237760.585] [sandbox] [INFO ] [openshell_supervisor] Isolation boundary agent started backend=openshell-sandbox
+[1792237760.586] [sandbox] [OCSF ] [ocsf] SSH:LISTEN [INFO]
+[1792237760.586] [sandbox] [INFO ] [openshell_supervisor] Control-mode access plane started backend=openshell-sandbox
+[1792237760.594] [sandbox] [OCSF ] [ocsf] CONFIG:LOADED [INFO] Acknowledged initial policy revision as loaded [version:2] [hash:b939402fb5521dd9e6f6bc4a3c2a221324fce1bd55bc41f833777bb8685bf36c]
+[1792237760.595] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] 127.0.0.1:17670
+[1792237770.595] [gateway] [INFO ] [openshell_server::grpc::policy] GetSandboxProviderEnvironment request completed successfully
+[1792237770.603] [gateway] [INFO ] [openshell_server::grpc::policy] ReportPolicyStatus: sandbox reported policy load result
+[1792237770.918] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237770.919] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237770.919] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237770.980] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237770.981] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237770.981] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237770.592] [sandbox] [OCSF ] [ocsf] CONFIG:DETECTED [INFO] Settings poll: config change detected [old_revision:5948650961950108545 new_revision:9135614929488924856 policy_changed:true provider_env_changed:true]
+[1792237770.595] [sandbox] [INFO ] [openshell_supervisor_network::opa] Configured OPA runtime binary identity mode require_binary_identity=true source=proto
+[1792237770.595] [sandbox] [OCSF ] [ocsf] CONFIG:CONFIGURED [INFO] OPA runtime binary identity mode configured [source:proto require_binary_identity:true] [source:proto]
+[1792237770.598] [sandbox] [OCSF ] [ocsf] CONFIG:LOADED [INFO] Policy reloaded successfully [policy_hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba] [hash:4b27e5bfba0ff9cd2efc8b7249389db068ed4c1b1bfe77a59745e318d06e62ba]
+[1792237770.601] [sandbox] [WARN ] [openshell_supervisor::endpoint_status] Endpoint status report failed transiently; retaining immutable snapshot attempt=1 error=code: 'The system is not in a state required for the operation's execution', message: "tool server endpoint status revisions do not match the current sandbox configuration"
+[1792237770.918] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=fa611d20-540b-4f2a-87bf-bd0ffb4ef9bf, target=unix:/run/openshell/ssh.sock)
+[1792237770.918] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1792237770.931] [sandbox] [OCSF ] [ocsf] NET:REFUSE [MED] DENIED www.wikipedia.org [reason:policy_dns_ineligible]
+[1792237770.931] [sandbox] [OCSF ] [ocsf] CONFIG:OBSERVATION [INFO] Policy DNS staged unapproved name www.wikipedia.org synthetic=198.18.0.2 for TCP policy review
+[1792237770.937] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=198.18.0.2:443 reason=endpoint www.wikipedia.org:443 is not allowed by any policy
+[1792237770.937] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> www.wikipedia.org:443 [reason:transparent_tcp_policy_denied]
+[1792237770.939] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=fa611d20-540b-4f2a-87bf-bd0ffb4ef9bf, target=unix:/run/openshell/ssh.sock)
+[1792237770.980] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=58618420-5d06-48a6-a3e0-76146644be1e, target=unix:/run/openshell/ssh.sock)
+[1792237770.980] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1792237770.991] [sandbox] [OCSF ] [ocsf] NET:REFUSE [MED] DENIED www.wikipedia.org [reason:policy_dns_ineligible]
+[1792237770.991] [sandbox] [OCSF ] [ocsf] CONFIG:OBSERVATION [INFO] Policy DNS staged unapproved name www.wikipedia.org synthetic=198.18.0.2 for TCP policy review
+[1792237770.992] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=198.18.0.2:443 reason=endpoint www.wikipedia.org:443 is not allowed by any policy
+[1792237770.993] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> www.wikipedia.org:443 [reason:transparent_tcp_policy_denied]
+[1792237770.995] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=58618420-5d06-48a6-a3e0-76146644be1e, target=unix:/run/openshell/ssh.sock)
+[1792237771.036] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237771.036] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237771.036] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237771.096] [gateway] [INFO ] [openshell_server::supervisor_session] supervisor session: relay opened successfully
+[1792237771.097] [gateway] [INFO ] [openshell_server::supervisor_session] relay stream: claimed pending relay, bridging
+[1792237771.097] [gateway] [INFO ] [openshell_server::grpc::sandbox] ExecSandbox (relay): command started
+[1792237771.036] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=6ed8ffa8-bd32-4a9e-b91f-822350cc4f75, target=unix:/run/openshell/ssh.sock)
+[1792237771.036] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1792237771.051] [sandbox] [OCSF ] [ocsf] CONFIG:PUBLISHED [INFO] Policy DNS mapped example.com resolved=104.20.23.154,172.66.147.243 synthetic=198.18.0.3 ports=443 mapping_id=c85c055e-48d8-420f-81eb-3af2d0ad1944
+[1792237771.053] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=198.18.0.3:443 reason=binary '/usr/bin/bash' not allowed in policy 'ov_probe' (ancestors: [/usr/bin/timeout -> /usr/bin/bash], cmdline: []). SYMLINK HINT: the binary path is the kernel-resolved target from /proc/<pid>/exe, not the symlink. If your policy specifies a symlink (e.g., /usr/bin/python3) but the actual binary is /usr/bin/python3.11, either: (1) use the canonical path in your policy (run 'readlink -f /usr/bin/python3' inside the sandbox), or (2) ensure symlink resolution is working (check sandbox logs for 'Cannot access container filesystem')
+[1792237771.053] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> example.com:443 [reason:transparent_tcp_policy_denied]
+[1792237771.055] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=6ed8ffa8-bd32-4a9e-b91f-822350cc4f75, target=unix:/run/openshell/ssh.sock)
+[1792237771.096] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=03b31908-3914-4bd1-af36-67eee5e1df02, target=unix:/run/openshell/ssh.sock)
+[1792237771.096] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1792237771.107] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=1.1.1.1:443 reason=endpoint 1.1.1.1:443 is not allowed by any policy
+[1792237771.107] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> 1.1.1.1:443 [reason:transparent_tcp_policy_denied]
+[1792237771.109] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=03b31908-3914-4bd1-af36-67eee5e1df02, target=unix:/run/openshell/ssh.sock)

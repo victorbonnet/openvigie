@@ -26,7 +26,14 @@ from openvigie.hub.store.credentials import Credentials
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
 from openvigie.hub.store.sandboxes import SandboxStore
-from openvigie.model import AgentInstance, OpenShellSandbox, SandboxState
+from openvigie.model import (
+    AgentInstance,
+    BlockedRequest,
+    OpenShellSandbox,
+    SandboxEndpoint,
+    SandboxRule,
+    SandboxState,
+)
 
 FIXTURE = (
     Path(__file__).parents[1] / "openshell" / "fixtures" / "v0.1.4" / "net-policy-base-v2.json"
@@ -43,10 +50,19 @@ CSRF = re.compile(r'name="csrf" value="([0-9a-f]+)"')
 TEXTAREA = re.compile(r"<textarea[^>]*>(.*?)</textarea>", re.S)
 
 
+def rules_of(network: Mapping[str, Any]) -> tuple[SandboxRule, ...]:
+    return tuple(
+        SandboxRule(key, tuple(SandboxEndpoint(e.get("host"), tuple(e.get("ports") or [e["port"]]))
+                               for e in rule["endpoints"]),
+                    tuple(b["path"] for b in rule["binaries"]))
+        for key, rule in network.items()
+    )  # fmt: skip
+
+
 def sandbox(network: Mapping[str, Any], version: int, digest: str) -> OpenShellSandbox:
     return OpenShellSandbox(
         "s-net", TEST_HOST.host_id, "ov-net", datetime.now(UTC), agent_ids=("a1",),
-        policy_version=version, policy_hash=digest,
+        policy_version=version, policy_hash=digest, network_rules=rules_of(network),
         network_policy=json.dumps(network, sort_keys=True, separators=(",", ":")),
     )  # fmt: skip
 
@@ -156,11 +172,7 @@ class FakeOpenShell:
         return "loaded"
 
 
-def test_apply_and_roll_back_end_to_end(
-    app: FastAPI, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fake = FakeOpenShell()
-    monkeypatch.setattr(commands, "cli_runner", lambda timeout: fake)
+def collector_for(app: FastAPI, client: TestClient, tmp_path: Path) -> Collector:
     token = Credentials(app.state.db).issue_token(TEST_HOST.host_id, datetime.now(UTC))
 
     def transport(method: str, url: str, body: Any, headers: Any, timeout: float) -> Any:
@@ -171,7 +183,15 @@ def test_apply_and_roll_back_end_to_end(
                       sandbox_probe=lambda pid: (SandboxState.NO, None))  # fmt: skip
     settings = CollectorSettings(homes=(tmp_path,), allow_actions=("sandbox.policy.set",))
     hub = HubClient("http://127.0.0.1:7878", token=token, transport=transport)
-    collector = Collector(settings, ctx, Discovery(adapters=[]), hub)
+    return Collector(settings, ctx, Discovery(adapters=[]), hub)
+
+
+def test_apply_and_roll_back_end_to_end(
+    app: FastAPI, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeOpenShell()
+    monkeypatch.setattr(commands, "cli_runner", lambda timeout: fake)
+    collector = collector_for(app, client, tmp_path)
 
     location = propose(client, editor_text(client) + ADD_DOCS).headers["location"]
     assert confirm(client, location).status_code == 303
@@ -196,3 +216,57 @@ def test_apply_and_roll_back_end_to_end(
     assert results == ["proposed", "confirmed", "delivered", "succeeded",
                        "proposed", "confirmed", "delivered", "succeeded"]  # fmt: skip
     assert AuditLog(app.state.db).verify().ok
+
+
+def test_allow_a_blocked_request_end_to_end(
+    app: FastAPI, client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeOpenShell()
+    monkeypatch.setattr(commands, "cli_runner", lambda timeout: fake)
+    collector = collector_for(app, client, tmp_path)
+    store = SandboxStore(app.state.db)
+    store.add_blocked(TEST_HOST.host_id, [BlockedRequest(
+        "s-net", TEST_HOST.host_id, "/usr/bin/bash", "www.wikipedia.org", 443, 2,
+        datetime.now(UTC), "transparent_tcp_policy_denied")])  # fmt: skip
+    host_page = client.get(f"/hosts/{TEST_HOST.host_id}", headers=ALICE).text
+    assert "<code>www.wikipedia.org:443</code>" in host_page and "Allow…" in host_page
+    assert "Allow…" not in client.get(f"/hosts/{TEST_HOST.host_id}", headers=BOB).text
+
+    box = store.get("s-net")
+    assert box is not None
+    (blocked,) = store.still_blocked(box)
+    text = editor_text(client, f"?allow={blocked.key}")
+    assert "  allow_www_wikipedia_org_443:" in text and '"/usr/bin/bash"' in text
+    assert "github_readonly" in text  # the current rules stay
+    location = propose(client, text).headers["location"]
+    assert "added rule allow_www_wikipedia_org_443" in client.get(location, headers=ALICE).text
+    assert confirm(client, location).status_code == 303
+    assert collector.tick() and collector.tick()
+    assert "allow_www_wikipedia_org_443" in fake.body["network_policies"]
+
+    store.replace(TEST_HOST.host_id, [sandbox(fake.body["network_policies"], 4, fake.digest())],
+                  datetime.now(UTC))  # fmt: skip
+    box = store.get("s-net")
+    assert box is not None and store.still_blocked(box) == []
+    assert "Blocked requests" not in client.get(f"/hosts/{TEST_HOST.host_id}").text
+
+
+def test_allow_says_why_when_the_rules_are_unknown(app: FastAPI, client: TestClient) -> None:
+    store = SandboxStore(app.state.db)
+    unknown = OpenShellSandbox("s-net", TEST_HOST.host_id, "ov-net", datetime.now(UTC))
+    store.replace(TEST_HOST.host_id, [unknown], datetime.now(UTC))
+    item = BlockedRequest("s-net", TEST_HOST.host_id, "/usr/bin/bash", "a.example", 443, 1,
+                          datetime.now(UTC))  # fmt: skip
+    store.add_blocked(TEST_HOST.host_id, [item])
+    (blocked,) = store.blocked("s-net")
+    page = client.get(f"/sandboxes/s-net/rules?allow={blocked.key}", headers=ALICE)
+    assert page.status_code == 400
+    assert "current rules are unknown" in page.text and "<textarea" not in page.text
+
+
+def test_allow_needs_a_known_blocked_request(client: TestClient) -> None:
+    assert (
+        client.get("/sandboxes/s-net/rules?allow=0123456789abcdef", headers=ALICE).status_code
+        == 404
+    )
+    assert client.get("/sandboxes/s-net/rules?allow=nope", headers=ALICE).status_code == 422

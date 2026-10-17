@@ -201,6 +201,7 @@ def agent_page(request: Request, agent_id: AgentId) -> HTMLResponse:
         sandbox=sandbox,
         starter=starter_view(request, row, sandbox),
         sandbox_changes=sandboxes.changes(sandbox.sandbox_id, limit=10) if sandbox else [],
+        sandbox_blocked=sandboxes.still_blocked(sandbox) if sandbox else [],
         sandboxes={agent_id: sandbox} if sandbox else {},
     )
 
@@ -439,6 +440,7 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
         sandboxes=sandbox_badges(request),
         host_sandboxes=host_boxes,
         sandbox_changes={b.sandbox_id: store.changes(b.sandbox_id, limit=5) for b in host_boxes},
+        sandbox_blocked={b.sandbox_id: store.still_blocked(b) for b in host_boxes},
         agent_names={r.agent.agent_id: r.agent.name for r in rows},
         **_spend_context(request),
     )

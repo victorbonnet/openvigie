@@ -130,6 +130,8 @@ async def ingest(
         raise HTTPException(403, "agents must belong to the authenticated host")
     if any(s.host_id != host_id for s in body.sandboxes or ()):
         raise HTTPException(403, "sandboxes must belong to the authenticated host")
+    if any(b.host_id != host_id for b in body.blocked):
+        raise HTTPException(403, "blocked requests must belong to the authenticated host")
 
     now = now_utc()
     skew = round((body.sent_at - now).total_seconds(), 1)
@@ -155,6 +157,7 @@ async def ingest(
             else SandboxStore(request.app.state.db).replace(host_id, body.sandboxes, now)
         ),
         usage_backfill=usage_store.set_backfill(body.usage_backfill, host_id),
+        blocked=SandboxStore(request.app.state.db).add_blocked(host_id, body.blocked),
     )
     if body.collector.spool_dropped is not None:
         usage_store.set_spool_dropped(host_id, body.collector.spool_dropped)

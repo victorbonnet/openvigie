@@ -1,12 +1,13 @@
 {# OpenShell sandboxes (FR-10). sandbox_badge: the agent's sandbox in one badge.
-   sandbox_card: one sandbox with its network rules and recent policy changes. #}
+   sandbox_card: one sandbox with its network rules, what it blocked (FR-18) and recent policy
+   changes. #}
 
 {% macro sandbox_badge(a, sandboxes, prefix="") %}
 {% set sb = (sandboxes or {}).get(a.agent_id) %}
 <span class="badge {{ a.sandboxed.value }}">{{ prefix }}{% if sb %}OpenShell: {{ sb.name }}{% if sb.policy_version %} · policy r{{ sb.policy_version }}{% endif %}{% else %}{{ a.sandboxed.value }}{% if a.sandbox_kind %} · {{ a.sandbox_kind }}{% endif %}{% endif %}</span>
 {% endmacro %}
 
-{% macro sandbox_card(box, changes, agent_names) %}
+{% macro sandbox_card(box, changes, agent_names, blocked=[], admin=False) %}
 <section class="panel" id="sandbox-{{ box.sandbox_id }}">
 <h3>{{ box.name }} <span class="badge {{ 'ok' if box.phase == 'Ready' else 'degraded' }}">{{ box.phase or "unknown" }}</span></h3>
 <dl class="meta">
@@ -31,6 +32,24 @@
   {% endfor %}
   </tbody>
 </table>
+{% endif %}
+{% if box.blocked_readable is false %}
+<h4>Blocked requests</h4>
+<p class="muted">Unknown: the collector can't read this sandbox's OpenShell log{% if blocked %}; below is what it read before{% endif %}.</p>
+{% endif %}
+{% if blocked %}
+{% if box.blocked_readable is not false %}<h4>Blocked requests</h4>{% endif %}
+<table class="blocked">
+  <thead><tr><th>Destination</th><th>Program</th><th>Times</th><th>Last</th>{% if admin %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for b in blocked %}
+    <tr><td><code>{{ b.host }}:{{ b.port }}</code></td><td><code>{{ b.binary }}</code></td>
+      <td>{{ b.count }}</td><td>{{ b.last_seen | ago }}</td>
+      {% if admin %}<td><a href="/sandboxes/{{ box.sandbox_id }}/rules?allow={{ b.key }}">Allow…</a></td>{% endif %}</tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted small">Counted from the sandbox's OpenShell log, which keeps only recent lines: a busy sandbox may have blocked more.</p>
 {% endif %}
 {% if changes %}
 <h4>Recent changes</h4>

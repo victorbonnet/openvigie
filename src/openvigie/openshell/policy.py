@@ -2,7 +2,8 @@
 
 Offers ``NetworkPolicies`` (the rules, keyed by rule name), ``parse_yaml`` (editor text → rules,
 or ``PolicyError``), ``from_json`` / ``to_json`` (the exact form carried on the wire and sent to
-OpenShell), ``to_yaml`` (rules → editor text) and ``diff`` (rule-by-rule changes for review).
+OpenShell), ``to_yaml`` (rules → editor text), ``diff`` (rule-by-rule changes for review) and
+``allowing`` (rules plus one that allows a blocked request, FR-18).
 
 This is the editor's boundary model (D12): strict, bounded, and unknown fields are rejected, so
 an admin can only write what openvigie understands. YAML is read with ``safe_load`` through a
@@ -14,6 +15,7 @@ the text: OpenShell applies filesystem, process and landlock sections to new san
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Self
 
@@ -145,6 +147,25 @@ def to_json(rules: dict[str, Rule]) -> str:
     plain = {k: r.model_dump(mode="json", exclude_none=True, exclude_defaults=True)
              for k, r in rules.items()}  # fmt: skip
     return json.dumps(plain, sort_keys=True, separators=(",", ":"))
+
+
+def allowing(rules: dict[str, Rule], binary: str, host: str, port: int) -> dict[str, Rule]:
+    """``rules`` plus one rule letting ``binary`` reach ``host:port`` (FR-18 → FR-12): scoped to
+    the program that was blocked. ``host`` is literal: a glob in it (the blocked process chose it)
+    is refused rather than turned into a wildcard rule."""
+    if any(c in host for c in "*?[]"):
+        raise PolicyError("a blocked destination with a wildcard can't be allowed from here")
+    base = "allow_" + (re.sub(r"[^A-Za-z0-9]+", "_", host).strip("_")[:48] or "host") + f"_{port}"
+    name, n = base, 1
+    while name in rules:
+        n += 1
+        name = f"{base}_{n}"
+    try:
+        rule = Rule(name=name, endpoints=[Endpoint(host=host, port=port)],
+                    binaries=[Binary(path=binary)])  # fmt: skip
+    except ValidationError as exc:
+        raise PolicyError(_describe(exc)) from None
+    return {**rules, name: rule}
 
 
 def to_yaml(rules: dict[str, Rule]) -> str:

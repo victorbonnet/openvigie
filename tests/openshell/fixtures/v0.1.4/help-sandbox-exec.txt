@@ -1,0 +1,85 @@
+Execute a command in a running sandbox.
+
+Runs a command inside an existing sandbox using the gRPC exec endpoint. Output is streamed to the terminal in real-time. The CLI exits with the remote command's exit code.
+
+For interactive shell sessions, use `sandbox connect` instead.
+
+Examples: openshell sandbox exec my-sandbox -- ls -la /workspace openshell sandbox exec --name my-sandbox -- ls -la /workspace openshell sandbox exec -n my-sandbox --workdir /app -- python script.py echo "hello" | openshell sandbox exec -n my-sandbox -- cat
+
+USAGE
+  openshell sandbox exec [OPTIONS] [SANDBOX] -- <COMMAND>...
+
+FLAGS:
+  -n, --name <NAME>
+          Sandbox name; same as the positional argument
+
+      --workdir <WORKDIR>
+          Working directory inside the sandbox
+
+      --timeout <TIMEOUT>
+          Timeout in seconds (0 = no timeout)
+          
+          [default: 0]
+
+      --tty
+          Allocate a pseudo-terminal for the remote command. Defaults to auto-detection (on when stdin and stdout are terminals). Use --tty to force a PTY even when auto-detection fails, or --no-tty to disable
+
+      --no-tty
+          Disable pseudo-terminal allocation
+
+      --no-login-shell
+          Run the command without sourcing shell login/profile startup files.
+          
+          Default sources them so tool-specific env (`VIRTUAL_ENV`, etc.) is available. Use this for automation and managed checks that need predictable startup behavior — sandbox-user startup files cannot run before the requested command.
+
+      --env <KEY=VALUE>
+          Set a non-secret environment variable for the command. Do not use this option for API keys, tokens, or other secrets; attach a provider to the sandbox instead. Repeatable
+
+  <COMMAND>...
+          Command and arguments to execute, after `--`
+
+  [SANDBOX]
+          Sandbox name (defaults to last-used sandbox)
+
+GATEWAY FLAGS:
+  -g, --gateway <GATEWAY>
+          Gateway name to operate on (resolved from stored metadata)
+          
+          [env: OPENSHELL_GATEWAY=]
+
+      --gateway-endpoint <GATEWAY_ENDPOINT>
+          Gateway endpoint URL (e.g. <https://gateway.example.com>). Connects directly without looking up gateway metadata
+          
+          [env: OPENSHELL_GATEWAY_ENDPOINT=]
+
+      --gateway-insecure
+          Skip TLS certificate verification for gateway connections
+          
+          [env: OPENSHELL_GATEWAY_INSECURE=]
+
+GLOBAL FLAGS:
+      --workspace <WORKSPACE>
+          Workspace scope for resource operations
+          
+          [env: OPENSHELL_WORKSPACE=]
+          [default: default]
+
+  -v, --verbose...
+          Increase verbosity (-v, -vv, -vvv)
+
+      --color <WHEN>
+          When to colorize output. `auto` colorizes only when stdout is a terminal
+
+          Possible values:
+          - auto:   Colorize a stream only when that stream is a terminal and no environment override applies
+          - always: Always colorize, even when output is redirected
+          - never:  Never colorize
+          
+          [env: OPENSHELL_COLOR=]
+          [default: auto]
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version
