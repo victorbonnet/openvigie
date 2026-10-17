@@ -62,6 +62,7 @@ table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 th { font-size: 13px; color: var(--muted); font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; }
 /* Many agents should fit on one screen: only the name may wrap. */
 table.dense td { font-size: 13px; padding: 5px 8px; }
 table.dense th { padding: 5px 8px; }

@@ -35,14 +35,16 @@
   <button type="submit">Filter</button>
 </form>
 {% macro sort_th(column, label, cls="", title="") -%}
-{%- set current = filters.get("sort") -%}
-<th{% if cls %} class="{{ cls }}"{% endif %}{% if title %} title="{{ title }}"{% endif %}><a href="/?{{ sort_links[column] }}">{{ label }}{% if current == column %} ↓{% elif current == "-" ~ column %} ↑{% endif %}</a></th>
+{%- set h = sort_headers[column] -%}
+<th{% if cls %} class="{{ cls }}"{% endif %}{% if h.aria_sort %} aria-sort="{{ h.aria_sort }}"{% endif %} title="{% if title %}{{ title }}. {% endif %}{{ h.title }}"><a href="/?{{ h.query }}">{{ label }}{% if h.arrow %} {{ h.arrow }}{% endif %}</a></th>
 {%- endmacro %}
+<div class="table-scroll">
 <table class="dense">
   <thead>
-    <tr>{{ sort_th("name", "Name") }}{{ sort_th("type", "Type") }}{{ sort_th("host", "Host") }}{{ sort_th("version", "Version") }}{{ sort_th("status", "Status") }}{{ sort_th("risk", "Risk", title="Most risky first") }}{{ sort_th("sandboxed", "Sandboxed") }}{{ sort_th("usage", "Usage (" ~ spend_days ~ "d)", cls="num", title="List-price cost and tokens over the last " ~ spend_days ~ " days") }}{{ sort_th("activity", "Last activity") }}</tr>
+    <tr>{{ sort_th("name", "Name") }}{{ sort_th("type", "Type") }}{{ sort_th("host", "Host") }}{{ sort_th("version", "Version") }}{{ sort_th("status", "Status") }}{{ sort_th("risk", "Risk") }}{{ sort_th("sandboxed", "Sandboxed") }}{{ sort_th("usage", "Usage (" ~ spend_days ~ "d)", cls="num", title="List-price cost and tokens over the last " ~ spend_days ~ " days") }}{{ sort_th("activity", "Last activity") }}</tr>
   </thead>
   {% include "_agent_rows.html" %}
 </table>
+</div>
 {% endif %}
 {% endblock %}

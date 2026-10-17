@@ -61,6 +61,8 @@ def test_agent_list_risk_column_and_sort(client: TestClient) -> None:
     assert '<span aria-hidden="true">▲</span> high' in html  # icon + text, not color alone
     by_risk = [a for a, _ in levels(client.get("/?sort=risk").text)]
     assert by_risk == ["wild", "mac", "blind", "calm"]
+    assert [a for a, _ in levels(client.get("/?sort=-risk").text)] == ["calm", "blind", "mac",
+                                                                      "wild"]  # fmt: skip
     rows = client.get("/agents/rows?sort=risk&type=codex").text
     assert [a for a, _ in levels(rows)] == ["blind", "calm"]
 

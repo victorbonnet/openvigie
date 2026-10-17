@@ -82,8 +82,18 @@ def _with_risk(
     return rows, risks
 
 
-SORT_COLUMNS = ("name", "type", "host", "version", "status", "risk", "sandboxed", "usage",
-                "activity")  # fmt: skip
+# column → how its natural order and the reverse read, for the header titles
+_SORT_ORDERS = {
+    "name": ("A→Z", "Z→A"),
+    "type": ("A→Z", "Z→A"),
+    "host": ("A→Z", "Z→A"),
+    "version": ("oldest first", "newest first"),
+    "status": ("active first", "stopped first"),
+    "risk": ("most risky first", "least risky first"),
+    "sandboxed": ("sandboxed first", "unsandboxed first"),
+    "usage": ("highest cost first", "lowest cost first"),
+    "activity": ("most recent first", "least recent first"),
+}
 _DESCENDING = {"usage", "activity"}
 _STATUS_ORDER = {AgentStatus.ACTIVE: 0, AgentStatus.IDLE: 1, AgentStatus.STOPPED: 2}
 _SANDBOX_ORDER = {SandboxState.YES: 0, SandboxState.NO: 1}
@@ -94,6 +104,14 @@ def _version_key(version: str) -> tuple[tuple[int, str], ...]:
     return tuple(
         (int(p), "") if p.isdigit() else (-1, p) for p in re.findall(r"\d+|[^\d.]+", version)
     )
+
+
+def _usage_key(u: UsageRow | None) -> tuple[Decimal, int] | None:
+    """Usage none of which could be priced is unknown, not $0; tokens break ties between lower
+    bounds."""
+    if u is None or (u.cost == 0 and not u.cost_complete):
+        return None
+    return u.cost, u.tokens
 
 
 def _sort_rows(
@@ -110,7 +128,7 @@ def _sort_rows(
         "status": lambda r: _STATUS_ORDER.get(r.agent.status),
         "risk": lambda r: SEVERITY_ORDER[risks[r.agent.agent_id].level],
         "sandboxed": lambda r: _SANDBOX_ORDER.get(r.agent.sandboxed),
-        "usage": lambda r: u.cost if (u := spend.rows.get(r.agent.agent_id)) else None,
+        "usage": lambda r: _usage_key(spend.rows.get(r.agent.agent_id)),
         "activity": lambda r: r.agent.last_activity_at,
     }
     key = keys.get(column)
@@ -122,11 +140,33 @@ def _sort_rows(
     return sorted(known, key=key, reverse=descending) + unknown
 
 
-def _sort_links(filters: dict[str, str]) -> dict[str, str]:
-    """Column → query for its header link: a click sorts by it, a second click reverses."""
+@dataclass(frozen=True)
+class _SortHeader:
+    query: str  # a click sorts by this column, a second click reverses it
+    arrow: str  # ↓ natural order, ↑ reversed
+    aria_sort: str  # "" when the list isn't sorted by this column
+    title: str
+
+
+# Natural orders that put the largest value first, for aria-sort.
+_LARGEST_FIRST = _DESCENDING | {"risk"}
+
+
+def _sort_headers(filters: dict[str, str]) -> dict[str, _SortHeader]:
     current = filters.get("sort")
-    return {c: urlencode({**filters, "sort": f"-{c}" if current == c else c})
-            for c in SORT_COLUMNS}  # fmt: skip
+    headers = {}
+    for column, (natural, reverse) in _SORT_ORDERS.items():
+        reversed_ = current == f"-{column}"
+        query = urlencode({**filters, "sort": f"-{column}" if current == column else column})
+        if current not in (column, f"-{column}"):
+            headers[column] = _SortHeader(query, "", "", f"Sort {natural}")
+            continue
+        ascending = (column in _LARGEST_FIRST) == reversed_
+        order = reverse if reversed_ else natural
+        headers[column] = _SortHeader(query, "↑" if reversed_ else "↓",
+                                      "ascending" if ascending else "descending",
+                                      f"Sorted {order}; click to reverse")  # fmt: skip
+    return headers
 
 
 _SPEND_DAYS = 30
@@ -186,7 +226,7 @@ def agents_page(
         rule_problems=request.app.state.risk_rules.problems,
         filters=filters,
         query=urlencode(filters),
-        sort_links=_sort_links(filters),
+        sort_headers=_sort_headers(filters),
         types=sorted({r.agent.agent_type for r in everything}),
         hosts=sorted({(r.agent.host_id, r.hostname) for r in everything}, key=lambda h: h[1]),
         statuses=[s.value for s in AgentStatus],

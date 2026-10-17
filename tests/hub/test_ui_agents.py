@@ -8,8 +8,16 @@ from openvigie.config import HubSettings
 from openvigie.hub.app import create_app
 from openvigie.hub.store.db import MEMORY, Database
 from openvigie.hub.store.inventory import Inventory
+from openvigie.hub.store.usage import UsageStore
 from openvigie.hub.ui import ago
-from openvigie.model import AgentInstance, AgentStatus, Host, SandboxState
+from openvigie.model import (
+    AgentInstance,
+    AgentStatus,
+    Host,
+    SandboxState,
+    UsageQuality,
+    UsageRecord,
+)
 
 NOW = datetime.now(UTC)
 PI = Host("h-pi", "pi5", "linux", "aarch64", "0.0.1")
@@ -136,3 +144,49 @@ def test_header_click_sorts_then_reverses_and_keeps_filters(inv: Inventory) -> N
 def test_unknown_sort_column_keeps_inventory_order(inv: Inventory) -> None:
     seed_versions(inv)
     assert client_for(inv).get("/?sort=bogus").status_code == 200
+
+
+def seed_usage(inv: Inventory) -> None:
+    inv.upsert_host(PI, NOW)
+    inv.upsert_agents([
+        AgentInstance("busy", "h-pi", "codex", "Busy", status=AgentStatus.ACTIVE,
+                      sandboxed=SandboxState.YES),
+        AgentInstance("cheap", "h-pi", "codex", "Cheap", status=AgentStatus.IDLE,
+                      sandboxed=SandboxState.NO),
+        AgentInstance("unpriced", "h-pi", "codex", "Unpriced", status=AgentStatus.STOPPED,
+                      sandboxed=SandboxState.NO),
+        AgentInstance("blank", "h-pi", "codex", "Blank"),
+    ], NOW)  # fmt: skip
+
+    def record(agent: str, model: str, tokens: int) -> UsageRecord:
+        return UsageRecord(f"r-{agent}", agent, NOW - timedelta(hours=1), provider="openai",
+                           response_model=model, input_tokens=tokens, output_tokens=0,
+                           quality=UsageQuality.EXACT)  # fmt: skip
+
+    UsageStore(inv.db).add_records([record("busy", "gpt-5", 1_000_000),
+                                    record("cheap", "gpt-5", 1_000),
+                                    record("unpriced", "secret-model", 5_000_000)],
+                                   "h-pi")  # fmt: skip
+
+
+def test_sorts_status_sandbox_and_usage_with_unknown_last(inv: Inventory) -> None:
+    seed_usage(inv)
+    client = client_for(inv)
+    assert order(client.get("/?sort=status").text) == ["busy", "cheap", "unpriced", "blank"]
+    assert order(client.get("/?sort=-status").text) == ["unpriced", "cheap", "busy", "blank"]
+    assert order(client.get("/?sort=sandboxed").text)[::3] == ["busy", "blank"]
+    assert order(client.get("/?sort=-sandboxed").text)[2:] == ["busy", "blank"]
+    by_usage = order(client.get("/?sort=usage").text)
+    assert by_usage[:2] == ["busy", "cheap"] and set(by_usage[2:]) == {"unpriced", "blank"}
+    assert order(client.get("/?sort=-usage").text)[:2] == ["cheap", "busy"]
+
+
+def test_sorted_header_says_its_direction(inv: Inventory) -> None:
+    seed_usage(inv)
+    client = client_for(inv)
+    name = client.get("/?sort=name").text
+    assert 'aria-sort="ascending" title="Sorted A→Z; click to reverse"' in name
+    html = client.get("/?sort=usage").text
+    assert 'aria-sort="descending"' in html and "Sorted highest cost first" in html
+    assert 'aria-sort="ascending"' in client.get("/?sort=-usage").text
+    assert "aria-sort" not in client.get("/").text
