@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 
 from openvigie.adapters.base import HostContext, ProcessInfo
+from openvigie.adapters.common import owner_name
 from openvigie.adapters.hermes import HermesAdapter
-from openvigie.adapters.hermes.adapter import is_hermes_process
+from openvigie.adapters.hermes import adapter as hermes
+from openvigie.adapters.hermes.adapter import is_loose_hermes
 from openvigie.adapters.registry import discover
 from openvigie.adapters.testing import AdapterContract, fake_context, fake_process
 from openvigie.model import HealthState, SandboxState
@@ -132,16 +134,19 @@ def test_credentials_never_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert not any(p.endswith((".env", "auth.json")) or "/auth/" in p for p in opened)
 
 
-def test_process_matching(tmp_path: Path) -> None:
-    roots = [tmp_path / "home" / ".hermes"]
+def test_loose_process_matching() -> None:
     pip_install = fake_process(5, "hermes", ("/usr/bin/python3", "/usr/local/bin/hermes"),
                                exe="/usr/bin/python3.12")  # fmt: skip
-    js_engine = fake_process(6, "hermes", ("hermes", "app.js"), exe="/usr/local/bin/hermes")
-    assert is_hermes_process(gateway(tmp_path / "home"), roots)
-    assert is_hermes_process(helper(tmp_path / "home"), roots)
-    assert is_hermes_process(pip_install, roots)
-    assert not is_hermes_process(js_engine, roots)  # Meta's Hermes JS engine shares the name
-    assert not is_hermes_process(fake_process(7, "python3", ("python3", "app.py")), roots)
+    framework = "/Library/Frameworks/Python.framework/Versions/3.14/Resources/Python.app"
+    macos = fake_process(6, "hermes", ("Python", "/opt/homebrew/bin/hermes"),
+                         exe=f"{framework}/Contents/MacOS/Python")  # fmt: skip
+    module = fake_process(7, "python3", ("python3", "-m", "hermes_cli", "gateway", "run"))
+    js_engine = fake_process(8, "hermes", ("hermes", "app.js"), exe="/usr/local/bin/hermes")
+    assert is_loose_hermes(pip_install)
+    assert is_loose_hermes(macos)
+    assert is_loose_hermes(module)
+    assert not is_loose_hermes(js_engine)  # Meta's Hermes JS engine shares the name
+    assert not is_loose_hermes(fake_process(9, "python3", ("python3", "app.py")))
 
 
 def test_two_homes_get_their_own_processes(tmp_path: Path) -> None:
@@ -234,3 +239,141 @@ def test_broken_profile_config_names_the_profile(tmp_path: Path) -> None:
     adapter = HermesAdapter()
     assert len(adapter.detect(fake_context(homes=[home]))) == 2
     assert adapter.health().reason == "profile profile-1: config.yaml is not valid YAML"
+
+
+def test_deeply_nested_config_degrades_only_its_profile(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    (add_profile(home, "profile-1") / "config.yaml").write_text("[" * 20_000)
+    adapter = HermesAdapter()
+    assert len(adapter.detect(fake_context(homes=[home]))) == 2
+    assert adapter.health().reason == "profile profile-1: config.yaml is not valid YAML"
+
+
+def test_unchanged_config_is_parsed_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = make_home(tmp_path)
+    calls: list[Path] = []
+    real = hermes.config_problem
+
+    def spy(config: Path) -> str | None:
+        calls.append(config)
+        return real(config)
+
+    monkeypatch.setattr(hermes, "config_problem", spy)
+    adapter = HermesAdapter()
+    adapter.detect(fake_context(homes=[home]))
+    adapter.detect(fake_context(homes=[home]))
+    assert len(calls) == 1
+
+
+def solo_gateway(home: Path, pid: int = 400) -> ProcessInfo:
+    python = f"{home}/.hermes/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
+    return fake_process(pid, "hermes", (python, "-I", "hermes", "-p", "solo", "gateway", "run"),
+                        exe=python)  # fmt: skip
+
+
+def test_helpers_follow_their_profile_gateway(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "solo")
+    python = f"{home}/.hermes/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
+    script = f"{home}/.hermes/hermes-agent/tools/mcp_death_supervisor.py"
+    supervisor = fake_process(410, "python3", (python, script, "--parent-pgid", "400"),
+                              exe=python, ppid=400)  # fmt: skip
+    adapter = HermesAdapter()
+    ctx = fake_context(homes=[home], processes=[solo_gateway(home), supervisor])
+    agents = {a.name: a for a in adapter.detect(ctx)}
+    assert [p.pid for p in adapter.processes(agents["Hermes · solo"].agent_id)] == [400, 410]
+    assert agents["Hermes · default"].process_running is False
+    assert adapter.processes(agents["Hermes · default"].agent_id) == ()
+
+
+def test_chat_session_does_not_make_served_profiles_run(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "profile-1")
+    python = f"{home}/.hermes/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
+    chat = fake_process(500, "hermes", (python, "-I", "hermes", "chat"), exe=python)
+    ctx = fake_context(homes=[home], processes=[chat])
+    agents = {a.name: a for a in HermesAdapter().detect(ctx)}
+    assert agents["Hermes · default"].process_running is True
+    assert agents["Hermes · profile-1"].process_running is False
+
+
+def test_removed_profile_forgets_its_processes(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    profile = add_profile(home, "solo")
+    ctx = fake_context(homes=[home], processes=[solo_gateway(home)])
+    adapter = HermesAdapter()
+    solo_id = {a.name: a for a in adapter.detect(ctx)}["Hermes · solo"].agent_id
+    shutil.rmtree(profile)
+    adapter.detect(ctx)
+    assert adapter.processes(solo_id) == ()
+    assert solo_id not in adapter.roots
+
+
+def test_loose_process_with_two_candidate_homes_is_left_out(tmp_path: Path) -> None:
+    alice, bob = make_home(tmp_path, "alice"), make_home(tmp_path, "bob")
+    pip_gateway = fake_process(600, "hermes", ("/usr/bin/python3", "/usr/local/bin/hermes",
+                                               "gateway", "run"),
+                               exe="/usr/bin/python3", username=owner_name(tmp_path))  # fmt: skip
+    agents = HermesAdapter().detect(fake_context(homes=[alice, bob], processes=[pip_gateway]))
+    assert [a.process_running for a in agents] == [False, False]
+
+
+def test_home_set_to_a_profile_is_reported_once(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    profile = add_profile(home, "work")
+    agents = HermesAdapter().detect(fake_context(homes=[home], env={"HERMES_HOME": str(profile)}))
+    assert [a.name for a in agents] == ["Hermes · default", "Hermes · work"]
+
+
+def test_nested_home_gets_its_own_processes(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    inner = home / ".hermes" / "inner"
+    shutil.copytree(FIXTURE, inner)
+    python = f"{inner}/tools/python-3.14.7+20260901-linux-arm64/bin/python3"
+    inner_gateway = fake_process(700, "hermes", (python, "gateway", "run"), exe=python)
+    adapter = HermesAdapter()
+    ctx = fake_context(homes=[home], env={"HERMES_HOME": str(inner)}, processes=[inner_gateway])
+    agents = {adapter.roots[a.agent_id]: a for a in adapter.detect(ctx)}
+    assert agents[inner].process_running is True
+    assert agents[home / ".hermes"].process_running is False
+
+
+def test_processes_match_behind_a_symlinked_home(tmp_path: Path) -> None:
+    real = make_home(tmp_path, "real")
+    linked = tmp_path / "linked"
+    linked.symlink_to(real)
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[linked], processes=[helper(real.resolve())]))
+    assert agent.config_root == "~/.hermes"
+    assert [p.pid for p in adapter.processes(agent.agent_id)] == [1310]
+
+
+def test_junk_in_profiles_does_not_hide_real_ones(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    profiles = home / ".hermes" / "profiles"
+    for i in range(150):
+        (profiles / f".cache-{i:03}").mkdir(parents=True)
+    add_profile(home, "zeta")
+    agents = HermesAdapter().detect(fake_context(homes=[home]))
+    assert [a.name for a in agents] == ["Hermes · default", "Hermes · zeta"]
+
+
+def test_long_profile_listing_is_cut_and_noted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hermes, "MAX_PROFILE_ENTRIES", 3)
+    home = make_home(tmp_path)
+    for i in range(5):
+        add_profile(home, f"profile-{i}")
+    adapter = HermesAdapter()
+    assert len(adapter.detect(fake_context(homes=[home]))) == 4
+    assert adapter.health().reason == "~/.hermes: more profiles than read, some are not shown"
+
+
+def test_unexpected_gateway_state_names_the_home(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    (home / ".hermes" / "gateway_state.json").write_text('{"code_version": 7}')
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[home]))
+    assert agent.version is None
+    assert adapter.health().reason == "~/.hermes/gateway_state.json could not be read"
