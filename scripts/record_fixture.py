@@ -187,8 +187,8 @@ class Scrubber:
         self.notes: dict[str, str] = {}
 
     def add_names(self, names: Iterable[str], label: str) -> None:
-        """Whole words only, any of ``-``, ``_`` or a space between parts: ``job-search`` also
-        matches ``Job Search`` and ``job_search_mcp``, and ``dede`` not the hash ``3dede4``."""
+        """Whole words only, any of ``-``, ``_`` or a space between parts: ``tax-return`` also
+        matches ``Tax Return`` and ``tax_return_mcp``, and ``cafe`` not the hash ``3cafe4``."""
         known = {placeholder for _, placeholder in self.names}
         for name in sorted(set(names) - {""}, key=lambda n: (-len(n), n)):
             parts = r"[-_ ]?".join(map(re.escape, re.split(r"[-_ ]+", name.strip("-_ "))))

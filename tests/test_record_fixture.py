@@ -789,12 +789,12 @@ def test_hermes_profile_names_scrubbed(tmp_path: Path) -> None:
     source = tmp_path / ".hermes"
     (source / "profiles" / "bob").mkdir(parents=True)
     (source / "gateway_state.json").write_text(
-        json.dumps({"served_profiles": ["default", "bob", "acme-dev", "dede"]})
+        json.dumps({"served_profiles": ["default", "bob", "acme-dev", "cafe"]})
     )
     with sqlite3.connect(source / "state.db") as conn:
         conn.execute("create table sessions (session_key text, adapter_profile text, hash text)")
         conn.execute(
-            "insert into sessions values ('agent:bob:telegram:dm:7', 'acme-dev', 'a3dede4f')"
+            "insert into sessions values ('agent:bob:telegram:dm:7', 'acme-dev', 'a3cafe4f')"
         )
     dest = tmp_path / "fixture"
     rf.record("hermes", source, dest, scrubber=scrubber(), ps=FakePs())
@@ -802,7 +802,7 @@ def test_hermes_profile_names_scrubbed(tmp_path: Path) -> None:
     assert served == ["default", "profile-3", "profile-1", "profile-2"]
     with sqlite3.connect(dest / "state.db") as conn:
         row = conn.execute("select * from sessions").fetchone()
-    assert row == ("agent:profile-3:telegram:dm:7", "profile-1", "a3dede4f")
+    assert row == ("agent:profile-3:telegram:dm:7", "profile-1", "a3cafe4f")
     text = all_text(dest)
     assert "bob" not in text and "acme" not in text
 
@@ -813,7 +813,7 @@ def test_memory_note_names_scrubbed_dated_notes_kept() -> None:
     assert s.text("see memory/dreaming/light/trip-to-lyon.md") == (
         "see memory/dreaming/light/note-1.md"
     )
-    assert s.text("memory/groupe.md") == "memory/note-2.md"
+    assert s.text("memory/shopping.md") == "memory/note-2.md"
     assert s.text("memory/2026-05-14.md") == "memory/2026-05-14.md"
     assert s.text("memory/2026-05-08-0420.md") == "memory/2026-05-08-0420.md"
     assert s.text("memory/2026-04-19-skill-safety.md") == "memory/note-3.md"
@@ -824,12 +824,12 @@ def test_private_words_scrubbed(tmp_path: Path) -> None:
     source = tmp_path / ".hermes"
     source.mkdir()
     (source / "config.yaml").write_text(
-        "skills:\n  enabled: [job-search-mcp, web]\n  label_hint: Job Search MCP\n"
+        "skills:\n  enabled: [tax-return-mcp, web]\n  label_hint: Tax Return MCP\n"
     )
     dest = tmp_path / "fixture"
-    rf.record("hermes", source, dest, words=["job-search"], scrubber=scrubber(), ps=FakePs())
+    rf.record("hermes", source, dest, words=["tax-return"], scrubber=scrubber(), ps=FakePs())
     text = (dest / "config.yaml").read_text()
-    assert "job" not in text.lower()
+    assert "tax" not in text.lower()
     assert "word-1-mcp" in text and "web" in text
 
 
