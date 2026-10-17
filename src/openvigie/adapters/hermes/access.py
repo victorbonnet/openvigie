@@ -16,7 +16,9 @@ in when listed in ``P_ALLOWED_USERS``, ``GATEWAY_ALLOWED_USERS``, ``P_GROUP_ALLO
 pairing approvals, a ``"*"`` entry admitting anyone; ``TELEGRAM_GROUP_ALLOWED_CHATS`` admits every
 member of those groups, and ``P_ALLOWED_ROLES`` a Discord role (members unknown). With no
 allowlist at all, ``GATEWAY_ALLOW_ALL_USERS`` decides, else unknown senders are refused. Settings
-made outside ``.env`` (the service's own environment, a secrets manager) aren't seen.
+made outside ``.env`` (the service's own environment, a secrets manager) aren't seen, so a
+platform that ``.env`` says nothing about (no allowlist, approval or allow-all) is unknown, not
+closed. Values are read as dotenv does: inside quotes, or up to an inline `` # comment``.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ ACCESS_NAME = re.compile(
     r"^(?:export\s+)?([A-Z][A-Z0-9_]{0,40}_(?:ALLOWED_USERS|ALLOW_ALL_USERS|GROUP_ALLOWED_CHATS|ALLOWED_ROLES))\s*="
 )
 TRUTHY = {"true", "1", "yes"}
+INLINE_COMMENT = re.compile(r"\s#")
 ANYONE = "*"
 MAX_ENTRIES = 10_000
 # Hermes' platform names whose environment prefix differs from the name in capitals
@@ -58,14 +61,18 @@ class Access:
                  | self.lists.get("GATEWAY_ALLOWED_USERS", frozenset())
                  | self.lists.get(f"{p}_GROUP_ALLOWED_USERS", frozenset()))  # fmt: skip
         chats = self.lists.get(f"{p}_GROUP_ALLOWED_CHATS", frozenset())
-        listed = bool(users or chats)
-        users |= self.approved.get(platform, frozenset())
+        roles = bool(self.lists.get(f"{p}_ALLOWED_ROLES"))
+        listed = bool(users or chats or roles)
+        approved = self.approved.get(platform, frozenset())
+        users |= approved
         anyone = (
             f"{p}_ALLOW_ALL_USERS" in self.flags
             or ANYONE in users
             or (not listed and "GATEWAY_ALLOW_ALL_USERS" in self.flags)
         )
-        roles = f"{p}_ALLOWED_ROLES" in self.lists
+        if not (listed or approved or anyone):
+            # nothing in .env says who may write: the settings may live elsewhere
+            return Channel(platform)
         return Channel(
             platform=platform,
             dm_policy="open" if anyone else ("allowlist" if listed else "pairing"),
@@ -89,13 +96,23 @@ def read_access(home: Path) -> Access:
         match = ACCESS_NAME.match(line.strip())
         if match is None:
             continue  # not an access setting: its value is never looked at
-        name, value = match.group(1), line.strip()[match.end() :].strip().strip("'\"")
+        name, value = match.group(1), _value(line.strip()[match.end() :])
         if name.endswith("_ALLOW_ALL_USERS"):
             if value.lower() in TRUTHY:
                 flags.add(name)
         else:
             lists[name] = _hashed(_entries(value))
     return Access(lists, frozenset(flags), _approved(home))
+
+
+def _value(raw: str) -> str:
+    """A value as dotenv reads it: inside its quotes, else up to a ``#`` after whitespace."""
+    raw = raw.strip()
+    if raw[:1] in ("'", '"'):
+        end = raw.find(raw[0], 1)
+        return raw[1:end] if end > 0 else raw[1:]
+    comment = INLINE_COMMENT.search(raw)
+    return (raw[: comment.start()] if comment else raw).strip()
 
 
 def _entries(value: str) -> list[str]:
