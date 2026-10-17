@@ -9,6 +9,9 @@ dist/
 *.egg-info/
 *.sqlite
 *.db
+# recorded, scrubbed agent stores (scripts/record_fixture.py)
+!tests/adapters/*/fixtures/**/*.db
+!tests/adapters/*/fixtures/**/*.sqlite
 .env
 .env.*
 .claude/settings.local.json
