@@ -182,10 +182,11 @@ class HermesAdapter(Adapter):
         super().__init__()
         self.roots: dict[str, Path] = {}
         self.procs: dict[str, list[ProcessInfo]] = {}
+        self.profile_names: dict[str, str] = {}  # agent id → profile name
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
-        self.roots, self.procs = {}, {}
+        self.roots, self.procs, self.profile_names = {}, {}, {}
         roots = hermes_roots(ctx)
         by_root = assign(ctx.processes(), roots)
         found = []
@@ -221,7 +222,7 @@ class HermesAdapter(Adapter):
         # the default profile keeps the id it had before profiles were told apart
         key = (str(root),) if name == DEFAULT else (str(root), name)
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
-        self.roots[agent_id] = home
+        self.roots[agent_id], self.profile_names[agent_id] = home, name
         self._check_config(home, name)
         sandboxed, kind = SandboxState.UNKNOWN, None
         if running and procs:
@@ -246,11 +247,14 @@ class HermesAdapter(Adapter):
         batch = ActivityBatch()
         home = self.roots.get(agent.agent_id)
         if home is not None:
-            self.notes += read_usage(agent, home, state, batch)
+            for note in read_usage(agent, home, state, batch):
+                self._note(self.profile_names.get(agent.agent_id, DEFAULT), note)
         return batch
 
     def _note(self, profile: str, message: str) -> None:
-        self.notes.append(message if profile == DEFAULT else f"profile {profile}: {message}")
+        note = message if profile == DEFAULT else f"profile {profile}: {message}"
+        if note not in self.notes:  # detection and usage may both hit one broken state.db
+            self.notes.append(note)
 
     def _check_config(self, home: Path, profile: str) -> None:
         config = home / "config.yaml"
