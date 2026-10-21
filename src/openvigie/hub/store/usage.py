@@ -8,13 +8,47 @@ from typing import Any
 from openvigie.hub.store.db import Database, agents_of_host, parse_ts, required_ts, ts
 from openvigie.model import Session, UsageBackfill, UsageQuality, UsageRecord
 
+_TOKEN_COLUMNS = ("input_tokens", "output_tokens", "cache_read_input_tokens",
+                  "cache_creation_input_tokens", "cache_creation_1h_input_tokens",
+                  "reasoning_tokens")  # fmt: skip
+
+
+def _rank(table: str) -> str:
+    return f"(CASE {table}.quality WHEN 'exact' THEN 2 WHEN 'estimated' THEN 1 ELSE 0 END)"
+
+
+# A more precise replay replaces the counts. One of the same precision can still carry newer
+# counts: Claude Code writes one API response over several lines, and a line read in a later
+# batch can report more tokens than the one stored. Counts only grow, so keep the larger one
+# (NULL is unknown, never smaller); an identical replay changes nothing.
+_MORE_PRECISE = f"{_rank('excluded')} > {_rank('usage_records')}"
+_SAME_PRECISION = f"{_rank('excluded')} = {_rank('usage_records')}"
+_SET_COUNTS = ",\n".join(
+    f"{c} = CASE WHEN {_MORE_PRECISE} THEN excluded.{c}"
+    f" ELSE coalesce(max(usage_records.{c}, excluded.{c}), usage_records.{c}, excluded.{c}) END"
+    for c in _TOKEN_COLUMNS
+)
+_ANY_LARGER = " OR ".join(
+    f"coalesce(excluded.{c} > usage_records.{c}, excluded.{c} IS NOT NULL)" for c in _TOKEN_COLUMNS
+)
+_UPSERT_RECORD = f"""
+    INSERT INTO usage_records (record_id, agent_id, session_id, ts, provider, request_model,
+        response_model, {", ".join(_TOKEN_COLUMNS)}, quality)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (record_id) DO UPDATE SET
+        {_SET_COUNTS},
+        quality = CASE WHEN {_MORE_PRECISE} THEN excluded.quality ELSE usage_records.quality END
+    WHERE usage_records.agent_id = excluded.agent_id
+      AND ({_MORE_PRECISE} OR ({_SAME_PRECISION} AND ({_ANY_LARGER})))
+"""  # noqa: S608 - built from the column names above, never from input
+
 
 class UsageStore:
     def __init__(self, db: Database) -> None:
         self.db = db
 
     def add_records(self, records: list[UsageRecord], host_id: str) -> int:
-        """Insert records for this host's agents; a replay only upgrades less precise data."""
+        """Insert records for this host's agents; a replay only adds precision or larger counts."""
         changed = 0
         with self.db.transaction() as conn:
             owned = agents_of_host(conn, host_id)
@@ -22,26 +56,7 @@ class UsageStore:
                 if r.agent_id not in owned:
                     continue
                 cur = conn.execute(
-                    """
-                    INSERT INTO usage_records (record_id, agent_id, session_id, ts, provider,
-                        request_model, response_model, input_tokens, output_tokens,
-                        cache_read_input_tokens, cache_creation_input_tokens,
-                        cache_creation_1h_input_tokens, reasoning_tokens, quality)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (record_id) DO UPDATE SET
-                        input_tokens = excluded.input_tokens,
-                        output_tokens = excluded.output_tokens,
-                        cache_read_input_tokens = excluded.cache_read_input_tokens,
-                        cache_creation_input_tokens = excluded.cache_creation_input_tokens,
-                        cache_creation_1h_input_tokens = excluded.cache_creation_1h_input_tokens,
-                        reasoning_tokens = excluded.reasoning_tokens,
-                        quality = excluded.quality
-                    WHERE usage_records.agent_id = excluded.agent_id
-                      AND (CASE excluded.quality WHEN 'exact' THEN 2 WHEN 'estimated' THEN 1
-                           ELSE 0 END)
-                        > (CASE usage_records.quality WHEN 'exact' THEN 2 WHEN 'estimated' THEN 1
-                           ELSE 0 END)
-                    """,
+                    _UPSERT_RECORD,
                     (r.record_id, r.agent_id, r.session_id, ts(r.timestamp), r.provider,
                      r.request_model, r.response_model, r.input_tokens, r.output_tokens,
                      r.cache_read_input_tokens, r.cache_creation_input_tokens,
