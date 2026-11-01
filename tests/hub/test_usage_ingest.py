@@ -63,6 +63,29 @@ def test_more_precise_replay_upgrades_record() -> None:
     assert stored.input_tokens == 100 and stored.quality is UsageQuality.EXACT
 
 
+def test_same_precision_replay_keeps_larger_counts() -> None:
+    # Claude Code writes one response over several lines; a later line can carry more tokens
+    client, db, token = setup()
+    push(client, token, usage=[to_dict(record(output_tokens=10, cache_read_input_tokens=None))])
+    later = record(output_tokens=250, cache_read_input_tokens=40)
+    assert push(client, token, usage=[to_dict(later)]).json()["accepted"]["usage"] == 1
+    stale = record(input_tokens=90, output_tokens=10, cache_read_input_tokens=None)
+    assert push(client, token, usage=[to_dict(stale)]).json()["accepted"]["usage"] == 0
+    (stored,) = UsageStore(db).records()
+    assert (stored.input_tokens, stored.output_tokens, stored.cache_read_input_tokens) == (
+        100, 250, 40)  # fmt: skip
+    assert stored.quality is UsageQuality.EXACT
+
+
+def test_less_precise_replay_never_changes_counts() -> None:
+    client, db, token = setup()
+    push(client, token, usage=[to_dict(record())])
+    guess = record(output_tokens=999, quality=UsageQuality.ESTIMATED)
+    assert push(client, token, usage=[to_dict(guess)]).json()["accepted"]["usage"] == 0
+    (stored,) = UsageStore(db).records()
+    assert stored.output_tokens == 10 and stored.quality is UsageQuality.EXACT
+
+
 def test_usage_for_other_hosts_agents_is_dropped() -> None:
     client, db, token = setup()
     response = push(client, token, usage=[to_dict(record("x", agent="m1"))])
