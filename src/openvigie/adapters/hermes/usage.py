@@ -1,12 +1,19 @@
 """Hermes token usage (FR-3) from a profile's ``state.db``.
 
-Offers ``read_usage``. ``session_model_usage`` keeps running totals per session, model, billing
-route and task, updated in place while a session goes on. Each tick reads the rows whose
-``last_seen`` moved since the cursor and reports how much each grew since the totals remembered
-for it. A row met for the first time although it started before the cursor (a session resumed
-after its totals were forgotten) only sets the baseline: missing one resume beats counting a
-whole session twice. That holds only once a read got every row: while history spans several
-pages, an unseen row is one not reached yet, and counts in full.
+Offers ``read_usage`` and ``Arrival``. ``session_model_usage`` keeps running totals per session,
+model, billing route and task, updated in place while a session goes on. Each tick reads the rows
+whose ``last_seen`` moved since the cursor and reports how much each grew since the totals
+remembered for it. A row met for the first time although it started before the cursor (a session
+resumed after its totals were forgotten) only sets the baseline: missing one resume beats counting a
+whole session twice. That holds only once a read got every row: while history spans several pages,
+an unseen row is one not reached yet, and counts in full.
+
+An agent that arrived in its home from elsewhere (an enclos import) brings its history along:
+rows that started before it arrived only set the baseline, even while history spans several
+pages, as that usage belongs to where it came from. The first read still starts at the backfill
+window, so a session from before the arrival that goes on later counts from its imported totals.
+When the arrival is unknown, the time of the first read stands in; the cursor keeps it so a later
+read doesn't move it.
 
 Hermes leaves cached tokens out of ``input_tokens`` for every provider. For providers that count
 them inside (OpenAI), cache reads are added back so pricing sees each provider's own convention.
@@ -14,6 +21,7 @@ them inside (OpenAI), cache reads are added back so pricing sees each provider's
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -40,23 +48,40 @@ PROVIDERS = {"anthropic": "anthropic", "openai": "openai", "openai-codex": "open
 CACHED_INPUT_INCLUDED = {"openai"}
 
 
+@dataclass(frozen=True)
+class Arrival:
+    """When an agent arrived in its home (POSIX time), or None and ``why`` it is unknown."""
+
+    at: float | None
+    now: float
+    why: str = ""
+
+    def time(self, kept: float | None) -> float:
+        """``at`` if known, else the arrival the cursor already keeps, else now."""
+        if self.at is not None:
+            return self.at
+        return kept if kept is not None else self.now
+
+
 @dataclass
 class Cursor:
     seen: float | None = None  # last_seen of the newest row read
     rows: dict[str, list[float]] = field(default_factory=dict)  # row key → [*counts, last_seen]
     # whether the last read got every row; until then an unseen row is just not reached yet
     caught_up: bool = True
+    # when the agent arrived in this home; rows that started earlier only set the baseline
+    arrived: float | None = None
 
     @classmethod
     def load(cls, saved: dict[str, Any] | None) -> Cursor:
         if not saved:
             return cls()
-        seen = saved.get("seen")
         rows = saved.get("rows")
         return cls(
-            seen if isinstance(seen, int | float) else None,
+            _finite(saved.get("seen")),
             dict(rows) if isinstance(rows, dict) else {},
             saved.get("caught_up") is not False,
+            _finite(saved.get("arrived")),
         )
 
     def dump(self) -> dict[str, Any]:
@@ -66,7 +91,14 @@ class Cursor:
         if len(self.rows) > MAX_REMEMBERED:
             newest = sorted(self.rows.items(), key=lambda kv: kv[1][-1])[-MAX_REMEMBERED:]
             self.rows = dict(newest)
-        return {"seen": self.seen, "rows": self.rows, "caught_up": self.caught_up}
+        return {"seen": self.seen, "rows": self.rows, "caught_up": self.caught_up,
+                "arrived": self.arrived}  # fmt: skip
+
+
+def _finite(value: Any) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return None
 
 
 def provider_of(billing_provider: str, model: str) -> str | None:
@@ -82,30 +114,43 @@ def provider_of(billing_provider: str, model: str) -> str | None:
 
 
 def read_usage(
-    agent: AgentInstance, home: Path, state: AdapterState, batch: ActivityBatch
+    agent: AgentInstance,
+    home: Path,
+    state: AdapterState,
+    batch: ActivityBatch,
+    arrival: Arrival | None = None,
 ) -> list[str]:
-    """Fill ``batch`` with usage since the cursor in ``state``; returns notes for health."""
+    """Fill ``batch`` with usage since the cursor in ``state``; returns notes for health.
+    ``arrival``: the agent may have brought history from elsewhere (see the module doc)."""
     path = home / "state.db"
     if not path.exists():
         batch.backlog = Backlog()
         return []
     key = f"usage:{agent.agent_id}"
     cursor = Cursor.load(state.get(key))
+    notes = []
+    if arrival is not None:
+        cursor.arrived = arrival.time(cursor.arrived)
+        if arrival.at is None:
+            since = datetime.fromtimestamp(cursor.arrived, UTC).strftime("%Y-%m-%d %H:%M UTC")
+            notes.append(f"arrival unknown ({arrival.why}): usage counted from {since}")
     start = cursor.seen
     if start is None and state.backfill_since:
         start = state.backfill_since.timestamp()
     try:
         conn = open_sqlite_readonly(path)
     except (OSError, UnsafeFileError, sqlite3.Error):
-        return ["state.db could not be opened"]
+        return [*notes, "state.db could not be opened"]
     try:
         rows = conn.execute(QUERY, (start or 0.0, ROWS_PER_TICK)).fetchall()
     except sqlite3.Error:
-        return ["state.db has no readable usage table"]
+        return [*notes, "state.db has no readable usage table"]
     finally:
         conn.close()
     sessions: dict[str, Session] = {}
     previous_tick = cursor.seen if cursor.caught_up else None
+    if cursor.arrived is not None:
+        previous_tick = max(t for t in (previous_tick, cursor.arrived) if t is not None)
     for row in rows:
         record = _record(agent, row, cursor, resumed_before=previous_tick)
         if record is None:
@@ -120,7 +165,7 @@ def read_usage(
     batch.backlog = backlog
     cursor.caught_up = not backlog.truncated
     state.stage(key, cursor.dump())
-    return []
+    return notes
 
 
 def _record(

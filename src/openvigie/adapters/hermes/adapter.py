@@ -2,6 +2,10 @@
 ``~/.hermes``): the home itself is the ``default`` profile, ``profiles/<name>/`` the others, each
 with its own config, sessions and ``state.db``.
 
+Each enclos sandbox's Hermes home is found too (``enclos``): its agents are labelled
+``enclos/<sandbox>``, never get loose processes, and don't count history imported with them again.
+Nothing under a home is read through a link leading out of it: a sandboxed agent writes there.
+
 One gateway usually serves every profile (``served_profiles`` in its ``gateway_state.json``); a
 profile can also run its own (``hermes -p <name> gateway run``). The shared gateway's processes
 belong to the default profile only: stopping a served profile from the hub would stop all of
@@ -35,7 +39,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import candidate_roots, display_path, owner_name
 from openvigie.adapters.hermes.capabilities import read_capabilities
-from openvigie.adapters.hermes.usage import read_usage
+from openvigie.adapters.hermes.enclos import Arrivals, inside, sandbox_homes, sandbox_of
+from openvigie.adapters.hermes.usage import Arrival, read_usage
 from openvigie.model import AgentInstance, Capabilities, SandboxState, stable_id
 from openvigie.safeio import (
     UnsafeFileError,
@@ -128,36 +133,50 @@ def profile_of(proc: ProcessInfo, by_pid: Mapping[int, ProcessInfo]) -> str:
 
 def profiles(root: Path) -> tuple[list[str], bool]:
     """Named profiles under ``root/profiles``, sorted, and whether the listing was cut short.
-    Symlinks and odd names are skipped before counting toward ``MAX_PROFILES``."""
+    Symlinks and odd names are skipped before counting toward ``MAX_PROFILES``; a ``profiles``
+    leading out of the home is not listed."""
     names: list[str] = []
     truncated = False
+    if not inside(root, root / "profiles"):
+        return names, truncated
     try:
         with os.scandir(root / "profiles") as it:
             for seen, entry in enumerate(it, 1):
                 if seen > MAX_PROFILE_ENTRIES or len(names) == MAX_PROFILES:
                     truncated = True
                     break
-                if (
-                    PROFILE_NAME.match(entry.name)
-                    and entry.name != DEFAULT
-                    and entry.is_dir(follow_symlinks=False)
-                    and any((Path(entry.path) / m).exists() for m in PROFILE_MARKERS)
-                ):
-                    names.append(entry.name)
+                try:
+                    if (
+                        PROFILE_NAME.match(entry.name)
+                        and entry.name != DEFAULT
+                        and entry.is_dir(follow_symlinks=False)
+                        and any((Path(entry.path) / m).exists() for m in PROFILE_MARKERS)
+                    ):
+                        names.append(entry.name)
+                except OSError:  # Python < 3.14: an unsearchable profile hides only itself
+                    continue
     except OSError:
         pass
     return sorted(names), truncated
 
 
-def hermes_roots(ctx: HostContext) -> list[Path]:
-    """Homes with a Hermes install. A ``HERMES_HOME`` that is another home's profile is left to
-    that home, so the profile isn't reported twice."""
-    roots = [
-        r
-        for r in candidate_roots(ctx, ".hermes", "HERMES_HOME")
-        if r.is_dir() and not r.is_symlink() and any((r / m).exists() for m in MARKERS)
-    ]
-    return [r for r in roots if not (r.parent.name == "profiles" and r.parent.parent in roots)]
+def is_hermes_home(root: Path) -> bool:
+    try:
+        return root.is_dir() and not root.is_symlink() and any((root / m).exists() for m in MARKERS)
+    except OSError:  # Python < 3.14 raises when a parent can't be searched
+        return False
+
+
+def hermes_roots(ctx: HostContext) -> tuple[list[Path], list[str]]:
+    """Homes with a Hermes install, and notes on enclos sandboxes that couldn't be looked at.
+    A ``HERMES_HOME`` that is another home's profile is left to that home, so the profile isn't
+    reported twice."""
+    sandboxed, notes = sandbox_homes(ctx, is_hermes_home)
+    plain = [r for r in candidate_roots(ctx, ".hermes", "HERMES_HOME") if is_hermes_home(r)]
+    roots = list(dict.fromkeys([*plain, *sandboxed]))
+    return [
+        r for r in roots if not (r.parent.name == "profiles" and r.parent.parent in roots)
+    ], notes
 
 
 def under_root(proc: ProcessInfo, prefixes: Mapping[Path, str]) -> Path | None:
@@ -169,16 +188,19 @@ def under_root(proc: ProcessInfo, prefixes: Mapping[Path, str]) -> Path | None:
 
 
 def assign(procs: Iterable[ProcessInfo], roots: Sequence[Path]) -> dict[Path, list[ProcessInfo]]:
-    """Each Hermes process goes to one root: the one it runs from, else the only root owned by
-    its user. A loose process that could belong to several roots is left out."""
+    """Each Hermes process goes to one root: the one it runs from, else the only plain
+    (non-enclos) root, or the only one owned by its user. A loose process that could belong to
+    several is left out. Hermes in an enclos sandbox runs from the sandbox's home, so a loose
+    process is never a sandbox's."""
     # process paths are resolved, so the roots are too (``/var`` -> ``/private/var`` on macOS)
     prefixes = {r: str(r.resolve()).rstrip("/") + "/" for r in roots}
-    owners = {r: owner_name(r) for r in roots}
+    loose = [r for r in roots if sandbox_of(r) is None]
+    owners = {r: owner_name(r) for r in loose}
     by_root: dict[Path, list[ProcessInfo]] = {r: [] for r in roots}
     for proc in procs:
         root = under_root(proc, prefixes)
         if root is None and is_loose_hermes(proc):
-            mine = [r for r in roots if len(roots) == 1 or owners[r] == proc.username]
+            mine = [r for r in loose if len(loose) == 1 or owners[r] == proc.username]
             root = mine[0] if len(mine) == 1 else None
         if root is not None:
             by_root[root].append(proc)
@@ -204,18 +226,24 @@ class HermesAdapter(Adapter):
         self.platforms: dict[str, frozenset[str]] = {}
         self.gateway_files: dict[str, Path | None] = {}
         self.profile_names: dict[str, str] = {}  # agent id → profile name
+        self.hermes_roots: dict[str, Path] = {}  # agent id → the Hermes home it is a profile of
+        self.labels: dict[str, str] = {}  # agent id → what its notes start with
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
+        self.arrivals = Arrivals()
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
         self.roots, self.procs, self.profile_names = {}, {}, {}
-        self.platforms, self.gateway_files = {}, {}
-        roots = hermes_roots(ctx)
+        self.hermes_roots, self.labels, self.platforms, self.gateway_files = {}, {}, {}, {}
+        roots, notes = hermes_roots(ctx)
+        self.notes.extend(notes)
         by_root = assign(ctx.processes(), roots)
         found = []
         for root in roots:
             where = display_path(root, ctx.homes)
             gateway = self._gateway(root, where)
             named, truncated = profiles(root)
+            if (root / "profiles").exists() and not inside(root, root / "profiles"):
+                self.notes.append(f"{where}/profiles leads out of the home: not read")
             if truncated:
                 self.notes.append(f"{where}: more profiles than read, some are not shown")
             groups = group_by_profile(by_root[root])
@@ -244,10 +272,15 @@ class HermesAdapter(Adapter):
         # the default profile keeps the id it had before profiles were told apart
         key = (str(root),) if name == DEFAULT else (str(root), name)
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
+        sandbox = sandbox_of(root)
+        parts = ([f"enclos/{sandbox}"] if sandbox else []) + ([name] if labelled else [])
         self.roots[agent_id], self.profile_names[agent_id] = home, name
+        self.hermes_roots[agent_id] = root
+        plain = "" if name == DEFAULT else f"profile {name}"
+        self.labels[agent_id] = " · ".join(parts) if sandbox else plain
         self.platforms[agent_id] = gateway.platforms.get(name, frozenset())
         self.gateway_files[agent_id] = gateway.source
-        self._check_config(home, name)
+        self._check_config(home, self.labels[agent_id])
         sandboxed, kind = SandboxState.UNKNOWN, None
         if running and procs:
             sandboxed, kind = ctx.sandbox_of(procs[0].pid)
@@ -255,43 +288,70 @@ class HermesAdapter(Adapter):
             agent_id=agent_id,
             host_id=ctx.host.host_id,
             agent_type=self.agent_type,
-            name=f"{self.display_name} · {name}" if labelled else self.display_name,
+            name=" · ".join([self.display_name, *parts]),
             version=gateway.version,
             config_root=display_path(home, ctx.homes),
             sandboxed=sandboxed,
             sandbox_kind=kind,
             process_running=running,
-            last_activity_at=self._last_message(home, name),
+            last_activity_at=self._last_message(home, self.labels[agent_id]),
         )
 
     def processes(self, agent_id: str) -> Sequence[ProcessInfo]:
         return tuple(self.procs.get(agent_id, ()))
 
     def capabilities(self, ctx: HostContext, agent: AgentInstance) -> Capabilities | None:
-        home = self.roots.get(agent.agent_id)
+        home = self._home(agent.agent_id)
         if home is None:
             return None
         platforms = self.platforms.get(agent.agent_id, frozenset())
         source = self.gateway_files.get(agent.agent_id)
+        label = self.labels.get(agent.agent_id, "")
         if source is None:
-            self._note(self.profile_names.get(agent.agent_id, DEFAULT),
-                       "messaging platforms unknown: no readable gateway_state.json")  # fmt: skip
-        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source)
+            self._note(label, "messaging platforms unknown: no readable gateway_state.json")
+        root = self.hermes_roots[agent.agent_id]
+        confine = root if sandbox_of(root) else None
+        if confine is not None:
+            for folder in ("skills", "pairing", "platforms/pairing"):
+                if os.path.lexists(home / folder) and not inside(confine, home / folder):
+                    self._note(label, f"{folder} leads out of its home: not read")
+        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source, confine)
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         batch = ActivityBatch()
-        home = self.roots.get(agent.agent_id)
-        if home is not None:
-            for note in read_usage(agent, home, state, batch):
-                self._note(self.profile_names.get(agent.agent_id, DEFAULT), note)
+        home = self._home(agent.agent_id)
+        if home is None:
+            return batch
+        label = self.labels.get(agent.agent_id, "")
+        arrival = None
+        if sandbox_of(root := self.hermes_roots[agent.agent_id]):
+            now = ctx.now().timestamp()
+            found = self.arrivals.of(root, self.profile_names.get(agent.agent_id, DEFAULT), now)
+            if found.retry:
+                self._note(label, f"{found.why}: usage is read on a later tick")
+                return batch
+            arrival = Arrival(found.at, now, found.why)
+        for note in read_usage(agent, home, state, batch, arrival):
+            self._note(label, note)
         return batch
 
-    def _note(self, profile: str, message: str) -> None:
-        note = message if profile == DEFAULT else f"profile {profile}: {message}"
+    def _home(self, agent_id: str) -> Path | None:
+        """The agent's home, unless it now leads out of its Hermes home: a sandboxed agent may
+        have swapped a folder for a link since detection."""
+        home = self.roots.get(agent_id)
+        if home is None:
+            return None
+        if not inside(self.hermes_roots[agent_id], home):
+            self._note(self.labels.get(agent_id, ""), "its folder leads out of its home: not read")
+            return None
+        return home
+
+    def _note(self, label: str, message: str) -> None:
+        note = f"{label}: {message}" if label else message
         if note not in self.notes:  # detection and usage may both hit one broken state.db
             self.notes.append(note)
 
-    def _check_config(self, home: Path, profile: str) -> None:
+    def _check_config(self, home: Path, label: str) -> None:
         config = home / "config.yaml"
         try:
             stat = config.stat()
@@ -304,7 +364,7 @@ class HermesAdapter(Adapter):
             cached = (key, config_problem(config))
             self.configs[config] = cached
         if cached[1] is not None:
-            self._note(profile, cached[1])
+            self._note(label, cached[1])
 
     def _gateway(self, root: Path, where: str) -> Gateway:
         path = root / "gateway_state.json"
@@ -321,21 +381,21 @@ class HermesAdapter(Adapter):
         served = frozenset({DEFAULT} if state.served_profiles is None else state.served_profiles)
         return Gateway(state.code_version, served, platforms, source)
 
-    def _last_message(self, home: Path, profile: str) -> datetime | None:
+    def _last_message(self, home: Path, label: str) -> datetime | None:
         path = home / "state.db"
         if not path.exists():
             return None
         try:
             conn = open_sqlite_readonly(path)
         except (OSError, UnsafeFileError, sqlite3.Error):
-            self._note(profile, "state.db could not be opened")
+            self._note(label, "state.db could not be opened")
             return None
         try:
             row = conn.execute(
                 "select timestamp from messages order by rowid desc limit 1"
             ).fetchone()
         except sqlite3.Error:
-            self._note(profile, "state.db has no readable messages table")
+            self._note(label, "state.db has no readable messages table")
             return None
         finally:
             conn.close()

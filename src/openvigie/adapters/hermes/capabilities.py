@@ -23,6 +23,7 @@ import yaml
 from openvigie.adapters import caps
 from openvigie.adapters.common import display_path
 from openvigie.adapters.hermes.access import read_access
+from openvigie.adapters.hermes.enclos import inside
 from openvigie.model import (
     AgentInstance,
     ApprovalLevel,
@@ -51,8 +52,10 @@ def read_capabilities(
     platforms: Iterable[str],
     now: datetime,
     gateway_file: Path | None = None,
+    confine: Path | None = None,
 ) -> Capabilities | None:
-    """``gateway_file``: where ``platforms`` were read, for ``sources``."""
+    """``gateway_file``: where ``platforms`` were read, for ``sources``. ``confine``: a Hermes
+    home whose folders are read only if they stay within it (``enclos.inside``)."""
     config = home / "config.yaml"
     try:
         data = (
@@ -70,7 +73,7 @@ def read_capabilities(
     disabled = caps.texts(caps.table(data.get("agent")).get("disabled_toolsets"))
     servers, secrets = _mcp(data.get("mcp_servers"))
     filesystem, network = _reach(terminal.get("backend", "local"))
-    access = read_access(home) if platforms else None
+    access = read_access(home, confine) if platforms else None
     sources = [config] if config.exists() else []
     if gateway_file is not None:
         sources.append(gateway_file)
@@ -85,7 +88,7 @@ def read_capabilities(
         tools_allowed=enabled,
         tools_denied=disabled,
         mcp_servers=servers,
-        skills=_skills(home / "skills"),
+        skills=_skills(home / "skills", confine),
         secrets=caps.unique([*secrets, *_config_secrets(data)])[: caps.MAX_ITEMS],
         sources=tuple(display_path(p, homes) for p in sources),
         channels=(
@@ -157,6 +160,8 @@ def _config_secrets(data: dict[str, Any]) -> list[SecretRef]:
     return refs
 
 
-def _skills(directory: Path) -> tuple[str, ...]:
+def _skills(directory: Path, confine: Path | None) -> tuple[str, ...]:
+    if confine is not None and not inside(confine, directory):
+        return ()
     names = {p.parent.name for p in walk_bounded(directory, "SKILL.md", max_depth=2)}
     return tuple(sorted(names)[: caps.MAX_ITEMS])

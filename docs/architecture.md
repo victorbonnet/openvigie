@@ -11,7 +11,7 @@ Everything is read-only in the MVP (P0). The [PRD](PRD.md) has the requirements 
 ```mermaid
 flowchart LR
   subgraph host["Each host"]
-    files["agent files<br/>~/.claude, ~/.codex,<br/>~/.hermes, ~/.openclaw"] --> adapters
+    files["agent files<br/>~/.claude, ~/.codex,<br/>~/.hermes, ~/.openclaw,<br/>enclos sandboxes"] --> adapters
     procs["processes, ports"] --> adapters
     otlpin["agents' OTLP export<br/>(optional)"] --> receiver["collector/otlp"]
     adapters["adapters/*"] --> collector["collector/daemon"]
