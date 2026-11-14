@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from openvigie.model import Channel
-from openvigie.safeio import UnsafeFileError, load_json_bounded, read_text_bounded
+from openvigie.safeio import UnsafeFileError, load_json_bounded, read_text_bounded, resolve_within
 
 ACCESS_NAME = re.compile(
     r"^(?:export\s+)?([A-Z][A-Z0-9_]{0,40}_(?:ALLOWED_USERS|ALLOW_ALL_USERS|GROUP_ALLOWED_CHATS|ALLOWED_ROLES))\s*="
@@ -149,10 +149,11 @@ def _hashed(entries: list[str]) -> frozenset[str]:
 
 def _approved(home: Path) -> dict[str, frozenset[str]]:
     found: dict[str, set[str]] = {}
-    for folder in (home / "platforms" / "pairing", home / "pairing"):
+    for relative in ("platforms/pairing", "pairing"):
         try:
+            folder = resolve_within(home, relative)  # never through a link leading out
             files = sorted(folder.glob("*-approved.json"))[:64] if folder.is_dir() else []
-        except OSError:
+        except (OSError, RuntimeError, UnsafeFileError):
             continue
         for path in files:
             try:

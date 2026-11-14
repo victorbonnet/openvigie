@@ -31,7 +31,7 @@ from openvigie.model import (
     NetAccess,
     SecretRef,
 )
-from openvigie.safeio import UnsafeFileError, read_text_bounded, walk_bounded
+from openvigie.safeio import UnsafeFileError, read_text_bounded, resolve_within, walk_bounded
 
 APPROVALS = {"manual": ApprovalLevel.AUTO_EDIT, "smart": ApprovalLevel.AUTO_EDIT,
              "off": ApprovalLevel.NEVER_ASK}  # fmt: skip
@@ -158,5 +158,9 @@ def _config_secrets(data: dict[str, Any]) -> list[SecretRef]:
 
 
 def _skills(directory: Path) -> tuple[str, ...]:
+    try:
+        directory = resolve_within(directory.parent, directory.name)
+    except (OSError, RuntimeError, UnsafeFileError):
+        return ()  # leads out of the home
     names = {p.parent.name for p in walk_bounded(directory, "SKILL.md", max_depth=2)}
     return tuple(sorted(names)[: caps.MAX_ITEMS])

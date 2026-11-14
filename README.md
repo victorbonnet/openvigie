@@ -8,7 +8,7 @@ or your home server. It shows which ones are running, what they cost, and what t
 reach. It is **read-only**: it never starts, stops or reconfigures an agent.
 
 ![Usage dashboard](docs/img/usage.png)
-<sub>Usage dashboard with demo data. Hermes and OpenClaw adapters are planned.</sub>
+<sub>Usage dashboard with demo data.</sub>
 
 ## Quickstart
 

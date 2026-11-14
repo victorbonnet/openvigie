@@ -3,10 +3,11 @@ import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from openvigie.adapters.base import HostContext, ProcessInfo
+from openvigie.adapters.base import AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import owner_name
 from openvigie.adapters.hermes import HermesAdapter, enclos
 from openvigie.adapters.hermes import adapter as hermes
@@ -381,7 +382,6 @@ def test_unexpected_gateway_state_names_the_home(tmp_path: Path) -> None:
 
 
 def enclos_home(home: Path, sandbox: str, data: str = ".enclos") -> Path:
-    """A Hermes home inside an enclos sandbox: ``<data>/sandboxes/<sandbox>/home/.hermes``."""
     root = home / data / "sandboxes" / sandbox / "home" / ".hermes"
     shutil.copytree(FIXTURE, root, ignore=NO_PROFILES)
     return root
@@ -390,6 +390,11 @@ def enclos_home(home: Path, sandbox: str, data: str = ".enclos") -> Path:
 def sandboxed_gateway(root: Path, pid: int) -> ProcessInfo:
     python = f"{root}/tools/python-3.14.9+20261021-linux-x64/bin/python3.14"
     return fake_process(pid, "python3.14", (python, "-I", "-c", "import os"), exe=python)
+
+
+def loose_hermes(pid: int = 5) -> ProcessInfo:
+    return fake_process(pid, "hermes", ("/usr/bin/python3", "/usr/local/bin/hermes"),
+                        exe="/usr/bin/python3.12")  # fmt: skip
 
 
 def test_enclos_sandboxes_are_found(tmp_path: Path) -> None:
@@ -420,12 +425,18 @@ def test_enclos_processes_go_to_their_sandbox(tmp_path: Path) -> None:
 def test_loose_process_still_goes_to_the_only_plain_home(tmp_path: Path) -> None:
     home = make_home(tmp_path)
     enclos_home(home, "assistant")
-    loose = fake_process(5, "hermes", ("/usr/bin/python3", "/usr/local/bin/hermes"),
-                         exe="/usr/bin/python3.12")  # fmt: skip
     adapter = HermesAdapter()
-    pids = {a.name: [p.pid for p in adapter.processes(a.agent_id)]
-            for a in adapter.detect(fake_context(homes=[home], processes=[loose]))}  # fmt: skip
+    agents = adapter.detect(fake_context(homes=[home], processes=[loose_hermes()]))
+    pids = {a.name: [p.pid for p in adapter.processes(a.agent_id)] for a in agents}
     assert pids == {"Hermes": [5], "Hermes · enclos/assistant": []}
+
+
+def test_loose_process_is_never_a_sandboxes(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    enclos_home(home, "assistant")
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[home], processes=[loose_hermes()]))
+    assert adapter.processes(agent.agent_id) == ()
 
 
 def test_enclos_sandbox_profiles_are_labelled(tmp_path: Path) -> None:
@@ -446,6 +457,30 @@ def test_enclos_data_folder_from_the_environment(tmp_path: Path, var: str) -> No
     assert agent.name == "Hermes · enclos/assistant"
 
 
+def test_relative_xdg_data_home_is_ignored_as_enclos_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    enclos_home(tmp_path / "data", "assistant", data="enclos")
+    ctx = fake_context(homes=[tmp_path / "nohome"], env={"XDG_DATA_HOME": "data"})
+    assert HermesAdapter().detect(ctx) == []
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"HERMES_HOME": "{home}/.local/share/enclos/sandboxes/pi/home/.hermes/"},
+        {"XDG_DATA_HOME": "{home}/.local/share"},
+        {"ENCLOS_HOME": "{home}/.local/share/enclos"},
+    ],
+)
+def test_default_folders_named_again_give_one_agent(tmp_path: Path, env: dict[str, str]) -> None:
+    home = tmp_path / "home"
+    enclos_home(home, "pi", data=".local/share/enclos")
+    ctx = fake_context(homes=[home], env={k: v.format(home=home) for k, v in env.items()})
+    assert [a.name for a in HermesAdapter().detect(ctx)] == ["Hermes · enclos/pi"]
+
+
 def test_odd_or_linked_sandboxes_are_skipped(tmp_path: Path) -> None:
     home = tmp_path / "home"
     sandboxes = home / ".enclos" / "sandboxes"
@@ -462,9 +497,88 @@ def test_odd_or_linked_sandboxes_are_skipped(tmp_path: Path) -> None:
     assert names == ["Hermes · enclos/ok"]
 
 
-def test_enclos_sandbox_listing_is_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(enclos, "MAX_SANDBOXES", 2)
+def test_profiles_leading_out_of_a_sandbox_are_not_read(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    add_profile(home, "secret")
+    root = enclos_home(home, "box")
+    (root / "profiles").symlink_to(home / ".hermes" / "profiles")
+    adapter = HermesAdapter()
+    names = [a.name for a in adapter.detect(fake_context(homes=[home]))]
+    assert names == ["Hermes · default", "Hermes · secret", "Hermes · enclos/box"]
+    assert "profiles leads out of the home" in (adapter.health().reason or "")
+
+
+def test_skills_leading_out_of_a_sandbox_are_not_read(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    root = enclos_home(home, "box")
+    outside = tmp_path / "outside" / "host-skill"
+    outside.mkdir(parents=True)
+    (outside / "SKILL.md").write_text("x")
+    shutil.rmtree(root / "skills", ignore_errors=True)
+    (root / "skills").symlink_to(outside.parent)
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[home]))
+    capabilities = adapter.capabilities(fake_context(homes=[home]), agent)
+    assert capabilities is not None and "host-skill" not in capabilities.skills
+
+
+def test_a_home_swapped_for_a_link_after_detection_is_not_read(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    root = enclos_home(home, "box")
+    adapter = HermesAdapter()
+    agents = {a.name: a for a in adapter.detect(fake_context(homes=[home]))}
+    shutil.rmtree(root)
+    root.symlink_to(home / ".hermes")
+    batch = adapter.collect(fake_context(homes=[home]), agents["Hermes · enclos/box"],
+                            AdapterState())  # fmt: skip
+    assert batch.usage == []
+    assert "enclos/box: its folder leads out of its home" in (adapter.health().reason or "")
+
+
+def test_unlistable_sandboxes_are_noted(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    enclos_home(home, "box")
+    sandboxes = home / ".enclos" / "sandboxes"
+    sandboxes.chmod(0)
+    try:
+        adapter = HermesAdapter()
+        names = [a.name for a in adapter.detect(fake_context(homes=[home]))]
+    finally:
+        sandboxes.chmod(0o700)
+    if os.geteuid() == 0:
+        pytest.skip("root lists anything")
+    assert names == ["Hermes"]
+    assert "could not be listed" in (adapter.health().reason or "")
+
+
+def test_a_sandbox_that_cannot_be_searched_hides_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = make_home(tmp_path)
+    enclos_home(home, "locked")
+    is_dir = Path.is_dir
+
+    def denied(self: Path, *args: Any, **kwargs: Any) -> bool:
+        if "sandboxes/locked/" in str(self):
+            raise PermissionError(13, "Permission denied")  # Python < 3.14
+        return is_dir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "is_dir", denied)
+    adapter = HermesAdapter()
+    assert [a.name for a in adapter.detect(fake_context(homes=[home]))] == ["Hermes"]
+
+
+@pytest.mark.parametrize(
+    ("limit", "note"),
+    [("MAX_SANDBOXES", "some are not shown"), ("MAX_ENTRIES", "more entries than read")],
+)
+def test_enclos_sandbox_listing_is_bounded_and_noted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limit: str, note: str
+) -> None:
+    monkeypatch.setattr(enclos, limit, 2)
     home = tmp_path / "home"
     for name in ("aa", "bb", "cc"):
         enclos_home(home, name)
-    assert len(HermesAdapter().detect(fake_context(homes=[home]))) == 2
+    adapter = HermesAdapter()
+    assert len(adapter.detect(fake_context(homes=[home]))) == 2
+    assert note in (adapter.health().reason or "")
