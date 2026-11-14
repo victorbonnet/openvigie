@@ -203,3 +203,16 @@ def test_state_db_is_opened_read_only(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(hermes_usage, "open_sqlite_readonly", opener)
     assert collect(adapter, agent, AdapterState()).usage
     assert writes and "readonly" in writes[0]
+
+
+def test_usage_of_a_hermes_in_an_enclos_sandbox(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    shutil.copytree(FIXTURE, home / ".local/share/enclos/sandboxes/pi/home/.hermes",
+                    ignore=NO_PROFILES)  # fmt: skip
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[home]))
+    batch = collect(adapter, agent, AdapterState())
+    assert agent.name == "Hermes · enclos/pi"
+    assert len(batch.usage) == ROWS
+    assert {r.agent_id for r in batch.usage} == {agent.agent_id}
+    assert sum(r.output_tokens or 0 for r in batch.usage) == OUTPUT_TOKENS

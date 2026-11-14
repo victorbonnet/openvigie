@@ -2,6 +2,12 @@
 ``~/.hermes``): the home itself is the ``default`` profile, ``profiles/<name>/`` the others, each
 with its own config, sessions and ``state.db``.
 
+enclos (https://github.com/victorbonnet/enclos) runs Hermes in sandboxes, each with its own
+home at ``<enclos data>/sandboxes/<name>/home/.hermes``, the data folder being ``~/.enclos`` on
+macOS, ``~/.local/share/enclos`` on Linux, or ``$XDG_DATA_HOME/enclos`` / ``$ENCLOS_HOME``. Each
+is a home like any other. The sandboxed agent writes inside its home, so what is found there is
+as untrusted as the rest.
+
 One gateway usually serves every profile (``served_profiles`` in its ``gateway_state.json``); a
 profile can also run its own (``hermes -p <name> gateway run``). The shared gateway's processes
 belong to the default profile only: stopping a served profile from the hub would stop all of
@@ -54,6 +60,10 @@ MAX_ANCESTORS = 16
 MAX_PLATFORMS = MAX_PROFILES * 8
 PLATFORM = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 DEFAULT = "default"
+ENCLOS_DATA = (".enclos", ".local/share/enclos")  # macOS, Linux
+SANDBOX_NAME = re.compile(r"^[a-z][a-z0-9-]{1,40}$")  # enclos' own rule
+MAX_SANDBOXES = 100
+MAX_SANDBOX_ENTRIES = 1000
 
 ProfileName = Annotated[str, Field(pattern=PROFILE_PATTERN)]
 
@@ -149,12 +159,49 @@ def profiles(root: Path) -> tuple[list[str], bool]:
     return sorted(names), truncated
 
 
+def enclos_homes(ctx: HostContext) -> list[Path]:
+    """``<sandbox>/home/.hermes`` of each enclos sandbox, symlinks and odd names skipped."""
+    data = [home / d for home in ctx.homes for d in ENCLOS_DATA]
+    if xdg := ctx.env("XDG_DATA_HOME"):
+        data.append(Path(xdg).expanduser() / "enclos")
+    if own := ctx.env("ENCLOS_HOME"):
+        data.append(Path(own).expanduser())
+    found: list[Path] = []
+    for base in dict.fromkeys(d.absolute() / "sandboxes" for d in data):
+        try:
+            with os.scandir(base) as it:
+                entries = sorted(islice(it, MAX_SANDBOX_ENTRIES), key=lambda e: e.name)
+                for entry in entries:
+                    home = Path(entry.path) / "home"
+                    if (
+                        SANDBOX_NAME.match(entry.name)
+                        and entry.is_dir(follow_symlinks=False)
+                        and home.is_dir()
+                        and not home.is_symlink()
+                    ):
+                        found.append(home / ".hermes")
+        except OSError:
+            continue
+    return found[:MAX_SANDBOXES]
+
+
+def enclos_sandbox(root: Path) -> str | None:
+    """The enclos sandbox a home belongs to, if it is one's."""
+    home, sandbox = root.parent, root.parent.parent
+    if root.name == ".hermes" and home.name == "home" and sandbox.parent.name == "sandboxes":
+        return sandbox.name if SANDBOX_NAME.match(sandbox.name) else None
+    return None
+
+
 def hermes_roots(ctx: HostContext) -> list[Path]:
     """Homes with a Hermes install. A ``HERMES_HOME`` that is another home's profile is left to
     that home, so the profile isn't reported twice."""
+    candidates = dict.fromkeys(
+        [*candidate_roots(ctx, ".hermes", "HERMES_HOME"), *enclos_homes(ctx)]
+    )
     roots = [
         r
-        for r in candidate_roots(ctx, ".hermes", "HERMES_HOME")
+        for r in candidates
         if r.is_dir() and not r.is_symlink() and any((r / m).exists() for m in MARKERS)
     ]
     return [r for r in roots if not (r.parent.name == "profiles" and r.parent.parent in roots)]
@@ -170,15 +217,17 @@ def under_root(proc: ProcessInfo, prefixes: Mapping[Path, str]) -> Path | None:
 
 def assign(procs: Iterable[ProcessInfo], roots: Sequence[Path]) -> dict[Path, list[ProcessInfo]]:
     """Each Hermes process goes to one root: the one it runs from, else the only root owned by
-    its user. A loose process that could belong to several roots is left out."""
+    its user. A loose process that could belong to several roots is left out. enclos runs Hermes
+    from its sandbox's home, so a loose process is never one of its sandboxes'."""
     # process paths are resolved, so the roots are too (``/var`` -> ``/private/var`` on macOS)
     prefixes = {r: str(r.resolve()).rstrip("/") + "/" for r in roots}
-    owners = {r: owner_name(r) for r in roots}
+    loose = [r for r in roots if enclos_sandbox(r) is None]
+    owners = {r: owner_name(r) for r in loose}
     by_root: dict[Path, list[ProcessInfo]] = {r: [] for r in roots}
     for proc in procs:
         root = under_root(proc, prefixes)
         if root is None and is_loose_hermes(proc):
-            mine = [r for r in roots if len(roots) == 1 or owners[r] == proc.username]
+            mine = [r for r in loose if len(loose) == 1 or owners[r] == proc.username]
             root = mine[0] if len(mine) == 1 else None
         if root is not None:
             by_root[root].append(proc)
@@ -255,7 +304,11 @@ class HermesAdapter(Adapter):
             agent_id=agent_id,
             host_id=ctx.host.host_id,
             agent_type=self.agent_type,
-            name=f"{self.display_name} · {name}" if labelled else self.display_name,
+            name=" · ".join(
+                [self.display_name]
+                + ([f"enclos/{sandbox}"] if (sandbox := enclos_sandbox(root)) else [])
+                + ([name] if labelled else [])
+            ),
             version=gateway.version,
             config_root=display_path(home, ctx.homes),
             sandboxed=sandboxed,
