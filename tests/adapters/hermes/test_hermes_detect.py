@@ -8,7 +8,7 @@ import pytest
 
 from openvigie.adapters.base import HostContext, ProcessInfo
 from openvigie.adapters.common import owner_name
-from openvigie.adapters.hermes import HermesAdapter
+from openvigie.adapters.hermes import HermesAdapter, enclos
 from openvigie.adapters.hermes import adapter as hermes
 from openvigie.adapters.hermes.adapter import is_loose_hermes
 from openvigie.adapters.registry import discover
@@ -463,7 +463,7 @@ def test_odd_or_linked_sandboxes_are_skipped(tmp_path: Path) -> None:
 
 
 def test_enclos_sandbox_listing_is_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hermes, "MAX_SANDBOXES", 2)
+    monkeypatch.setattr(enclos, "MAX_SANDBOXES", 2)
     home = tmp_path / "home"
     for name in ("aa", "bb", "cc"):
         enclos_home(home, name)

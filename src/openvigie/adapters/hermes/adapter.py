@@ -2,11 +2,8 @@
 ``~/.hermes``): the home itself is the ``default`` profile, ``profiles/<name>/`` the others, each
 with its own config, sessions and ``state.db``.
 
-enclos (https://github.com/victorbonnet/enclos) runs Hermes in sandboxes, each with its own
-home at ``<enclos data>/sandboxes/<name>/home/.hermes``, the data folder being ``~/.enclos`` on
-macOS, ``~/.local/share/enclos`` on Linux, or ``$XDG_DATA_HOME/enclos`` / ``$ENCLOS_HOME``. Each
-is a home like any other. The sandboxed agent writes inside its home, so what is found there is
-as untrusted as the rest.
+The Hermes home of each enclos sandbox is a home like any other, its agents named after the
+sandbox; imported history isn't counted twice (``enclos``).
 
 One gateway usually serves every profile (``served_profiles`` in its ``gateway_state.json``); a
 profile can also run its own (``hermes -p <name> gateway run``). The shared gateway's processes
@@ -41,7 +38,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from openvigie.adapters.base import ActivityBatch, Adapter, AdapterState, HostContext, ProcessInfo
 from openvigie.adapters.common import candidate_roots, display_path, owner_name
 from openvigie.adapters.hermes.capabilities import read_capabilities
-from openvigie.adapters.hermes.usage import read_usage
+from openvigie.adapters.hermes.enclos import Arrivals, sandbox_homes, sandbox_of
+from openvigie.adapters.hermes.usage import Arrival, read_usage
 from openvigie.model import AgentInstance, Capabilities, SandboxState, stable_id
 from openvigie.safeio import (
     UnsafeFileError,
@@ -60,10 +58,6 @@ MAX_ANCESTORS = 16
 MAX_PLATFORMS = MAX_PROFILES * 8
 PLATFORM = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 DEFAULT = "default"
-ENCLOS_DATA = (".enclos", ".local/share/enclos")  # macOS, Linux
-SANDBOX_NAME = re.compile(r"^[a-z][a-z0-9-]{1,40}$")  # enclos' own rule
-MAX_SANDBOXES = 100
-MAX_SANDBOX_ENTRIES = 1000
 
 ProfileName = Annotated[str, Field(pattern=PROFILE_PATTERN)]
 
@@ -159,45 +153,11 @@ def profiles(root: Path) -> tuple[list[str], bool]:
     return sorted(names), truncated
 
 
-def enclos_homes(ctx: HostContext) -> list[Path]:
-    """``<sandbox>/home/.hermes`` of each enclos sandbox, symlinks and odd names skipped."""
-    data = [home / d for home in ctx.homes for d in ENCLOS_DATA]
-    if xdg := ctx.env("XDG_DATA_HOME"):
-        data.append(Path(xdg).expanduser() / "enclos")
-    if own := ctx.env("ENCLOS_HOME"):
-        data.append(Path(own).expanduser())
-    found: list[Path] = []
-    for base in dict.fromkeys(d.absolute() / "sandboxes" for d in data):
-        try:
-            with os.scandir(base) as it:
-                entries = sorted(islice(it, MAX_SANDBOX_ENTRIES), key=lambda e: e.name)
-                for entry in entries:
-                    home = Path(entry.path) / "home"
-                    if (
-                        SANDBOX_NAME.match(entry.name)
-                        and entry.is_dir(follow_symlinks=False)
-                        and home.is_dir()
-                        and not home.is_symlink()
-                    ):
-                        found.append(home / ".hermes")
-        except OSError:
-            continue
-    return found[:MAX_SANDBOXES]
-
-
-def enclos_sandbox(root: Path) -> str | None:
-    """The enclos sandbox a home belongs to, if it is one's."""
-    home, sandbox = root.parent, root.parent.parent
-    if root.name == ".hermes" and home.name == "home" and sandbox.parent.name == "sandboxes":
-        return sandbox.name if SANDBOX_NAME.match(sandbox.name) else None
-    return None
-
-
 def hermes_roots(ctx: HostContext) -> list[Path]:
     """Homes with a Hermes install. A ``HERMES_HOME`` that is another home's profile is left to
     that home, so the profile isn't reported twice."""
     candidates = dict.fromkeys(
-        [*candidate_roots(ctx, ".hermes", "HERMES_HOME"), *enclos_homes(ctx)]
+        [*candidate_roots(ctx, ".hermes", "HERMES_HOME"), *sandbox_homes(ctx)]
     )
     roots = [
         r
@@ -221,7 +181,7 @@ def assign(procs: Iterable[ProcessInfo], roots: Sequence[Path]) -> dict[Path, li
     from its sandbox's home, so a loose process is never one of its sandboxes'."""
     # process paths are resolved, so the roots are too (``/var`` -> ``/private/var`` on macOS)
     prefixes = {r: str(r.resolve()).rstrip("/") + "/" for r in roots}
-    loose = [r for r in roots if enclos_sandbox(r) is None]
+    loose = [r for r in roots if sandbox_of(r) is None]
     owners = {r: owner_name(r) for r in loose}
     by_root: dict[Path, list[ProcessInfo]] = {r: [] for r in roots}
     for proc in procs:
@@ -254,9 +214,11 @@ class HermesAdapter(Adapter):
         self.gateway_files: dict[str, Path | None] = {}
         self.profile_names: dict[str, str] = {}  # agent id → profile name
         self.configs: dict[Path, tuple[tuple[int, int], str | None]] = {}
+        self.sandboxed_roots: dict[str, Path] = {}  # agent id → its enclos sandbox's home
+        self.arrivals = Arrivals()
 
     def detect(self, ctx: HostContext) -> list[AgentInstance]:
-        self.roots, self.procs, self.profile_names = {}, {}, {}
+        self.roots, self.procs, self.profile_names, self.sandboxed_roots = {}, {}, {}, {}
         self.platforms, self.gateway_files = {}, {}
         roots = hermes_roots(ctx)
         by_root = assign(ctx.processes(), roots)
@@ -294,6 +256,8 @@ class HermesAdapter(Adapter):
         key = (str(root),) if name == DEFAULT else (str(root), name)
         agent_id = stable_id(ctx.host.host_id, self.agent_type, *key)
         self.roots[agent_id], self.profile_names[agent_id] = home, name
+        if sandbox_of(root):
+            self.sandboxed_roots[agent_id] = root
         self.platforms[agent_id] = gateway.platforms.get(name, frozenset())
         self.gateway_files[agent_id] = gateway.source
         self._check_config(home, name)
@@ -306,7 +270,7 @@ class HermesAdapter(Adapter):
             agent_type=self.agent_type,
             name=" · ".join(
                 [self.display_name]
-                + ([f"enclos/{sandbox}"] if (sandbox := enclos_sandbox(root)) else [])
+                + ([f"enclos/{sandbox}"] if (sandbox := sandbox_of(root)) else [])
                 + ([name] if labelled else [])
             ),
             version=gateway.version,
@@ -334,9 +298,17 @@ class HermesAdapter(Adapter):
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         batch = ActivityBatch()
         home = self.roots.get(agent.agent_id)
-        if home is not None:
-            for note in read_usage(agent, home, state, batch):
-                self._note(self.profile_names.get(agent.agent_id, DEFAULT), note)
+        if home is None:
+            return batch
+        profile = self.profile_names.get(agent.agent_id, DEFAULT)
+        arrival = None
+        if (root := self.sandboxed_roots.get(agent.agent_id)) is not None:
+            arrival = Arrival(self.arrivals.of(root, profile), ctx.now().timestamp())
+            if arrival.at is None:
+                self._note(profile, "enclos's state.db does not say when this agent arrived: "
+                           "usage is counted from when openvigie first saw it")  # fmt: skip
+        for note in read_usage(agent, home, state, batch, arrival):
+            self._note(profile, note)
         return batch
 
     def _note(self, profile: str, message: str) -> None:

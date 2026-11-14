@@ -8,6 +8,11 @@ after its totals were forgotten) only sets the baseline: missing one resume beat
 whole session twice. That holds only once a read got every row: while history spans several
 pages, an unseen row is one not reached yet, and counts in full.
 
+An agent that arrived in its home from elsewhere (an enclos import copies its databases) brings
+its history along: rows that started before it arrived only set the baseline, as that usage was
+counted where it came from. The arrival is kept in the cursor, so one learnt from the first read
+when it's unknown stays put.
+
 Hermes leaves cached tokens out of ``input_tokens`` for every provider. For providers that count
 them inside (OpenAI), cache reads are added back so pricing sees each provider's own convention.
 """
@@ -40,12 +45,21 @@ PROVIDERS = {"anthropic": "anthropic", "openai": "openai", "openai-codex": "open
 CACHED_INPUT_INCLUDED = {"openai"}
 
 
+@dataclass(frozen=True)
+class Arrival:
+    """When an agent arrived in its home (POSIX time), None if unknown; ``now`` stands in then."""
+
+    at: float | None
+    now: float
+
+
 @dataclass
 class Cursor:
     seen: float | None = None  # last_seen of the newest row read
     rows: dict[str, list[float]] = field(default_factory=dict)  # row key → [*counts, last_seen]
     # whether the last read got every row; until then an unseen row is just not reached yet
     caught_up: bool = True
+    arrived: float | None = None  # rows that started before only set the baseline
 
     @classmethod
     def load(cls, saved: dict[str, Any] | None) -> Cursor:
@@ -53,10 +67,12 @@ class Cursor:
             return cls()
         seen = saved.get("seen")
         rows = saved.get("rows")
+        arrived = saved.get("arrived")
         return cls(
             seen if isinstance(seen, int | float) else None,
             dict(rows) if isinstance(rows, dict) else {},
             saved.get("caught_up") is not False,
+            arrived if isinstance(arrived, int | float) else None,
         )
 
     def dump(self) -> dict[str, Any]:
@@ -66,7 +82,8 @@ class Cursor:
         if len(self.rows) > MAX_REMEMBERED:
             newest = sorted(self.rows.items(), key=lambda kv: kv[1][-1])[-MAX_REMEMBERED:]
             self.rows = dict(newest)
-        return {"seen": self.seen, "rows": self.rows, "caught_up": self.caught_up}
+        return {"seen": self.seen, "rows": self.rows, "caught_up": self.caught_up,
+                "arrived": self.arrived}  # fmt: skip
 
 
 def provider_of(billing_provider: str, model: str) -> str | None:
@@ -82,18 +99,26 @@ def provider_of(billing_provider: str, model: str) -> str | None:
 
 
 def read_usage(
-    agent: AgentInstance, home: Path, state: AdapterState, batch: ActivityBatch
+    agent: AgentInstance,
+    home: Path,
+    state: AdapterState,
+    batch: ActivityBatch,
+    arrival: Arrival | None = None,
 ) -> list[str]:
-    """Fill ``batch`` with usage since the cursor in ``state``; returns notes for health."""
+    """Fill ``batch`` with usage since the cursor in ``state``; returns notes for health.
+    ``arrival``: the agent may have brought history from elsewhere (see the module doc)."""
     path = home / "state.db"
     if not path.exists():
         batch.backlog = Backlog()
         return []
     key = f"usage:{agent.agent_id}"
     cursor = Cursor.load(state.get(key))
+    if arrival is not None:
+        cursor.arrived = arrival.at if arrival.at is not None else cursor.arrived or arrival.now
     start = cursor.seen
-    if start is None and state.backfill_since:
-        start = state.backfill_since.timestamp()
+    if start is None:
+        since = state.backfill_since.timestamp() if state.backfill_since else None
+        start = max((t for t in (since, cursor.arrived) if t is not None), default=None)
     try:
         conn = open_sqlite_readonly(path)
     except (OSError, UnsafeFileError, sqlite3.Error):
@@ -106,6 +131,8 @@ def read_usage(
         conn.close()
     sessions: dict[str, Session] = {}
     previous_tick = cursor.seen if cursor.caught_up else None
+    if cursor.arrived is not None:
+        previous_tick = max(previous_tick or cursor.arrived, cursor.arrived)
     for row in rows:
         record = _record(agent, row, cursor, resumed_before=previous_tick)
         if record is None:

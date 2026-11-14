@@ -205,14 +205,95 @@ def test_state_db_is_opened_read_only(tmp_path: Path, monkeypatch: pytest.Monkey
     assert writes and "readonly" in writes[0]
 
 
-def test_usage_of_a_hermes_in_an_enclos_sandbox(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    shutil.copytree(FIXTURE, home / ".local/share/enclos/sandboxes/pi/home/.hermes",
-                    ignore=NO_PROFILES)  # fmt: skip
+def in_enclos(tmp_path: Path, **created: str) -> tuple[HermesAdapter, dict[str, AgentInstance]]:
+    """The fixture as the home of enclos sandbox ``pi``, with a profile ``alice``; ``created``
+    maps ``sandbox`` or a profile to its ``created_at`` in enclos's state.db, none: no state.db."""
+    data = tmp_path / "home" / ".local/share/enclos"
+    root = data / "sandboxes" / "pi" / "home" / ".hermes"
+    shutil.copytree(FIXTURE, root, ignore=NO_PROFILES)
+    (root / "profiles" / "alice").mkdir(parents=True)
+    shutil.copy(FIXTURE / "state.db", root / "profiles" / "alice" / "state.db")
+    if created:
+        with sqlite3.connect(data / "state.db") as conn:
+            conn.execute("create table sandboxes (name text, created_at text)")
+            conn.execute("create table agents (sandbox text, name text, created_at text)")
+            conn.execute("insert into sandboxes values ('pi', ?)", (created.pop("sandbox"),))
+            conn.executemany("insert into agents values ('pi', ?, ?)", created.items())
     adapter = HermesAdapter()
-    (agent,) = adapter.detect(fake_context(homes=[home]))
-    batch = collect(adapter, agent, AdapterState())
-    assert agent.name == "Hermes · enclos/pi"
+    agents = {a.name: a for a in adapter.detect(fake_context(homes=[tmp_path / "home"]))}
+    return adapter, agents
+
+
+DEFAULT = "Hermes · enclos/pi · default"
+ALICE = "Hermes · enclos/pi · alice"
+OCT_1 = "2026-10-01T00:00:00Z"
+ROWS_SINCE_OCT_1 = 5  # rows that started after it; one more started before but grew after
+
+
+def test_enclos_agent_history_counts_from_its_arrival(tmp_path: Path) -> None:
+    adapter, agents = in_enclos(tmp_path, sandbox="2026-05-01T00:00:00.5Z")
+    batch = collect(adapter, agents[DEFAULT], AdapterState())
     assert len(batch.usage) == ROWS
-    assert {r.agent_id for r in batch.usage} == {agent.agent_id}
     assert sum(r.output_tokens or 0 for r in batch.usage) == OUTPUT_TOKENS
+    assert adapter.health().reason is None
+
+
+def test_history_from_before_an_import_is_not_counted_again(tmp_path: Path) -> None:
+    adapter, agents = in_enclos(tmp_path, sandbox=OCT_1)
+    state = AdapterState()
+    assert len(collect(adapter, agents[DEFAULT], state).usage) == ROWS_SINCE_OCT_1
+    db = tmp_path / "home/.local/share/enclos/sandboxes/pi/home/.hermes/state.db"
+    grow(db, CODEX_SESSION, 500, 1_792_000_000.0)  # a session from before the import goes on
+    (record,) = collect(adapter, agents[DEFAULT], state).usage
+    assert record.output_tokens == 500
+
+
+def test_each_profile_arrives_as_its_enclos_agent(tmp_path: Path) -> None:
+    adapter, agents = in_enclos(tmp_path, sandbox="2026-05-01T00:00:00Z", alice=OCT_1)
+    assert len(collect(adapter, agents[DEFAULT], AdapterState()).usage) == ROWS
+    assert len(collect(adapter, agents[ALICE], AdapterState()).usage) == ROWS_SINCE_OCT_1
+
+
+def test_unknown_arrival_counts_from_first_sight(tmp_path: Path) -> None:
+    adapter, agents = in_enclos(tmp_path)
+    state = AdapterState()
+    assert collect(adapter, agents[DEFAULT], state).usage == []
+    assert "does not say when this agent arrived" in (adapter.health().reason or "")
+    db = tmp_path / "home/.local/share/enclos/sandboxes/pi/home/.hermes/state.db"
+    later = fake_context(homes=[], now=datetime(2028, 1, 1, tzinfo=UTC))  # arrival stays put
+    grow(db, CODEX_SESSION, 500, 1_800_000_000.0)
+    assert adapter.collect(later, agents[DEFAULT], state).usage == []  # its baseline
+    state.commit()
+    grow(db, CODEX_SESSION, 300, 1_800_000_100.0)
+    (record,) = adapter.collect(later, agents[DEFAULT], state).usage
+    assert record.output_tokens == 300
+
+
+@pytest.mark.parametrize("created", ["yesterday", "2026-10-01T00:00:00", "9" * 65])
+def test_odd_enclos_times_are_unknown(tmp_path: Path, created: str) -> None:
+    adapter, agents = in_enclos(tmp_path, sandbox=created)
+    assert collect(adapter, agents[DEFAULT], AdapterState()).usage == []
+    assert "does not say when this agent arrived" in (adapter.health().reason or "")
+
+
+def test_enclos_state_db_is_read_again_only_when_it_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from openvigie.adapters.hermes import enclos
+
+    reads: list[Path] = []
+    read = enclos._read
+
+    def counted(db: Path) -> enclos.Table | None:
+        reads.append(db)
+        return read(db)
+
+    monkeypatch.setattr(enclos, "_read", counted)
+    adapter, agents = in_enclos(tmp_path, sandbox=OCT_1)
+    for _ in range(3):
+        collect(adapter, agents[DEFAULT], AdapterState())
+    assert len(reads) == 1
+    with sqlite3.connect(tmp_path / "home/.local/share/enclos/state.db") as conn:
+        conn.execute("update sandboxes set created_at = '2026-05-01T00:00:00Z'")
+    assert len(collect(adapter, agents[DEFAULT], AdapterState()).usage) == ROWS
+    assert len(reads) == 2
