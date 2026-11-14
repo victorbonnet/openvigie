@@ -213,7 +213,7 @@ def in_enclos(
     ``created_at`` in enclos's state.db for ``sandbox`` (required) and any profile; none means
     no state.db."""
     data = tmp_path / "home" / ".local/share/enclos"
-    root = data / "sandboxes" / "pi" / "home" / ".hermes"
+    root = data / "sandboxes" / "lab" / "home" / ".hermes"
     shutil.copytree(FIXTURE, root, ignore=NO_PROFILES)
     (root / "profiles" / "alice").mkdir(parents=True)
     shutil.copy(FIXTURE / "state.db", root / "profiles" / "alice" / "state.db")
@@ -223,8 +223,8 @@ def in_enclos(
                 conn.execute("pragma journal_mode=wal")
             conn.execute("create table sandboxes (name text, created_at text)")
             conn.execute("create table agents (sandbox text, name text, created_at text)")
-            conn.execute("insert into sandboxes values ('pi', ?)", (created.pop("sandbox"),))
-            conn.executemany("insert into agents values ('pi', ?, ?)", created.items())
+            conn.execute("insert into sandboxes values ('lab', ?)", (created.pop("sandbox"),))
+            conn.executemany("insert into agents values ('lab', ?, ?)", created.items())
     return detect_enclos(tmp_path, HermesAdapter())
 
 
@@ -236,9 +236,9 @@ def detect_enclos(
 
 
 ENCLOS_DB = "home/.local/share/enclos/state.db"
-SANDBOX_DB = "home/.local/share/enclos/sandboxes/pi/home/.hermes/state.db"
-DEFAULT = "Hermes · enclos/pi · default"
-ALICE = "Hermes · enclos/pi · alice"
+SANDBOX_DB = "home/.local/share/enclos/sandboxes/lab/home/.hermes/state.db"
+DEFAULT = "Hermes · enclos/lab · default"
+ALICE = "Hermes · enclos/lab · alice"
 MAY_1 = "2026-05-01T00:00:00Z"
 OCT_1 = "2026-10-01T00:00:00Z"
 ROWS_SINCE_OCT_1 = 5  # rows that started after it; one more started before but grew after
@@ -300,7 +300,7 @@ def test_unknown_arrival_counts_from_first_sight(tmp_path: Path) -> None:
     state = AdapterState()
     assert collect(adapter, agents[DEFAULT], state).usage == []
     reason = adapter.health().reason or ""
-    assert "enclos/pi · default: arrival unknown (enclos's state.db could not be opened)" in reason
+    assert "enclos/lab · default: arrival unknown (enclos's state.db could not be opened)" in reason
     assert "counted from 2026-10-14 12:00 UTC" in reason
     grow(tmp_path / SANDBOX_DB, CODEX_SESSION, 500, 1_800_000_000.0)
     later = fake_context(homes=[], now=datetime(2028, 1, 1, tzinfo=UTC))
@@ -320,7 +320,7 @@ def test_odd_enclos_times_are_unknown(tmp_path: Path, created: str) -> None:
 def test_an_odd_agent_time_is_unknown_not_the_sandbox_time(tmp_path: Path) -> None:
     adapter, agents = in_enclos(tmp_path, sandbox=MAY_1, alice="garbage")
     assert collect(adapter, agents[ALICE], AdapterState()).usage == []
-    assert "enclos/pi · alice: arrival unknown (enclos's time for agent alice is unusable)" in (
+    assert "enclos/lab · alice: arrival unknown (enclos's time for agent alice is unusable)" in (
         adapter.health().reason or ""
     )
 
@@ -353,13 +353,13 @@ def test_a_profile_imported_while_running_counts_from_its_arrival(tmp_path: Path
     writer = sqlite3.connect(tmp_path / ENCLOS_DB)
     try:
         writer.execute("pragma wal_autocheckpoint=0")
-        writer.execute("insert into agents values ('pi', 'bob', ?)", (OCT_1,))
+        writer.execute("insert into agents values ('lab', 'bob', ?)", (OCT_1,))
         writer.commit()
-        bob = tmp_path / "home/.local/share/enclos/sandboxes/pi/home/.hermes/profiles/bob"
+        bob = tmp_path / "home/.local/share/enclos/sandboxes/lab/home/.hermes/profiles/bob"
         bob.mkdir()
         shutil.copy(FIXTURE / "state.db", bob / "state.db")
         _, agents = detect_enclos(tmp_path, adapter)
-        batch = collect(adapter, agents["Hermes · enclos/pi · bob"], AdapterState())
+        batch = collect(adapter, agents["Hermes · enclos/lab · bob"], AdapterState())
     finally:
         writer.close()
     assert len(batch.usage) == ROWS_SINCE_OCT_1

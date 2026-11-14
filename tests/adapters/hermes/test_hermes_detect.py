@@ -399,41 +399,41 @@ def loose_hermes(pid: int = 5) -> ProcessInfo:
 
 def test_enclos_sandboxes_are_found(tmp_path: Path) -> None:
     home = make_home(tmp_path)
-    enclos_home(home, "assistant")
-    enclos_home(home, "pi", data=".local/share/enclos")
+    enclos_home(home, "helper")
+    enclos_home(home, "lab", data=".local/share/enclos")
     agents = {a.name: a for a in HermesAdapter().detect(fake_context(homes=[home]))}
-    assert list(agents) == ["Hermes", "Hermes · enclos/assistant", "Hermes · enclos/pi"]
-    assert agents["Hermes · enclos/assistant"].config_root == (
-        "~/.enclos/sandboxes/assistant/home/.hermes"
+    assert list(agents) == ["Hermes", "Hermes · enclos/helper", "Hermes · enclos/lab"]
+    assert agents["Hermes · enclos/helper"].config_root == (
+        "~/.enclos/sandboxes/helper/home/.hermes"
     )
-    assert agents["Hermes · enclos/pi"].config_root == (
-        "~/.local/share/enclos/sandboxes/pi/home/.hermes"
+    assert agents["Hermes · enclos/lab"].config_root == (
+        "~/.local/share/enclos/sandboxes/lab/home/.hermes"
     )
-    assert agents["Hermes · enclos/pi"].version == "0.21.7"
+    assert agents["Hermes · enclos/lab"].version == "0.21.7"
     assert len({a.agent_id for a in agents.values()}) == 3
 
 
 def test_enclos_processes_go_to_their_sandbox(tmp_path: Path) -> None:
     home = make_home(tmp_path)
-    root = enclos_home(home, "assistant")
+    root = enclos_home(home, "helper")
     ctx = fake_context(homes=[home], processes=[gateway(home, 100), sandboxed_gateway(root, 200)])
     adapter = HermesAdapter()
     pids = {a.name: [p.pid for p in adapter.processes(a.agent_id)] for a in adapter.detect(ctx)}
-    assert pids == {"Hermes": [100], "Hermes · enclos/assistant": [200]}
+    assert pids == {"Hermes": [100], "Hermes · enclos/helper": [200]}
 
 
 def test_loose_process_still_goes_to_the_only_plain_home(tmp_path: Path) -> None:
     home = make_home(tmp_path)
-    enclos_home(home, "assistant")
+    enclos_home(home, "helper")
     adapter = HermesAdapter()
     agents = adapter.detect(fake_context(homes=[home], processes=[loose_hermes()]))
     pids = {a.name: [p.pid for p in adapter.processes(a.agent_id)] for a in agents}
-    assert pids == {"Hermes": [5], "Hermes · enclos/assistant": []}
+    assert pids == {"Hermes": [5], "Hermes · enclos/helper": []}
 
 
 def test_loose_process_is_never_a_sandboxes(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    enclos_home(home, "assistant")
+    enclos_home(home, "helper")
     adapter = HermesAdapter()
     (agent,) = adapter.detect(fake_context(homes=[home], processes=[loose_hermes()]))
     assert adapter.processes(agent.agent_id) == ()
@@ -441,27 +441,27 @@ def test_loose_process_is_never_a_sandboxes(tmp_path: Path) -> None:
 
 def test_enclos_sandbox_profiles_are_labelled(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    root = enclos_home(home, "hermes", data=".local/share/enclos")
+    root = enclos_home(home, "team", data=".local/share/enclos")
     (root / "profiles" / "alice").mkdir(parents=True)
     shutil.copy(FIXTURE / "state.db", root / "profiles" / "alice" / "state.db")
     names = [a.name for a in HermesAdapter().detect(fake_context(homes=[home]))]
-    assert names == ["Hermes · enclos/hermes · default", "Hermes · enclos/hermes · alice"]
+    assert names == ["Hermes · enclos/team · default", "Hermes · enclos/team · alice"]
 
 
 @pytest.mark.parametrize("var", ["ENCLOS_HOME", "XDG_DATA_HOME"])
 def test_enclos_data_folder_from_the_environment(tmp_path: Path, var: str) -> None:
     data = tmp_path / "elsewhere"
-    enclos_home(data, "assistant", data="enclos" if var == "XDG_DATA_HOME" else ".")
+    enclos_home(data, "helper", data="enclos" if var == "XDG_DATA_HOME" else ".")
     ctx = fake_context(homes=[tmp_path / "nohome"], env={var: str(data)})
     (agent,) = HermesAdapter().detect(ctx)
-    assert agent.name == "Hermes · enclos/assistant"
+    assert agent.name == "Hermes · enclos/helper"
 
 
 def test_relative_xdg_data_home_is_ignored_as_enclos_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    enclos_home(tmp_path / "data", "assistant", data="enclos")
+    enclos_home(tmp_path / "data", "helper", data="enclos")
     ctx = fake_context(homes=[tmp_path / "nohome"], env={"XDG_DATA_HOME": "data"})
     assert HermesAdapter().detect(ctx) == []
 
@@ -469,16 +469,16 @@ def test_relative_xdg_data_home_is_ignored_as_enclos_does(
 @pytest.mark.parametrize(
     "env",
     [
-        {"HERMES_HOME": "{home}/.local/share/enclos/sandboxes/pi/home/.hermes/"},
+        {"HERMES_HOME": "{home}/.local/share/enclos/sandboxes/lab/home/.hermes/"},
         {"XDG_DATA_HOME": "{home}/.local/share"},
         {"ENCLOS_HOME": "{home}/.local/share/enclos"},
     ],
 )
 def test_default_folders_named_again_give_one_agent(tmp_path: Path, env: dict[str, str]) -> None:
     home = tmp_path / "home"
-    enclos_home(home, "pi", data=".local/share/enclos")
+    enclos_home(home, "lab", data=".local/share/enclos")
     ctx = fake_context(homes=[home], env={k: v.format(home=home) for k, v in env.items()})
-    assert [a.name for a in HermesAdapter().detect(ctx)] == ["Hermes · enclos/pi"]
+    assert [a.name for a in HermesAdapter().detect(ctx)] == ["Hermes · enclos/lab"]
 
 
 def test_odd_or_linked_sandboxes_are_skipped(tmp_path: Path) -> None:

@@ -12,10 +12,10 @@ EXE = "/usr/bin/env"  # any existing binary outside /home: systemd-analyze check
 
 
 def test_system_collector_sees_only_agent_folders() -> None:
-    unit = render("collector", "system", [Path("/home/victor"), Path("/home/ci")], exe=EXE)
+    unit = render("collector", "system", [Path("/home/alice"), Path("/home/ci")], exe=EXE)
     assert "User=openvigie\n" in unit and "ProtectHome=tmpfs" in unit
-    assert "BindReadOnlyPaths=-/home/victor/.claude -/home/victor/.codex" in unit
-    assert "-/home/ci/.codex" in unit and "/home/victor/.ssh" not in unit
+    assert "BindReadOnlyPaths=-/home/alice/.claude -/home/alice/.codex" in unit
+    assert "-/home/ci/.codex" in unit and "/home/alice/.ssh" not in unit
     assert "CapabilityBoundingSet=CAP_DAC_READ_SEARCH" in unit and "MemoryMax=150M" in unit
     with pytest.raises(ValueError, match="--home"):
         render("collector", "system", [], exe=EXE)
@@ -67,7 +67,7 @@ def test_cli_prints_and_installs_nothing(
 
 
 def test_system_collector_sees_enclos_sandboxes_but_not_the_rest_of_its_data() -> None:
-    unit = render("collector", "system", [Path("/home/victor")], exe=EXE)
-    assert "-/home/victor/.local/share/enclos/sandboxes" in unit
-    assert "-/home/victor/.local/share/enclos/state.db-wal" in unit
-    assert "-/home/victor/.local/share/enclos " not in unit
+    unit = render("collector", "system", [Path("/home/alice")], exe=EXE)
+    assert "-/home/alice/.local/share/enclos/sandboxes" in unit
+    assert "-/home/alice/.local/share/enclos/state.db-wal" in unit
+    assert "-/home/alice/.local/share/enclos " not in unit
