@@ -26,7 +26,7 @@ pytestmark = pytest.mark.e2e
 def collector(hub: Hub, tmp_path: Path, **settings: Any) -> Collector:
     machine = FakeMachine(tmp_path)
     config = CollectorSettings(homes=(machine.home,), token_file=tmp_path / "state" / "token",
-                               **settings)  # fmt: skip
+                               backfill_days=36500, **settings)  # fmt: skip
     code = Credentials(hub.db).create_enrol_code(datetime.now(UTC), timedelta(minutes=5))
     token = enrol(hub.url, code, TEST_HOST, config, config_path=tmp_path / "c.toml")
     client = HubClient(hub.url, token=read_private_file(token))

@@ -34,17 +34,18 @@ def client_for(inv: Inventory) -> TestClient:
 
 
 def seed(inv: Inventory) -> None:
-    inv.upsert_host(PI, NOW)
-    inv.upsert_host(MAC, NOW)
+    now = datetime.now(UTC)  # pages render against the real clock, not import time
+    inv.upsert_host(PI, now)
+    inv.upsert_host(MAC, now)
     inv.upsert_agents(
         [
             AgentInstance("a1", "h-pi", "claude-code", "Claude Code", version="2.1.0",
                           config_root="~/.claude", sandboxed=SandboxState.YES,
                           sandbox_kind="bwrap", status=AgentStatus.ACTIVE,
-                          last_activity_at=NOW - timedelta(minutes=2)),
+                          last_activity_at=now - timedelta(minutes=2)),
             AgentInstance("a2", "h-mac", "codex", "Codex", status=AgentStatus.UNKNOWN),
         ],
-        NOW,
+        now,
     )  # fmt: skip
 
 
