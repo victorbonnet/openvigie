@@ -15,7 +15,9 @@ grants `CAP_DAC_READ_SEARCH` (read any file, never write), and systemd confines 
 
 - `/home` and `/root` are replaced by empty folders, except the agent folders (`~/.claude`,
   `~/.codex`, …) of the homes you name, bind-mounted **read-only**. The collector can't see
-  `~/.ssh` or anything else in a home.
+  `~/.ssh` or anything else in a home. For [enclos](https://github.com/victorbonnet/enclos),
+  `~/.local/share/enclos/sandboxes` and its `state.db` are mounted too; each sandbox folder also
+  holds enclos's `secrets/`, which the collector never opens.
 - `/etc/shadow`, `/etc/gshadow` and `/etc/ssh` are hidden; the rest of the system is
   read-only. Only `/var/lib/openvigie` is writable.
 - No other capabilities, a system-call filter, no new privileges, and 150 MB of memory at most.

@@ -30,8 +30,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from openvigie.adapters.hermes.enclos import inside
 from openvigie.model import Channel
-from openvigie.safeio import UnsafeFileError, load_json_bounded, read_text_bounded, resolve_within
+from openvigie.safeio import UnsafeFileError, load_json_bounded, read_text_bounded
 
 ACCESS_NAME = re.compile(
     r"^(?:export\s+)?([A-Z][A-Z0-9_]{0,40}_(?:ALLOWED_USERS|ALLOW_ALL_USERS|GROUP_ALLOWED_CHATS|ALLOWED_ROLES))\s*="
@@ -83,7 +84,8 @@ class Access:
         )
 
 
-def read_access(home: Path) -> Access:
+def read_access(home: Path, confine: Path | None = None) -> Access:
+    """``confine``: a Hermes home pairing folders are read only within (``enclos.inside``)."""
     path = home / ".env"
     if not path.exists():  # the settings live elsewhere (the service's environment): unknown
         return Access(readable=False)
@@ -99,7 +101,7 @@ def read_access(home: Path) -> Access:
                 flags.add(name)
         else:
             lists[name] = _hashed(entries(value))
-    return Access(lists, frozenset(flags), _approved(home))
+    return Access(lists, frozenset(flags), _approved(home, confine))
 
 
 def access_settings(text: str) -> list[tuple[str, str]]:
@@ -147,13 +149,14 @@ def _hashed(entries: list[str]) -> frozenset[str]:
     )
 
 
-def _approved(home: Path) -> dict[str, frozenset[str]]:
+def _approved(home: Path, confine: Path | None) -> dict[str, frozenset[str]]:
     found: dict[str, set[str]] = {}
-    for relative in ("platforms/pairing", "pairing"):
+    for folder in (home / "platforms" / "pairing", home / "pairing"):
+        if confine is not None and not inside(confine, folder):
+            continue
         try:
-            folder = resolve_within(home, relative)  # never through a link leading out
             files = sorted(folder.glob("*-approved.json"))[:64] if folder.is_dir() else []
-        except (OSError, RuntimeError, UnsafeFileError):
+        except OSError:
             continue
         for path in files:
             try:

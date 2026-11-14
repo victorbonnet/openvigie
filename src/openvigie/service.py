@@ -21,6 +21,10 @@ import sys
 from pathlib import Path
 
 AGENT_DIRS = (".claude", ".codex", ".hermes", ".openclaw")
+# enclos's sandboxes (Hermes homes) and the state.db saying when its agents arrived, with the
+# files SQLite reads beside it; the rest of enclos's data folder stays out of sight
+ENCLOS = tuple(f".local/share/enclos/{n}" for n in ("sandboxes", "state.db", "state.db-wal",
+                                                    "state.db-shm"))  # fmt: skip
 DOCS = "https://github.com/victorbonnet/openvigie/blob/main/docs/install.md"
 
 HARDENING = """\
@@ -167,7 +171,7 @@ def _xml(text: str) -> str:
 
 def bind_paths(homes: list[Path]) -> str:
     """Read-only bind mounts for the agent folders in these homes (missing ones are skipped)."""
-    return " ".join(f"-{home / name}" for home in homes for name in AGENT_DIRS)
+    return " ".join(f"-{home / name}" for home in homes for name in (*AGENT_DIRS, *ENCLOS))
 
 
 def render(role: str, kind: str, homes: list[Path], exe: str | None = None) -> str:

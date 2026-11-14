@@ -64,3 +64,10 @@ def test_cli_prints_and_installs_nothing(
     assert cli.main(["service", "print", "collector"]) == 2
     assert cli.main(["service", "print", "hub", "--launchd"]) == 0
     assert "<plist" in capsys.readouterr().out
+
+
+def test_system_collector_sees_enclos_sandboxes_but_not_the_rest_of_its_data() -> None:
+    unit = render("collector", "system", [Path("/home/victor")], exe=EXE)
+    assert "-/home/victor/.local/share/enclos/sandboxes" in unit
+    assert "-/home/victor/.local/share/enclos/state.db-wal" in unit
+    assert "-/home/victor/.local/share/enclos " not in unit

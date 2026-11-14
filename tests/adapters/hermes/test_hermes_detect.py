@@ -520,6 +520,37 @@ def test_skills_leading_out_of_a_sandbox_are_not_read(tmp_path: Path) -> None:
     (agent,) = adapter.detect(fake_context(homes=[home]))
     capabilities = adapter.capabilities(fake_context(homes=[home]), agent)
     assert capabilities is not None and "host-skill" not in capabilities.skills
+    assert "enclos/box: skills leads out of its home: not read" in (adapter.health().reason or "")
+
+
+def test_a_sandbox_profile_may_share_its_sandboxes_skills(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    root = enclos_home(home, "box")
+    (root / "skills" / "shared").mkdir(parents=True, exist_ok=True)
+    (root / "skills" / "shared" / "SKILL.md").write_text("x")
+    alice = root / "profiles" / "alice"
+    alice.mkdir(parents=True)
+    shutil.copy(FIXTURE / "state.db", alice / "state.db")
+    shutil.copy(FIXTURE / "config.yaml", alice / "config.yaml")
+    (alice / "skills").symlink_to(root / "skills")
+    adapter = HermesAdapter()
+    agents = {a.name: a for a in adapter.detect(fake_context(homes=[home]))}
+    capabilities = adapter.capabilities(fake_context(homes=[home]),
+                                        agents["Hermes · enclos/box · alice"])  # fmt: skip
+    assert capabilities is not None and "shared" in capabilities.skills
+
+
+def test_a_plain_home_still_follows_its_skills_link(tmp_path: Path) -> None:
+    home = make_home(tmp_path)
+    dotfiles = tmp_path / "dotfiles" / "skills" / "mine"
+    dotfiles.mkdir(parents=True)
+    (dotfiles / "SKILL.md").write_text("x")
+    shutil.rmtree(home / ".hermes" / "skills", ignore_errors=True)
+    (home / ".hermes" / "skills").symlink_to(dotfiles.parent)
+    adapter = HermesAdapter()
+    (agent,) = adapter.detect(fake_context(homes=[home]))
+    capabilities = adapter.capabilities(fake_context(homes=[home]), agent)
+    assert capabilities is not None and "mine" in capabilities.skills
 
 
 def test_a_home_swapped_for_a_link_after_detection_is_not_read(tmp_path: Path) -> None:
@@ -548,7 +579,7 @@ def test_unlistable_sandboxes_are_noted(tmp_path: Path) -> None:
     if os.geteuid() == 0:
         pytest.skip("root lists anything")
     assert names == ["Hermes"]
-    assert "could not be listed" in (adapter.health().reason or "")
+    assert "~/.enclos/sandboxes could not be listed" in (adapter.health().reason or "")
 
 
 def test_a_sandbox_that_cannot_be_searched_hides_nothing_else(

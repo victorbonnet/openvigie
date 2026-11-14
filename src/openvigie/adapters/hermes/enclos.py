@@ -29,6 +29,7 @@ from itertools import islice
 from pathlib import Path
 
 from openvigie.adapters.base import HostContext
+from openvigie.adapters.common import display_path
 from openvigie.safeio import UnsafeFileError, open_sqlite_readonly
 
 DATA = (".enclos", ".local/share/enclos")  # macOS, Linux
@@ -74,16 +75,17 @@ def sandbox_homes(
     found: list[Path] = []
     notes: list[str] = []
     for base in dict.fromkeys(d.absolute() / "sandboxes" for d in data):
+        where = display_path(base, ctx.homes)
         try:
             with os.scandir(base) as it:
                 entries = list(islice(it, MAX_ENTRIES + 1))
         except (FileNotFoundError, NotADirectoryError):
             continue
         except OSError as e:
-            notes.append(f"{base} could not be listed ({e.strerror}): its sandboxes are not shown")
+            notes.append(f"{where} could not be listed ({e.strerror}): its sandboxes are not shown")
             continue
         if len(entries) > MAX_ENTRIES:
-            notes.append(f"{base}: more entries than read, some sandboxes are not shown")
+            notes.append(f"{where}: more entries than read, some sandboxes are not shown")
         for entry in sorted(entries[:MAX_ENTRIES], key=lambda e: e.name):
             root = Path(entry.path) / "home" / ".hermes"
             try:
@@ -95,7 +97,7 @@ def sandbox_homes(
                 ):
                     found.append(root)
             except OSError:
-                notes.append(f"{base}/{entry.name} could not be read: not shown")
+                notes.append(f"{where}/{entry.name} could not be read: not shown")
     if len(found) > MAX_SANDBOXES:
         notes.append(f"more than {MAX_SANDBOXES} enclos sandboxes run Hermes: some are not shown")
     return found[:MAX_SANDBOXES], notes

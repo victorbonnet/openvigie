@@ -145,13 +145,16 @@ def profiles(root: Path) -> tuple[list[str], bool]:
                 if seen > MAX_PROFILE_ENTRIES or len(names) == MAX_PROFILES:
                     truncated = True
                     break
-                if (
-                    PROFILE_NAME.match(entry.name)
-                    and entry.name != DEFAULT
-                    and entry.is_dir(follow_symlinks=False)
-                    and any((Path(entry.path) / m).exists() for m in PROFILE_MARKERS)
-                ):
-                    names.append(entry.name)
+                try:
+                    if (
+                        PROFILE_NAME.match(entry.name)
+                        and entry.name != DEFAULT
+                        and entry.is_dir(follow_symlinks=False)
+                        and any((Path(entry.path) / m).exists() for m in PROFILE_MARKERS)
+                    ):
+                        names.append(entry.name)
+                except OSError:  # Python < 3.14: an unsearchable profile hides only itself
+                    continue
     except OSError:
         pass
     return sorted(names), truncated
@@ -303,10 +306,16 @@ class HermesAdapter(Adapter):
             return None
         platforms = self.platforms.get(agent.agent_id, frozenset())
         source = self.gateway_files.get(agent.agent_id)
+        label = self.labels.get(agent.agent_id, "")
         if source is None:
-            self._note(self.labels.get(agent.agent_id, ""),
-                       "messaging platforms unknown: no readable gateway_state.json")  # fmt: skip
-        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source)
+            self._note(label, "messaging platforms unknown: no readable gateway_state.json")
+        root = self.hermes_roots[agent.agent_id]
+        confine = root if sandbox_of(root) else None
+        if confine is not None:
+            for folder in ("skills", "pairing", "platforms/pairing"):
+                if os.path.lexists(home / folder) and not inside(confine, home / folder):
+                    self._note(label, f"{folder} leads out of its home: not read")
+        return read_capabilities(agent, home, ctx.homes, platforms, ctx.now(), source, confine)
 
     def collect(self, ctx: HostContext, agent: AgentInstance, state: AdapterState) -> ActivityBatch:
         batch = ActivityBatch()
