@@ -95,7 +95,7 @@ def make_collector(
     transport = Transport(client)
     clock = Clock()
     collector = Collector(
-        CollectorSettings(homes=(host.home,)),
+        CollectorSettings(homes=(host.home,), backfill_days=36500),
         host.context(),
         Discovery(adapters=[ClaudeCodeAdapter()]),
         HubClient("http://127.0.0.1:7878", token=token, transport=transport),
