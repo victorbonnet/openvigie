@@ -537,6 +537,13 @@ def host_page(request: Request, host_id: HostId) -> HTMLResponse:
 RANGES = (7, 30, 90)
 
 
+def cost_text(row: UsageRow) -> str:
+    """A row's cost as shown: "unpriced" when no price covered it, "≥" when it's a lower bound."""
+    if row.cost == 0 and row.unpriced_tokens:
+        return "unpriced"
+    return money(row.cost) if row.cost_complete else f"≥ {money(row.cost)}"
+
+
 @router.get("/usage", response_class=HTMLResponse)
 def usage_page(
     request: Request,
@@ -572,6 +579,7 @@ def usage_page(
     top_agent = max(per_agent.rows, key=lambda r: r.cost, default=None)
     sessions = sorted(per_session.rows, key=lambda r: r.cost, reverse=True)[:10]
     models = sorted(per_model.rows, key=lambda r: r.tokens, reverse=True)
+    by_cost = sorted(models, key=lambda r: (r.cost, r.tokens), reverse=True)
     table: PriceTable = state.prices
     return render(
         request,
@@ -586,7 +594,14 @@ def usage_page(
         top_agent=top_agent,
         series=series,
         daily_chart=stacked_bars(day_list, series),
-        model_chart=hbars([(r.labels["model"], float(r.tokens)) for r in models]),
+        model_chart=hbars(
+            [(r.labels["model"], float(r.tokens), compact(r.tokens)) for r in models],
+            "Tokens by model",
+        ),
+        cost_text=cost_text,
+        model_cost_chart=hbars(
+            [(r.labels["model"], float(r.cost), cost_text(r)) for r in by_cost], "Cost by model"
+        ),
         per_day=per_day.rows,
         models=models,
         unpriced_models=sorted(r.labels["model"] for r in models if r.unpriced_tokens),
