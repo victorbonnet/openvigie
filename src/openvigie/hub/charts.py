@@ -1,15 +1,16 @@
 """Server-rendered SVG charts: no JS, CSP-friendly (classes only, no inline styles).
 
 Colors come from the CSS custom properties ``--series-1..8`` (validated categorical palette,
-light and dark steps in app.css). A series keeps its slot whatever its rank: slots are assigned
-from a stable order of entity ids, and anything past eight folds into "Other". Every mark has a
-native ``<title>`` tooltip; every chart is paired with a table in the template.
+light and dark steps in app.css). The eight largest series get a slot and the rest fold into
+"Other"; among those eight, slots follow entity ids rather than rank, so a series keeps its color
+while it stays in the top eight. Every mark has a native ``<title>`` tooltip; every chart is paired
+with a table in the template.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -27,9 +28,10 @@ class Series:
     values: dict[str, Decimal]
 
 
-def assign_slots(keys: Sequence[str]) -> dict[str, int]:
-    """Stable slot per entity id (sorted ids), so filtering never repaints the survivors."""
-    return {key: index + 1 for index, key in enumerate(sorted(keys)[:MAX_SERIES])}
+def assign_slots(sizes: Mapping[str, Decimal]) -> dict[str, int]:
+    """Slots for the ``MAX_SERIES`` largest entities, in id order so ranks don't repaint them."""
+    largest = sorted(sizes, key=lambda key: (-sizes[key], key))[:MAX_SERIES]
+    return {key: index + 1 for index, key in enumerate(sorted(largest))}
 
 
 def money(value: Decimal) -> str:

@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -102,15 +103,30 @@ def test_custom_range_and_validation() -> None:
 
 
 def test_colors_follow_entities_not_rank() -> None:
-    assert assign_slots(["b", "a", "c"]) == {"a": 1, "b": 2, "c": 3}
-    assert assign_slots(["c", "a"]) == {"a": 1, "c": 2}
-    assert len(assign_slots([str(i) for i in range(12)])) == 8
+    assert assign_slots({"b": Decimal(9), "a": Decimal(1), "c": Decimal(5)}) == {
+        "a": 1,
+        "b": 2,
+        "c": 3,
+    }
+    assert assign_slots({"c": Decimal(1), "a": Decimal(2)}) == {"a": 1, "c": 2}
+
+
+def test_the_largest_eight_get_slots() -> None:
+    sizes = {f"{i:02}": Decimal(i) for i in range(12)}
+    assert sorted(assign_slots(sizes)) == [f"{i:02}" for i in range(4, 12)]
 
 
 def test_more_than_eight_agents_fold_into_other() -> None:
     records = [rec(str(i), f"a{i}") for i in range(10)]
     html = client_with(records, agents=10).get("/usage").text
     assert '<span class="swatch s-other"></span>Other' in html
+
+
+def test_big_spenders_are_named_whatever_their_id() -> None:
+    records = [rec(str(i), f"a{i}", inp=1_000) for i in range(10)]
+    records.append(rec("big", "a9", inp=10_000_000))
+    html = client_with(records, agents=10).get("/usage").text
+    assert re.search(r'class="swatch s[1-8]"></span>Agent 9 · pi5', html)
 
 
 def test_chart_escapes_labels() -> None:
