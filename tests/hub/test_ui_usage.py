@@ -83,6 +83,21 @@ def test_unpriced_models_are_listed_with_the_override_file() -> None:
     assert "prices.toml</code>" in html
 
 
+def test_cost_by_model_sits_next_to_tokens_by_model() -> None:
+    records = [
+        openai("c1", "gpt-6.1-sol"),
+        openai("c2", "codex-auto-review"),
+        rec("c3", inp=2_000_000),
+    ]
+    html = client_with(records).get("/usage").text
+    pair = html[html.index('<div class="pair">') :]
+    assert pair.index('aria-label="Tokens by model"') < pair.index('aria-label="Cost by model"')
+    costs = pair[pair.index('aria-label="Cost by model"') :]
+    order = [costs.index(m) for m in ("claude-opus-5-5", "gpt-6.1-sol", "codex-auto-review")]
+    assert order == sorted(order)
+    assert "$8.00</text>" in costs and ">unpriced</text>" in costs and "$0</text>" not in costs
+
+
 def test_unverified_prices_are_flagged() -> None:
     codex = UsageRecord("c1", "a0", NOW, provider="openai", response_model="gpt-5-codex",
                         input_tokens=1_000_000, output_tokens=0,
@@ -133,7 +148,7 @@ def test_chart_escapes_labels() -> None:
     evil = "<script>x</script>"
     svg = stacked_bars(["2026-10-14"], [Series("a", evil, 1, {"2026-10-14": Decimal(1)})])
     assert evil not in svg and "&lt;script&gt;" in svg
-    assert evil not in hbars([(evil, 10.0)])
+    assert evil not in hbars([(evil, 10.0, evil)], evil)
 
 
 def test_money_format() -> None:

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% macro cost(row) %}{% if not row.cost_complete %}≥ {% endif %}{{ money(row.cost) }}{% endmacro %}
+{% macro cost(row) %}{{ cost_text(row) }}{% endmacro %}
 {% block content %}
 <h1>Usage</h1>
 
@@ -69,8 +69,10 @@
 </table>
 </details>
 
-<h2>Tokens by model</h2>
-{{ model_chart }}
+<div class="pair">
+  <section><h2>Tokens by model</h2>{{ model_chart }}</section>
+  <section><h2>Cost by model</h2>{{ model_cost_chart }}</section>
+</div>
 <details class="table-view"><summary>Show as table</summary>
 <table>
   <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th><th class="num">Cost</th></tr></thead>

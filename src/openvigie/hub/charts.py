@@ -130,20 +130,19 @@ def stacked_bars(
     return Markup("".join(parts))  # noqa: S704 - every dynamic value above is escaped
 
 
-def hbars(
-    items: Sequence[tuple[str, float]],
-    *,
-    value_label: Callable[[float], str] = compact,
-    row_h: int = 26,
-) -> Markup:
-    """Single-series horizontal bars (one color: the title names the measure)."""
-    label_w, value_w, width = 190.0, 70.0, 640.0
+def hbars(items: Sequence[tuple[str, float, str]], title: str, *, row_h: int = 26) -> Markup:
+    """Single-series horizontal bars (one color: the title names the measure).
+
+    Each item is (label, value, text shown for the value), so a caller can say "unpriced" or
+    "≥ $3" where a bare number would claim more than is known.
+    """
+    label_w, value_w, width = 190.0, 80.0, 560.0
     plot_w = width - label_w - value_w
     height = row_h * max(len(items), 1) + 4
-    maximum = max((v for _, v in items), default=0.0) or 1.0
+    maximum = max((v for _, v, _ in items), default=0.0) or 1.0
     parts = [f'<svg class="chart hbars" viewBox="0 0 {width} {height}" role="img" '
-             f'aria-label="Tokens by model">']  # fmt: skip
-    for i, (label, value) in enumerate(items):
+             f'aria-label="{escape(title)}">']  # fmt: skip
+    for i, (label, value, text) in enumerate(items):
         y = i * row_h + 4
         w = plot_w * value / maximum
         short = label if len(label) <= 28 else label[:27] + "…"
@@ -152,9 +151,9 @@ def hbars(
         if w > 0:
             path = _right_rounded(label_w, y + 5, max(w, 1), row_h - 10, 4)
             parts.append(f'<path class="s1" d="{path}"><title>{escape(label)}: '
-                         f"{escape(value_label(value))}</title></path>")  # fmt: skip
+                         f"{escape(text)}</title></path>")  # fmt: skip
         text_y = y + row_h / 2 + 2
         parts.append(f'<text class="value" x="{label_w + w + 6:.1f}" y="{text_y:.1f}">'
-                     f"{escape(value_label(value))}</text>")  # fmt: skip
+                     f"{escape(text)}</text>")  # fmt: skip
     parts.append("</svg>")
     return Markup("".join(parts))  # noqa: S704 - every dynamic value above is escaped

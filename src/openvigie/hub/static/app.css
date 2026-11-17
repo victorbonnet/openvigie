@@ -150,7 +150,8 @@ form.inline { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-
 }
 
 svg.chart { width: 100%; height: auto; display: block; }
-svg.chart.hbars { max-width: 640px; }
+svg.chart.hbars { max-width: 560px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 0 24px; }
 svg.chart .grid { stroke: var(--grid); stroke-width: 1; }
 svg.chart .baseline { stroke: var(--muted); stroke-width: 1; }
 svg.chart text { fill: var(--muted); font-size: 11px; }
