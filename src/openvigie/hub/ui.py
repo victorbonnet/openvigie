@@ -558,7 +558,7 @@ def usage_page(
     while day < finish.date():
         day_list.append(day.isoformat())
         day += timedelta(days=1)
-    slots = assign_slots([r.key["agent"] for r in per_agent.rows])
+    slots = assign_slots({r.key["agent"]: r.cost for r in per_agent.rows})
     values: dict[str, dict[str, Decimal]] = {}
     for row in per_day.rows:
         bucket = row.key["agent"] if row.key["agent"] in slots else OTHER
